@@ -136,7 +136,14 @@ def activate(seed_ids: list[str], graph: Graph, cache: Cache, rounds: int = 2) -
 
 ```python
 def score(art: Artifact, text: str, activation: float, now_days: float) -> float: ...
+def select(candidates: list[Artifact] | list[tuple[Artifact, float]],
+           text: str, now_days: float, k: int = 8, explore: float = 0.1,
+           seed: int | str | None = None, gate: bool = True,
+           min_abs: float = 1.2, min_rel: float = 0.35) -> list[Artifact]: ...
 ```
+
+`gate=True` 时只保留 `score >= max(min_abs, top_score × min_rel)` 的候选，
+没有候选达标就返回 `[]`；`gate=False` 保持旧的 top-k 行为。
 
 ## recall/scope.py
 
