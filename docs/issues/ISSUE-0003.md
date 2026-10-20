@@ -8,10 +8,10 @@
 |---|---|
 | 编号 | ISSUE-0003 |
 | 级别 | P1（功能失效 + 隐私边界失效；未到 P0 的“数据损坏/崩溃”） |
-| 状态 | open |
+| 状态 | closed |
 | 报告人 | 审计记录（agent） |
 | 日期 | 2026-10-21 |
-| 关联 PR | 待开（建议分支 `fix/issue-0003-scope-filter`） |
+| 关联 PR | [PR-0003](PR-0003.md)（分支 `fix/issue-0003-0004-scope-and-designated`） |
 | 影响版本 | `main` @ `1be8baa` |
 | GitHub | 待同步 |
 
@@ -159,6 +159,10 @@ benchmarks/e2e.py:284    OWNER = [a for a in CACHE.active() if a.header.scope !=
 ## 决策记录
 
 - 2026-10-21：开 issue，只记录现状，不改代码。
+- 2026-10-21：PR-0003 修复并合并（merge `fa26feb`）。`main._visible()` 按
+  `unified_msg_origin` 过滤 private，shadow 在 `assemble` 里只输出影子句；
+  新增 `recall/scope.py`、`DB.source_umo()` 与 11 条回归测试。印象 owner 与
+  benchmark 去掉预过滤两项未在本 PR 处理，仍按验收标准留作后续。
 - 待定：viewer 身份是否直接用 `unified_msg_origin`；群成员是否算独立 viewer；
   印象 owner 放 payload 还是新表。
 
