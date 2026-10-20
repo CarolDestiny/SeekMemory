@@ -26,6 +26,8 @@ from .perceive.extract import (
     parse_response,
 )
 from .recall.assemble import build as assemble_text
+from .recall.designated import deliverable, is_private, mark_given
+from .recall.scope import visible
 from .recall.score import select
 from .recall.seed import seeds
 from .recall.spread import activate
@@ -70,7 +72,7 @@ class Main(star.Star):
         self.cache: Cache | None = None
         self.tree: Tree | None = None
         self.graph: Graph | None = None
-        self._pending: list[tuple[str, str]] = []  # (role, text) 当天缓冲
+        self._pending: list[tuple[str, str, str]] = []  # (umo, role, text)
         self._init_engine()
 
     # ---------------- 配置 ----------------
@@ -134,7 +136,8 @@ class Main(star.Star):
             if not text:
                 return
 
-            block = self._recall_block(text)
+            umo = str(getattr(event, "unified_msg_origin", "") or "")
+            block = self._recall_block(text, umo, is_private(event))
             if block:
                 req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
                 if self._c("debug_log", False):
@@ -142,12 +145,22 @@ class Main(star.Star):
         except Exception as e:  # noqa: BLE001
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
 
-    def _recall_block(self, text: str) -> str:
+    def _visible(self, pool: list, umo: str) -> list:
+        """按 scope 过滤候选池：private 只给归属会话，shared/shadow 全放。"""
+        lookup = self.db.source_umo if self.db is not None else None
+        return visible(pool, umo, self.owner_umo, lookup)
+
+    def _recall_block(self, text: str, umo: str = "", private: bool = False) -> str:
         assert self.cache is not None and self.graph is not None
-        pool = self.cache.active()
+        pool = [
+            a for a in self._visible(self.cache.active(), umo)
+            if deliverable(a, text, private)
+        ]
         if not pool:
             return ""
 
+        designated = [a for a in pool if a.header.family == "designated"]
+        pool = [a for a in pool if a.header.family != "designated"]
         seed_ids = seeds(text, pool)
         activation = activate(seed_ids, self.graph, self.cache)
         candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
@@ -158,7 +171,14 @@ class Main(star.Star):
             k=self._c("recall_k", 8),
             explore=self._c("explore_rate", 0.1),
         )
-        return assemble_text(picked, budget=self._c("budget_chars", 600))
+        block = assemble_text(
+            designated + picked,
+            budget=self._c("budget_chars", 600),
+            text=text,
+            is_private=private,
+        )
+        mark_given(self.db, self.cache, designated + picked, block)
+        return block
 
     # ---------------- 写路径：缓冲 ----------------
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -168,7 +188,8 @@ class Main(star.Star):
                 return
             text = (event.message_str or "").strip()
             if text:
-                self._pending.append(("user", text))
+                umo = str(getattr(event, "unified_msg_origin", "") or "")
+                self._pending.append((umo, "user", text))
                 self._pending = self._pending[-200:]
         except Exception:  # noqa: BLE001
             pass
@@ -217,7 +238,7 @@ class Main(star.Star):
         if not prov:
             return
 
-        dialogue = "\n".join(f"{r}: {t}" for r, t in self._pending[-120:])
+        dialogue = "\n".join(f"{r}: {t}" for _u, r, t in self._pending[-120:])
         resp = await prov.text_chat(
             system_prompt=build_prompt([]), prompt=dialogue
         )
@@ -227,9 +248,14 @@ class Main(star.Star):
             self._pending = []
             return
 
+        umos = {u for u, _r, _t in self._pending if u}
+        owner = next(iter(umos)) if len(umos) == 1 else ""
+
         written = 0
         for it in items[:3]:
             try:
+                if owner:
+                    it = {**it, "owner_umo": owner}
                 art = make("memory", it, strength=_strength_of(it))
                 validate(art)
             except ValueError as e:

@@ -8,8 +8,10 @@ from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of
+    from .designated import deliverable, triggers_of
 except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of
+    from recall.designated import deliverable, triggers_of
 
 MEDIA = {
     "video": ("个", "视频"),
@@ -21,6 +23,7 @@ MEDIA = {
     "link": ("篇", "文章"),
 }
 CORE_LAYERS = ("persona", "impression")
+SHADOW_SENTENCE = "有件事你答应过别人不说"
 
 
 def _clean(value: Any, limit: int = 180) -> str:
@@ -102,10 +105,24 @@ def _example_sentence(art: Artifact) -> str:
 def _guarded_sentence(art: Artifact) -> str:
     """secret / designated 层：只给影子句或托付提示，不泄露内容。"""
     if art.header.family == "designated":
-        trigger = _clip(art.payload.get("trigger") or "那个东西", 20)
+        trigger = _clip("、".join(triggers_of(art)) or "那个东西", 40)
         return f"他让你记着一件事，等提到「{trigger}」时再告诉他。"
-    shadow = _clean(art.payload.get("shadow_text") or "有件事你答应过别人不说")
+    shadow = _clean(art.payload.get("shadow_text") or SHADOW_SENTENCE)
     return f"你记得，{shadow}" if shadow else ""
+
+
+def _shadow_sentence(art: Artifact) -> str:
+    """scope=shadow：任何会话都只注入影子句，正文绝不进入输出。"""
+    shadow = _clean(art.payload.get("shadow_text") or SHADOW_SENTENCE)
+    return f"你记得，{shadow}" if shadow else ""
+
+
+def _designated_sentence(art: Artifact) -> str:
+    """designated 已满足三条硬条件：交出完整正文，而不是提示句。"""
+    body = _clean(art.payload.get("text"), 600)
+    if not body:
+        return ""
+    return f"你记得他让你记的事，现在他问起来了，你可以告诉他：{body}"
 
 
 def _memory_sentence(art: Artifact) -> str:
@@ -128,12 +145,25 @@ def _persona_sentence(art: Artifact) -> str:
     return f"你记得{text}" if text else ""
 
 
-def _sentence(art: Artifact) -> tuple[str, str]:
-    """按 family / level 选措辞，返回 (裁剪层, 句子)。"""
+def _sentence(art: Artifact, text: str | None = None,
+              is_private: bool | None = None) -> tuple[str, str]:
+    """按 scope / family / level 选措辞，返回 (裁剪层, 句子)。
+
+    text / is_private 为 None 表示调用方没有会话上下文（脚本或旧调用），
+    designated 只输出托付提示；传入上下文后按三条硬条件决定是否交付正文。
+    """
+    if str(art.header.scope or "") == "shadow":
+        return "shadow", _shadow_sentence(art)
     family = art.header.family
     if family == "media":
         return "media", _media_sentence(art)
-    if family in ("secret", "designated"):
+    if family == "designated":
+        if text is None or is_private is None:
+            return family, _guarded_sentence(art)
+        if not deliverable(art, text, is_private):
+            return family, ""
+        return family, _designated_sentence(art)
+    if family == "secret":
         return family, _guarded_sentence(art)
     if family == "example":
         return "example", _example_sentence(art)
@@ -158,13 +188,21 @@ def _drop(items: list[tuple[str, str]], layers: tuple[str, ...]) -> bool:
     return True
 
 
+def _dedupe_key(art: Artifact) -> str:
+    """去重键：shadow 用影子句，避免正文参与比较，也避免被同文正文吃掉。"""
+    if str(art.header.scope or "") == "shadow":
+        shadow = str(art.payload.get("shadow_text") or "").strip()
+        return "shadow:" + (shadow or art.header.id)
+    return content_of(art)
+
+
 def _dedupe(arts: list[Artifact]) -> list[Artifact]:
     """内容去重：同一段话只保留一条；取不到文本的坏条目直接跳过（fail-open）。"""
     kept: list[Artifact] = []
     seen: list[str] = []
     for a in arts:
         try:
-            t = content_of(a).strip()
+            t = _dedupe_key(a).strip()
         except Exception:  # noqa: BLE001 - 单条坏记忆不能拖垮整段注入
             continue
         if not t:
@@ -176,20 +214,24 @@ def _dedupe(arts: list[Artifact]) -> list[Artifact]:
     return kept
 
 
-def build(arts: list[Artifact], budget: int = 2000) -> str:
+def build(arts: list[Artifact], budget: int = 2000,
+          *, text: str | None = None, is_private: bool | None = None) -> str:
     """
     组装叙述式注入文本（DESIGN 5.3 / 6.1）。
 
     头部：persona、impression、传入顺序最相关 3 条；中部：其余场景 /
     细节 / 例子；尾部留给调用方。超 budget 时从后往前砍，先 example
     再 detail，最后砍其余中部。
+
+    text / is_private 是当前会话上下文：传了才允许 designated 交付正文，
+    不传时维持旧的“只给托付提示”；scope=shadow 始终只输出影子句。
     """
     arts = _dedupe(arts)
     if not arts or budget <= 0:
         return ""
     entries: list[tuple[str, str]] = []
     for art in arts:
-        layer, sentence = _sentence(art)
+        layer, sentence = _sentence(art, text, is_private)
         if sentence:
             entries.append((layer, sentence))
     if not entries:
@@ -206,7 +248,7 @@ def build(arts: list[Artifact], budget: int = 2000) -> str:
     for layer in ("example", "detail"):
         while len(_render(items)) > budget and _drop(items, (layer,)):
             pass
-    rest = ("media", "secret", "designated", "fact", "scene", "memory")
+    rest = ("media", "secret", "designated", "shadow", "fact", "scene", "memory")
     while len(_render(items)) > budget and _drop(items, rest):
         pass
     text = _render(items)
