@@ -47,9 +47,9 @@ core/families/designated.py:25   if given is not None and not isinstance(given, 
 core/families/designated.py:26       raise ValueError("designated.given 必须是 bool 或时间字符串")
 ```
 
-全仓库没有第二处 `given`（`grep -rn "given" --include="*.py" .` 只命中
-`core/families/designated.py` 与测试）。`trigger` 也只出现在上面的提示句和校验器里，
-没有做子串/关键词匹配。
+生产代码里没有第二处 `given`（`grep -rn "given" --include="*.py" .` 只命中
+`core/families/designated.py:24-26`）。`trigger` 在产线也只出现在上面的提示句和
+校验器里，没有做子串/关键词匹配。
 
 注入入口也没有判断私聊：
 
@@ -72,7 +72,7 @@ main.py:139       req.system_prompt = (req.system_prompt or "") + "\n\n" + block
   ② 必须触发（密码/上次让我记的/那个东西）；
   ③ 触发后给出。
 - DESIGN §7.4（`:346-352`）：影子内容锁死当事人 scope，影子全局可见。
-- DESIGN v3 payload（`:520`）：`designated: {text, trigger, given}`。
+- DESIGN v3 payload（`:521`）：`designated: {text, trigger, given}`。
 
 ## 差距
 
@@ -140,4 +140,4 @@ main.py:139       req.system_prompt = (req.system_prompt or "") + "\n\n" + block
 - `core/families/designated.py:17-29`
 - `core/artifact.py:144-156`
 - `main.py:126-143`
-- `docs/DESIGN.md:312-325`、`:346-352`、`:520`
+- `docs/DESIGN.md:312-325`、`:346-352`、`:521`

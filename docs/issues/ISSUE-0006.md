@@ -1,7 +1,7 @@
 # ISSUE-0006 沉淀链路断了：promote 只返回候选，persona 永远为空，抽象树只实例化不使用
 
 > 一句话：`maintain/promote.py` 的 `promote_candidates()` 没有任何调用方；
-> 全仓库没有一处 `make("persona", ...)`；`main.py:105` 创建了 `Tree`，
+> 生产代码没有一处 `make("persona", ...)`；`main.py:105` 创建了 `Tree`，
 > 但 `add_under()` / `impressions()` 在生产路径上一次都没被调用。四层里的
 > impression / persona 实际上没有数据。
 
@@ -108,7 +108,7 @@ recall/assemble.py:197      header = [i for i, (layer, _) in enumerate(entries) 
 ## 影响
 
 - **用户可感知**：bot 不会“越来越像一个人”；四层记忆只剩 fact/scene 两层，
-  `ANALYSIS.md:108` 已实测“impression、persona 为 0”。
+  `benchmarks/results/ANALYSIS.md:108` 已实测“impression、persona 为 0”。
 - **注入结构**：`assemble` 的头部第 ① 段“人格骨架”永远空着，预算被中部记忆占满；
   与 README“人格是底色”的承诺不一致。
 - **抽象树**：合并出的 impression 是孤节点，无法从 impression 下钻到 scene/detail；
@@ -147,7 +147,7 @@ recall/assemble.py:197      header = [i for i, (layer, _) in enumerate(entries) 
 - [ ] 合并出的 impression 能通过 `Tree.children()` 找到其 scene/detail。
 - [ ] persona 有 `revision` 与 `lineage.sources`，能追溯到候选记忆。
 - [ ] 蒸馏失败/空输出不覆盖旧 persona；有日志。
--- [ ] 新增测试：树挂载、promote 阈值、persona 写入/修订、空输出保留旧值。
+- [ ] 新增测试：树挂载、promote 阈值、persona 写入/修订、空输出保留旧值。
 
 ## 决策记录
 

@@ -86,7 +86,7 @@ recall/spread.py:64            contribution = value * DECAY * _weight(weight)
 ## 设计期望
 
 - DESIGN §5.1（`docs/DESIGN.md:228`）：命中 A → 沿 `links` 扩 1 跳，最多 2 条。
-- DESIGN 统一模型（`:53`）：`links: []` 是记忆的一部分。
+- DESIGN 统一模型（`:52`）：`links: []` 是记忆的一部分。
 - DESIGN v3 关系边（`:543-549`）：`similar A ↔ B`、`causal A → B`、
   `temporal A ~ B`。
 - DESIGN v3 激活扩散（`:551-555`）：
@@ -111,7 +111,7 @@ recall/spread.py:64            contribution = value * DECAY * _weight(weight)
 - **用户可感知**：她不会“由一件事想起另一件事”；只有字面重合才能召回。
 - **ISSUE-0001 无解**：零字面重合时 seeds=0，扩散也救不回来；建边是跨过
   字面鸿沟的最低成本路径之一（另一条是向量，见 ISSUE-0001）。
-- **基准失真**：`scale.md` 的 6/6 不能归功于激活扩散；`ANALYSIS.md:109`
+- **基准失真**：`scale.md` 的 6/6 不能归功于激活扩散；`benchmarks/results/ANALYSIS.md:109`
   已明确“0 个新增候选”。对外引用时必须说明。
 - **成本**：写入时建边是纯本地规则，零模型；现在等于把设计里最便宜的联想能力
   闲置。
@@ -164,4 +164,4 @@ recall/spread.py:64            contribution = value * DECAY * _weight(weight)
 - `recall/spread.py:44-75`
 - `benchmarks/e2e.py:109`
 - `benchmarks/results/ANALYSIS.md:109`、`:116`
-- `docs/DESIGN.md:53`、`:228`、`:543-555`
+- `docs/DESIGN.md:52`、`:228`、`:543-555`

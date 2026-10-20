@@ -120,7 +120,7 @@ expires` 在 `recall/` 里没有被读。`decay.py` 也不看它们（`maintain/
   时间感是“像人”的核心，错了很出戏。
 - **检索**：过期的事实（旧地址/旧工作）继续被注入；生日/作息永远不会被强调。
 - **衰减**：`valid_to` 过期不 forgotten，只能等 retention 慢慢掉。
-- **基准**：`ANALYSIS.md:145` 已记录“合成日期有部分落在当前时间之后，
+- **基准**：`benchmarks/results/ANALYSIS.md:145` 已记录“合成日期有部分落在当前时间之后，
   `_freshness` 把负年龄截成 0、`_when` 标成今天”，说明这不是纯理论问题。
 
 ## 建议方案
@@ -171,7 +171,7 @@ expires` 在 `recall/` 里没有被读。`decay.py` 也不看它们（`maintain/
 ## 参考
 
 - `recall/assemble.py:61-71`、`:121`（只有 scene 才加时间前缀）
-- `core/artifact.py:43-52`、`:99-112`
+- `core/artifact.py:46-53`、`:99-112`
 - `perceive/extract.py:22-29`
 - `main.py:233`
 - `recall/score.py:115-126`、`:168-176`
