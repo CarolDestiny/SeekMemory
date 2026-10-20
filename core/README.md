@@ -49,5 +49,5 @@ perceive/  recall/  maintain/  main.py
 
 - `core/` 只依赖标准库（dataclasses / typing / math / datetime）。
 - `core/` **不 import** `astrbot`、`store/`、`recall/`、`perceive/`、`maintain/`、`main.py`。
-- `Tree` / `Graph` 通过构造函数接收 `db`、`cache`，只调用 CONTRACT 里的方法；
-  `Tree` 还会探测可选的 `db.set_parent`（存在才用）。core 自己不写 SQL。
+- `Tree` / `Graph` 通过构造函数接收 `db`、`cache`，只依赖 CONTRACT 里的方法；
+  `Tree` 额外探测可选的 `db.set_parent`（存在才用）。core 自己不写 SQL。
