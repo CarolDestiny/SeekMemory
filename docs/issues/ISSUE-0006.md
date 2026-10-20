@@ -9,10 +9,10 @@
 |---|---|
 | 编号 | ISSUE-0006 |
 | 级别 | P2（能力缺失：人格与抽象树没有产出路径） |
-| 状态 | open |
+| 状态 | closed |
 | 报告人 | 审计记录（agent） |
 | 日期 | 2026-10-21 |
-| 关联 PR | 待开（建议分支 `feat/issue-0006-persona-distill`） |
+| 关联 PR | PR-0009（`fix/issue-0009-0006-edges-and-persona`） |
 | 影响版本 | `main` @ `1be8baa` |
 | GitHub | 待同步 |
 
@@ -154,6 +154,19 @@ recall/assemble.py:197      header = [i for i, (layer, _) in enumerate(entries) 
 - 2026-10-21：开 issue，只记录现状，不改代码。
 - 待定：persona 是全局唯一还是按 scope；蒸馏用哪个模型/温度；
   树根是单根还是每个 scope 一根。
+
+### 实现记录（2026-10-21，PR-0009）
+
+- 采用方案 B（规则蒸馏，不调模型）：`maintain/persona.py:distill_persona()`。
+- 输入口径：active、`level=impression`、`weight >= 1.5`，且
+  `hits >= 3` 或存在 ≥ 30 天；`maintain/promote.py` 改为同一口径并接上调用方。
+- 输出：`family=persona`、`payload["text"]` 为第二人称规则文本；取 weight 最高的 3 条，
+  旧 persona 置 `state="merged"`，新 persona 的 `lineage.derived_from` 指向来源 impression。
+- 每周任务 `main._weekly` 在 decay/merge 之后调用；没有候选时保留旧人格。
+- 账本：新旧 persona 各写 `op="merge"`，reason 带来源 id 与合并说明。
+- 注入：`recall.assemble` 原先已把 persona 放头部，但会拼成“你记得你……”，
+  已改为直接输出第二人称文本；新增测试覆盖“persona 在头部”。
+- 未包含：抽象树的 `add_under()` 生产接线仍不在本 PR 范围（属容量/编排议题）。
 
 ## 参考
 

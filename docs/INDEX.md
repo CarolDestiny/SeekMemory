@@ -60,10 +60,12 @@ QQ 消息
   → perceive/extract.py   抽印象（一次模型调用）
   → store/db.py           写入 + 追加日志
   → store/cache.py        更新内存
+  → maintain/link.py      写入时建 similar/temporal 边（causal 留接口）
 
 周日 23:55
   → maintain/decay.py     重算留存率，标 forgotten
   → maintain/merge.py     相似场景合并成印象
+  → maintain/persona.py   把稳定 impression 沉淀成 persona
 ```
 
 ## 文件行数约定

@@ -21,9 +21,11 @@ sys.path.insert(0, ROOT)
 
 import recall.assemble as assemble_mod  # noqa: E402
 import recall.score as score_mod  # noqa: E402
+from benchmarks.edge_stats import spread_counts  # noqa: E402
 from benchmarks.goldset import FORBIDDEN, GOLD, SEED, TODAY, build, noise_share  # noqa: E402
 from core.artifact import Artifact, content_of, make  # noqa: E402
 from core.graph import Graph  # noqa: E402
+from maintain.link import persist  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
 from recall.score import select  # noqa: E402
 from recall.seed import bigrams, dice, seeds  # noqa: E402
@@ -76,25 +78,21 @@ def _artifact(m) -> Artifact:
 
 
 def _load(mems) -> tuple[DB, Cache, Graph, list[Artifact]]:
-    """写入临时库、连好关系边，返回 active 池。"""
+    """走生产写入路径建 similar/temporal 边；causal 仍由人工金标补。"""
     db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_abl_"), "abl.db"))
     cache = Cache(db)
     graph = Graph(db, cache)
     for m in mems:
-        art = _artifact(m)
-        db.upsert(art)
-        cache.put(art)
+        persist(_artifact(m), db, cache, graph)
     pool = cache.active()
     by_text = {str(a.payload.get("text")): a for a in pool}
-    edges = (
-        ("他叫吕宇轩，也叫BangBang", "他在做量化交易项目", "similar", .8),
-        ("他在做量化交易项目", "他想成为核心架构师", "similar", .7),
-        ("他去万兴科技面试了", "万兴那边给他发了offer，他过了", "causal", .9),
-        ("他加班到凌晨两点才回家", "最近被领导骂了，整个人很低落", "temporal", .8),
-        ("他有点倔，嘴上不饶人，但真有事会帮", "他心软，见不得别人难受", "similar", .6),
-    )
-    for a, b, kind, weight in edges:
-        graph.link(by_text[a].header.id, by_text[b].header.id, kind, weight)
+    if os.environ.get("ABLATION_NO_CAUSAL") != "1":
+        graph.link(
+            by_text["他去万兴科技面试了"].header.id,
+            by_text["万兴那边给他发了offer，他过了"].header.id,
+            "causal",
+            .9,
+        )
     return db, cache, graph, pool
 
 
@@ -211,6 +209,9 @@ def report(results: list[dict], stats: dict) -> str:
     L = ["# 消融基准：每个组件值多少", "",
          f"> {stats['n']} 条消息（{stats['noise']:.0%} 是模板闲聊）· 20 条黄金问答"
          f"（18 条可答 + 2 条边界）· 固定种子 {SEED}",
+         f"> {stats['edges']} 条联想边（生产自动建 similar/temporal + "
+         f"{stats['causal']} 条人工 causal）· "
+         f"扩散新增 {stats['spread'][0]} 个候选（{stats['spread'][1]}/20 题有新增）",
          "> 检索参数：top-k=8、注入预算 600 字、explore=0（去掉随机探索带来的抖动）", "",
          "## 黄金集", "", "| 类别 | 题数 | 考什么 |", "|---|---:|---|"]
     L += [f"| {c} | {n} | {why[c]} |" for c, n in cats.items()]
@@ -224,7 +225,7 @@ def report(results: list[dict], stats: dict) -> str:
           "", "## 逐项解读", ""]
     explain = {
         "full": "基线顶到黄金集天花板；但八成注入字与本题无关，命中靠 1~3 条相关记忆挤进 top-8。",
-        "no_spread": "「面试结果」正文没有「面试」二字，失去 1.5×activation 后掉出 top-8。",
+        "no_spread": "「面试结果」正文没有「面试」二字，失去人工 causal 边的 1.5×activation 后掉出 top-8；生产自动建边只覆盖 similar/temporal。",
         "no_score_emotion": "问句含「累」，情绪分原本给负效价高唤醒的失眠记忆 +1.3；置 0 后被中权重闲聊挤出 top-8。",
         "no_score_tag": "标签一撤，家乡/游戏/睡眠这类零字面事实只剩权重，挤不进 top-8；宠物题因正文含「养了」还有字面重合，反而活下来。",
         "no_weight_prior": "跨表述事实和开放印象题失去唯一抓手；其余题由标签、字面、情绪接住。",
@@ -275,6 +276,10 @@ def main() -> None:
     stats = {"n": len(mems), "noise": noise_share(mems),
              "noise_text": sum(1 for m in mems if m.noise)}
     db, cache, graph, source = _load(mems)
+    stats["edges"] = db.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+    stats["causal"] = db.conn.execute(
+        "SELECT COUNT(*) FROM edges WHERE kind = 'causal'").fetchone()[0]
+    stats["spread"] = spread_counts(source, graph, cache, GOLD)
     try:
         results = []
         for cfg in CONFIGS:
