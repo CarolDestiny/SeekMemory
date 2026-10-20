@@ -37,16 +37,16 @@ def build(seed: int = 42) -> tuple[list[Event], list[Query]]:
     add = E.append
 
     # ---- 稳定事实（第 1 天）----
-    add(Event(1, "他叫吕宇轩，也叫 BangBang", "detail", "fact", 1.0, 0.2, 0.3, 12, ("名字",)))
-    add(Event(1, "他在做量化交易项目", "detail", "fact", 0.9, 0.2, 0.2, 6, ("工作",)))
-    add(Event(2, "他想成为核心架构师", "detail", "fact", 1.0, 0.4, 0.4, 4, ("目标",)))
+    add(Event(1, "他叫吕宇轩，也叫 BangBang", "fact",   "fact", 1.0, 0.2, 0.3, 12, ("名字",)))
+    add(Event(1, "他在做量化交易项目", "fact",   "fact", 0.9, 0.2, 0.2, 6, ("工作",)))
+    add(Event(2, "他想成为核心架构师", "fact",   "fact", 1.0, 0.4, 0.4, 4, ("目标",)))
 
     # ---- 早期事件（第 3~10 天，应该逐渐淡忘）----
     add(Event(3, "他问今天几号", "detail", "event", 0.1, 0.0, 0.0, 1))
     add(Event(4, "他中午吃了黄焖鸡", "detail", "event", 0.1, 0.0, 0.1, 1))
     add(Event(5, "他说服务器有点卡", "detail", "event", 0.2, 0.1, -0.1, 2))
     add(Event(7, "他面试了万兴科技", "scene", "event", 0.8, 0.7, 0.2, 3, ("面试", "工作")))
-    add(Event(9, "他很喜欢原神，抽卡抽空了", "detail", "fact", 0.5, 0.5, 0.1, 2, ("游戏", "原神")))
+    add(Event(9, "他很喜欢原神，抽卡抽空了", "fact",   "fact", 0.5, 0.5, 0.1, 2, ("游戏", "原神")))
 
     # ---- 情绪低潮（第 12~16 天）----
     add(Event(12, "他被领导骂了，语气很低落", "scene", "emotion", 0.9, 0.9, -0.8, 4, ("情绪", "工作")))
@@ -104,6 +104,6 @@ def decayed_events(events: list[Event], today: int = 30) -> list[tuple[Event, fl
             valence=s.valence,
             funny=s.funny,
         )
-        shape = "pattern" if e.level == "impression" else "point"
+        shape = "pattern" if e.level in ("impression", "fact") else "point"
         out.append((e, retention(s, shape, days)))
     return out

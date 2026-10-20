@@ -140,7 +140,7 @@ def _sentence(art: Artifact) -> tuple[str, str]:
     if family == "persona":
         return "persona", _persona_sentence(art)
     level = str(art.payload.get("level") or "scene")
-    layer = level if level in ("impression", "scene", "detail") else "scene"
+    layer = level if level in ("fact", "impression", "scene", "detail") else "scene"
     return layer, _memory_sentence(art)
 
 
@@ -187,7 +187,7 @@ def build(arts: list[Artifact], budget: int = 2000) -> str:
     for layer in ("example", "detail"):
         while len(_render(items)) > budget and _drop(items, (layer,)):
             pass
-    rest = ("media", "secret", "designated", "scene", "memory")
+    rest = ("media", "secret", "designated", "fact", "scene", "memory")
     while len(_render(items)) > budget and _drop(items, rest):
         pass
     text = _render(items)

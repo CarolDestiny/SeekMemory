@@ -21,7 +21,7 @@
 
 | 能力 | 实现 |
 |---|---|
-| **记忆分层** | `印象 impression` → `场景 scene` → `细节 detail`，三层抽象树，检索按层下钻 |
+| **四层记忆** | `事实 fact` → `记忆 memory` → `印象 impression` → `人格 persona`，越往上越抽象越持久 |
 | **短期缓冲** | 当日话题按"话题单元"聚合，24h 后才判断是否沉淀，避免"早上说辞职、晚上说算了"被记错 |
 | **遗忘曲线** | 艾宾浩斯 `R = e^(−t/S)`，`S` 由显著度、有效命中、形状、情绪四因子决定 |
 | **情绪着色** | `arousal`（唤醒度）× `valence`（正负效价）双维：高唤醒负效价几乎不忘，低唤醒负效价快速褪色 |
@@ -53,16 +53,31 @@
 ## 记忆架构
 
 ```
-Layer 0  Source      原始对话，只追加、不可改、永不删
-Layer 1  Artifact    从 Source 提炼的记忆，可修订、会错、允许矛盾
-Layer 2  Persona     从 Artifact 沉淀的人格，版本链可回溯
+人格 Persona    底色。全局唯一，不分对象，决定"她是谁"
+  ↑ 沉淀
+印象 Impression 对某一个人的感觉。按 scope 隔离，A 的印象 ≠ B 的印象
+  ↑ 提炼
+记忆 Memory     场景与细节。会衰减、会褪色、会被合并成印象
+  ↑ 抽象
+事实 Fact       客观稳定的信息。名字、职业、偏好，不衰减
 ```
 
-**通用头 + 类型化 payload**（借鉴 OceanBase PowerContext 的 Artifact 模型）：头部十字段锁定行为语义——`family / revision / state / scope / lineage / strength / time / said_by / shareable`；payload 按家族区分。加能力是加 `family`，不是给表加列。
+**越往下越具体、越易变；越往上越抽象、越持久。**
+
+| 层 | 例子 | 衰减 | 作用域 |
+|---|---|---|---|
+| 事实 | 「他叫吕宇轩」 | 不衰减 | 单一对象 |
+| 记忆 | 「他那天加班到两点」 | 艾宾浩斯 | 单一对象 |
+| 印象 | 「他有点倔，但心软」 | 极慢 | **按 scope，一人一份** |
+| 人格 | 「你不轻易说重话」 | 不变，只增修订 | 全局唯一 |
+
+**印象是"对某个人"的——** 她对你的印象和对别人的印象是两份数据，互不覆盖。人格是底色，只有一个。
+
+**通用头 + 类型化 payload**：头部十字段锁定行为语义——`family / revision / state / scope / lineage / strength / time / said_by / shareable`；payload 按家族区分。加能力是加 `family`，不是给表加列。
 
 | family | 语义 |
 |---|---|
-| `memory` | 普通记忆，含 `level / shape / chrono / about` 四维 |
+| `memory` | 普通记忆，`level` 取 `fact / scene / detail / impression` |
 | `persona` | 人格骨架，版本化 |
 | `example` | 人格语料（few-shot 问答对） |
 | `media` | 媒体引用，只存摘要与 URL |
