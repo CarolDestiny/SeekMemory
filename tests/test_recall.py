@@ -106,16 +106,20 @@ class SeedTest(_TempDirCase):
 
 
 class SelectTest(_TempDirCase):
-    """select：top-k 数量、确定性与相关度排序。"""
+    """select：top-k 数量、确定性与相关度排序。
+
+    这一组测的是排序后取 top-k 的机制，显式 gate=False 固定旧行为；
+    证据闸门本身由 tests/test_gate.py 覆盖。
+    """
 
     def test_top_k_count(self) -> None:
         """返回数量为 min(k, 候选数)，k<=0 或空候选返回空。"""
         pool = _pool()
-        self.assertEqual(len(select(pool, "加班", 0.0, k=3, explore=0.0)), 3)
-        self.assertEqual(len(select(pool, "加班", 0.0, k=5, explore=0.0)), 5)
-        self.assertEqual(len(select(pool, "加班", 0.0, k=99, explore=0.0)), 5)
-        self.assertEqual(select(pool, "加班", 0.0, k=0, explore=0.0), [])
-        self.assertEqual(select([], "加班", 0.0, k=3, explore=0.0), [])
+        self.assertEqual(len(select(pool, "加班", 0.0, k=3, explore=0.0, gate=False)), 3)
+        self.assertEqual(len(select(pool, "加班", 0.0, k=5, explore=0.0, gate=False)), 5)
+        self.assertEqual(len(select(pool, "加班", 0.0, k=99, explore=0.0, gate=False)), 5)
+        self.assertEqual(select(pool, "加班", 0.0, k=0, explore=0.0, gate=False), [])
+        self.assertEqual(select([], "加班", 0.0, k=3, explore=0.0, gate=False), [])
 
     def test_explore_zero_is_deterministic(self) -> None:
         """explore=0 时同一输入重复调用结果完全一致。"""
@@ -142,7 +146,7 @@ class SelectTest(_TempDirCase):
         candidates = [
             (art, 1.0 if art.header.id == pool[1].header.id else 0.0) for art in pool
         ]
-        picked = select(candidates, "quantum", 0.0, k=2, explore=0.0)
+        picked = select(candidates, "quantum", 0.0, k=2, explore=0.0, gate=False)
         self.assertEqual(len(picked), 2)
         self.assertEqual(picked[0].header.id, pool[1].header.id)
 
@@ -151,11 +155,11 @@ class SelectTest(_TempDirCase):
         pool = _pool()
         first = [
             a.header.id
-            for a in select(pool, "加班", 0.0, k=2, explore=0.5, seed=7)
+            for a in select(pool, "加班", 0.0, k=2, explore=0.5, seed=7, gate=False)
         ]
         second = [
             a.header.id
-            for a in select(pool, "加班", 0.0, k=2, explore=0.5, seed=7)
+            for a in select(pool, "加班", 0.0, k=2, explore=0.5, seed=7, gate=False)
         ]
         self.assertEqual(first, second)
         self.assertEqual(len(first), 2)
