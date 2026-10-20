@@ -167,40 +167,53 @@ def main() -> None:
         scale_rows.append((n, naive, ours, naive / max(ours, 1)))
 
     # ---------- 报告 ----------
+    forget_total = keep_all + drop_all
+    forget_ok = keep_ok + drop_ok
+    persona = (
+        0.30 * level_acc
+        + 0.20 * narrative_rate
+        + 0.25 * (forget_ok / max(forget_total, 1))
+        + 0.15 * min(1.0, (s_hi / max(s_lo, 0.01)) / 2.1)
+        + 0.10 * recall
+    )
+    big = scale_rows[-1]
+
     lines = [
         "# SeekMemory Benchmark",
         "",
-        f"> 数据：{len(events)} 条事件 / {len(queries)} 个查询 · 模拟 30 天",
+        f"> {len(events)} 条模拟事件 · {len(queries)} 个查询 · 模拟 30 天 · 固定数据可复现",
         "",
-        "## 核心指标",
+        "## 指标一：像人",
         "",
-        "| 指标 | 数值 | 说明 |",
-        "|---|---|---|",
-        f"| 召回命中率 | **{pct(recall)}** | 期望记忆出现在 top-8 的比例 |",
-        f"| 层级命中率 | **{pct(level_acc)}** | 问印象时命中印象层 |",
-        f"| 叙述化比例 | **{pct(narrative_rate)}** | 注入文本不是项目符号的比例 |",
-        f"| Token 压缩比 | **{comp_ratio:.1f}×** | 全量注入 {full_chars} 字/轮 → 实际 {avg_injected:.0f} 字/轮 |",
+        f"### 综合像人指数：**{persona * 100:.0f} / 100**",
         "",
-        "## 遗忘正确性",
+        "| 子项 | 权重 | 结果 | 含义 |",
+        "|---|---|---|---|",
+        f"| 层级命中率 | 30% | **{pct(level_acc)}** | 问印象时命中印象层 |",
+        f"| 叙述化比例 | 20% | **{pct(narrative_rate)}** | 注入文本无项目符号 |",
+        f"| 遗忘正确性 | 25% | **{forget_ok}/{forget_total}** | 重要留下、琐事忘掉 |",
+        f"| 强化有效性 | 15% | **{s_hi / max(s_lo, 0.01):.1f}×** | 多提及 vs 少提及权重比 |",
+        f"| 召回命中率 | 10% | **{pct(recall)}** | 期望记忆进 top-8 |",
+        "",
+        "## 指标二：Token",
+        "",
+        f"### 1000 条记忆时压缩 **{big[3]:.0f}×**",
+        "",
+        "| 记忆条数 | 朴素全量注入 | SeekMemory | 压缩比 |",
+        "|---|---|---|---|",
+    ]
+    for n, naive, ours, r in scale_rows:
+        lines.append(f"| {n} | {naive} 字/轮 | {ours} 字/轮 | **{r:.0f}×** |")
+    lines += [
+        "",
+        f"每轮额外模型调用：**0 次**（检索纯本地）",
+        "",
+        "## 遗忘明细",
         "",
         "| 检查 | 结果 |",
         "|---|---|",
         f"| 重要事件被保留 | {keep_ok}/{keep_all} |",
         f"| 琐事被遗忘 | {drop_ok}/{drop_all} |",
-        "",
-        "## 强化效果",
-        "",
-        "| 分组 | 平均权重 |",
-        "|---|---|",
-        f"| 多次提及（≥5 次） | {s_hi:.2f} |",
-        f"| 极少提及（≤2 次） | {s_lo:.2f} |",
-        f"| 差距 | **{s_hi / max(s_lo, 0.01):.1f}×** |",
-        "",
-        "## Token 随记忆量增长（真正的护城河）",
-        "",
-        "| 记忆条数 | 朴素全量注入 | SeekMemory | 压缩比 |",
-        "|---|---|---|---|",
-    ] + [f"| {n} | {naive} 字 | {ours} 字 | **{r:.0f}×** |" for n, naive, ours, r in scale_rows] + [
         "",
         "## 逐查询明细",
         "",
