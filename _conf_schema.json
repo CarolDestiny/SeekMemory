@@ -1,0 +1,64 @@
+{
+  "owner_umo": {
+    "description": "主用户的会话标识（只从这个会话抽取记忆）",
+    "type": "string",
+    "hint": "例：napcat:FriendMessage:100000000",
+    "default": ""
+  },
+  "open_to": {
+    "description": "记忆系统对谁开放",
+    "type": "string",
+    "hint": "owner_only | owner_and_trusted | everyone",
+    "default": "owner_only"
+  },
+  "trusted": {
+    "description": "受信用户 QQ 号，逗号分隔",
+    "type": "string",
+    "default": ""
+  },
+  "db_path": {
+    "description": "数据库路径（留空则用插件数据目录）",
+    "type": "string",
+    "default": ""
+  },
+  "budget_chars": {
+    "description": "每轮注入记忆的字数上限",
+    "type": "int",
+    "default": 600
+  },
+  "recall_k": {
+    "description": "每轮最多注入几条记忆",
+    "type": "int",
+    "default": 8
+  },
+  "explore_rate": {
+    "description": "随机探索比例（0~1），让她偶尔想起不相关的事",
+    "type": "float",
+    "default": 0.1
+  },
+  "summary_time": {
+    "description": "每晚抽取记忆的时间 HH:MM",
+    "type": "string",
+    "default": "23:50"
+  },
+  "weekly_day": {
+    "description": "每周整理的日子（0=周一 … 6=周日）",
+    "type": "int",
+    "default": 6
+  },
+  "enable_reflect": {
+    "description": "启用自我反思（发现理解错了会自己记下）",
+    "type": "bool",
+    "default": true
+  },
+  "max_episodes": {
+    "description": "场景/细节类记忆上限，超过触发合并",
+    "type": "int",
+    "default": 500
+  },
+  "debug_log": {
+    "description": "输出检索与注入的调试日志",
+    "type": "bool",
+    "default": false
+  }
+}

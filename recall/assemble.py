@@ -1,0 +1,199 @@
+"""recall.assemble：把记忆组装成一段叙述化的注入文本。"""
+
+from __future__ import annotations
+
+import re
+from datetime import date
+from typing import Any
+
+from core.artifact import Artifact, content_of
+
+MEDIA = {
+    "video": ("个", "视频"),
+    "music": ("首", "歌"),
+    "audio": ("段", "音频"),
+    "image": ("张", "照片"),
+    "photo": ("张", "照片"),
+    "article": ("篇", "文章"),
+    "link": ("篇", "文章"),
+}
+CORE_LAYERS = ("persona", "impression")
+MAX_SENTENCE = 180
+
+
+def _clean(value: Any, limit: int = MAX_SENTENCE) -> str:
+    """压平空白、补「但」前逗号、去句末符号，最后加上句号。"""
+    text = " ".join(str(value or "").split())
+    text = re.sub(r"(?<=[^，。！？；：、\s不非])但", "，但", text)
+    text = text.strip("。！？!?；;，,、 ")
+    if len(text) > limit:
+        text = text[: limit - 1].rstrip() + "…"
+    return text + "。" if text else ""
+
+
+def _clip(value: Any, limit: int = 60) -> str:
+    """截断引语或标题，不带句号。"""
+    text = _clean(value, limit)
+    return text[:-1] if text.endswith("。") else text
+
+
+def _raw(art: Artifact) -> str:
+    """取通用可读文本，最后回退 content_of。"""
+    for key in ("text", "shadow_text", "summary", "title"):
+        value = art.payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    try:
+        return content_of(art)
+    except Exception:
+        return ""
+
+
+def _voice(text: str, about: str) -> str:
+    """把记忆里的第一人称改写成注入时的第二人称。"""
+    if about == "relation":
+        text = text.replace("我们", "你们")
+    return text.replace("我的", "你的").replace("我", "你")
+
+
+def _when(created: str) -> str:
+    """绝对日期转相对时间前缀（DESIGN 6.3）。"""
+    try:
+        day = date.fromisoformat(str(created)[:10])
+    except (TypeError, ValueError):
+        return ""
+    delta = (date.today() - day).days
+    for limit, word in ((0, "今天"), (1, "昨天"), (10, "前几天"), (30, "前阵子")):
+        if delta <= limit:
+            return word
+    return f"{delta // 30}个月前" if delta < 365 else "去年"
+
+
+def _topic(title: str) -> str:
+    """从标题里剥出主题词，让「讲大肥鱼的视频」读起来顺。"""
+    text = title.strip("《》「」“”\"' ")
+    for tail in ("是怎么来的", "的由来", "是怎么火起来的", "是什么", "的介绍"):
+        if text.endswith(tail) and len(text) > len(tail):
+            return text[: -len(tail)]
+    return text
+
+
+def _media_sentence(art: Artifact) -> str:
+    """media 层：谁给谁看过什么，带类型与主题。"""
+    payload = art.payload
+    kind = str(payload.get("type") or "video").lower()
+    measure, noun = MEDIA.get(kind, ("个", "视频"))
+    topic = _topic(_clip(payload.get("title") or payload.get("summary"), 60))
+    verb = "叫" if kind == "music" else "讲" if kind in ("video", "article", "link") else "关于"
+    thing = f"一{measure}{verb}{topic}的{noun}" if topic else f"一{measure}{noun}"
+    who = str(payload.get("shared_by") or art.header.said_by or "other")
+    if who in ("self", "bot", "you"):
+        return f"你还记得给他看过{thing}。"
+    return f"他给你看过{thing}。"
+
+
+def _example_sentence(art: Artifact) -> str:
+    """example 层：他说的原话与你当时的回应。"""
+    user, reply = _clip(art.payload.get("user")), _clip(art.payload.get("assistant"))
+    if user and reply:
+        return f"你记得有一次他说「{user}」，你回「{reply}」。"
+    if user:
+        return f"你记得有一次他说「{user}」。"
+    return f"你记得有一次你回「{reply}」。" if reply else ""
+
+
+def _guarded_sentence(art: Artifact) -> str:
+    """secret / designated 层：只给影子句或托付提示，不泄露内容。"""
+    if art.header.family == "designated":
+        trigger = _clip(art.payload.get("trigger") or "那个东西", 20)
+        return f"他让你记着一件事，等提到「{trigger}」时再告诉他。"
+    shadow = _clean(art.payload.get("shadow_text") or "有件事你答应过别人不说")
+    return f"你记得，{shadow}" if shadow else ""
+
+
+def _memory_sentence(art: Artifact) -> str:
+    """memory 层：场景带相对时间，细节回指，印象换一种开头。"""
+    text = _clean(_voice(_raw(art), str(art.payload.get("about") or "")))
+    if not text:
+        return ""
+    level = str(art.payload.get("level") or "")
+    if level == "impression":
+        return f"你印象里{text}"
+    if level == "detail":
+        return f"你还记得{text}"
+    when = _when(art.header.time.created) if level == "scene" else ""
+    return f"{when}{text}" if when else f"你记得{text}"
+
+
+def _persona_sentence(art: Artifact) -> str:
+    """persona 层：人格沉淀，用第二人称陈述。"""
+    text = _clean(_voice(_raw(art), "self"))
+    return f"你记得{text}" if text else ""
+
+
+def _sentence(art: Artifact) -> tuple[str, str]:
+    """按 family / level 选措辞，返回 (裁剪层, 句子)。"""
+    family = art.header.family
+    if family == "media":
+        return "media", _media_sentence(art)
+    if family in ("secret", "designated"):
+        return family, _guarded_sentence(art)
+    if family == "example":
+        return "example", _example_sentence(art)
+    if family == "persona":
+        return "persona", _persona_sentence(art)
+    level = str(art.payload.get("level") or "scene")
+    layer = level if level in ("impression", "scene", "detail") else "scene"
+    return layer, _memory_sentence(art)
+
+
+def _render(items: list[tuple[str, str]]) -> str:
+    """把句子按顺序拼成一段。"""
+    return "".join(sentence for _, sentence in items)
+
+
+def _drop(items: list[tuple[str, str]], layers: tuple[str, ...]) -> bool:
+    """从后往前删一条属于 layers 的句子，删到返回 True。"""
+    index = next((i for i in range(len(items) - 1, -1, -1) if items[i][0] in layers), None)
+    if index is None:
+        return False
+    del items[index]
+    return True
+
+
+def build(arts: list[Artifact], budget: int = 2000) -> str:
+    """
+    组装叙述式注入文本（DESIGN 5.3 / 6.1）。
+
+    头部：persona、impression、传入顺序最相关 3 条；中部：其余场景 /
+    细节 / 例子；尾部留给调用方。超 budget 时从后往前砍，先 example
+    再 detail，最后砍其余中部。
+    """
+    if not arts or budget <= 0:
+        return ""
+    entries: list[tuple[str, str]] = []
+    for art in arts:
+        layer, sentence = _sentence(art)
+        if sentence:
+            entries.append((layer, sentence))
+    if not entries:
+        return ""
+    header = [i for i, (layer, _) in enumerate(entries) if layer == "persona"]
+    header += [i for i, (layer, _) in enumerate(entries) if layer == "impression"][:1]
+    header += [
+        i
+        for i, (layer, _) in enumerate(entries)
+        if i not in header and layer != "impression"
+    ][:3]
+    middle = [i for i in range(len(entries)) if i not in header]
+    items = [entries[i] for i in header + middle]
+    for layer in ("example", "detail"):
+        while len(_render(items)) > budget and _drop(items, (layer,)):
+            pass
+    rest = ("media", "secret", "designated", "scene", "memory")
+    while len(_render(items)) > budget and _drop(items, rest):
+        pass
+    text = _render(items)
+    if len(text) > budget:
+        text = text[: max(0, budget - 2)].rstrip("，。；、 ") + "……"
+    return text if len(text) <= budget else "…" * budget
