@@ -1,7 +1,7 @@
 # 回归基线
 
 > 改动后跑 `python3 benchmarks/run.py`、`python3 benchmarks/scale.py`、`python3 benchmarks/e2e.py`，不得低于此表。
-> 数据来源：`benchmarks/results/latest.md`、`scale.md`、`e2e.md`（HEAD `f5cb2b9`，2026-10-21）。
+> 数据来源：`benchmarks/results/latest.md`、`scale.md`、`e2e.md`（代码基线 `b55e6a5`，2026-10-21）。
 > 红线是**建议值**：一次性设定后只允许上调（更严），不允许下调。离线确定性指标的子项不设缓冲；综合分与毫秒数按表内红线执行。
 
 ## 像人指数
