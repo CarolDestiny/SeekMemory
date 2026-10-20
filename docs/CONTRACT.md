@@ -83,6 +83,8 @@ class Tree:
 class Graph:
     def __init__(self, db, cache): ...
     def link(self, src: str, dst: str, kind: str, weight: float) -> None: ...
+    def link_causal(self, src: str, dst: str, weight: float = 1.0) -> None: ...  # 仅接口，不自动调用
+    def degree(self, node_id: str) -> int: ...
     def neighbours(self, node_id: str, kinds: tuple[str, ...] = ("similar","causal","temporal")) -> list[tuple[str, float]]: ...
 ```
 
@@ -181,7 +183,27 @@ def merge_similar(db: DB, cache: Cache, threshold: float = 0.6, limit: int = 50)
 ## maintain/promote.py
 
 ```python
-def promote_candidates(cache: Cache, min_hits: int = 10) -> list[Artifact]: ...
+def promote_candidates(cache: Cache, min_hits: int = 3,
+                       today: str | None = None) -> list[Artifact]: ...
+    # active + level=impression + weight>=1.5 + (hits>=min_hits 或 age>=30 天)
+```
+
+## maintain/link.py
+
+```python
+def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
+             created: str | None = None) -> int: ...
+def persist(art: Artifact, db: DB, cache: Cache | None,
+            graph: Graph | None) -> int: ...
+    # 先写库/缓存，再建 similar/temporal；建边失败返回 0，不影响写入
+```
+
+## maintain/persona.py
+
+```python
+def compose(impressions: list[Artifact]) -> str: ...
+def distill_persona(db: DB, cache: Cache, today: str | None = None) -> Artifact | None: ...
+    # 取 top3 impression 拼第二人称 persona；旧 persona 置 merged，写 merge 账本
 ```
 
 ## maintain/reflect.py
