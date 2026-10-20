@@ -23,6 +23,8 @@ from maintain.link import (
     link_new,
     persist,
 )
+from recall.seed import seeds
+from recall.spread import activate
 from store.cache import Cache
 from store.db import DB
 
@@ -151,6 +153,23 @@ class SimilarEdgeTest(_LinkCase):
                          [(first.header.id, "temporal", TEMPORAL_WEIGHT)])
         self.assertEqual(self._edges(first),
                          [(second.header.id, "temporal", TEMPORAL_WEIGHT)])
+
+
+class SpreadRecallTest(_LinkCase):
+    """一跳召回：A 与 B 有边时，查询 A 能通过扩散捞回不含关键词的 B。"""
+
+    def test_one_hop_spread_reaches_linked_neighbour(self) -> None:
+        """B 不含查询关键词，但沿同一天建的 temporal 边被激活扩散捞回。"""
+        anchor = self._write(_memory("他今天加班到凌晨两点才回家",
+                                     created="2026-10-20T09:00:00"))
+        neighbour = self._write(_memory("楼下新开了一家面馆",
+                                        created="2026-10-20T21:00:00"))
+        query = "他今天加班到凌晨两点才回家"
+
+        self.assertEqual(seeds(query, [neighbour]), [])
+        self.assertEqual(seeds(query, [anchor, neighbour]), [anchor.header.id])
+        activation = activate([anchor.header.id], self.graph, self.cache)
+        self.assertGreater(activation.get(neighbour.header.id, 0.0), 0.0)
 
 
 class BudgetTest(_LinkCase):
