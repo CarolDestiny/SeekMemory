@@ -17,7 +17,7 @@ fail-open，不影响聊天。
 | `designated.py` | 85 | 指定记忆交付：私聊 + 触发词 + given 三条硬条件 |
 | `seed.py` | 173 | `seeds()`：二元组重合度 + 梗标签加分，取 top-limit 个种子 id |
 | `spread.py` | 75 | `activate()`：每跳乘 0.5、每轮只留 top 20 的激活扩散 |
-| `score.py` | 247 | `score()` 按 DESIGN 5.1 打分；`select()` 取 top-k + 10% 探索 |
+| `score.py` | 267 | `score()` 按 DESIGN 5.1 打分；`select()` 过双阈值闸门后取 top-k + 10% 探索 |
 | `assemble.py` | 264 | `build()`：叙述化组装；shadow 只给影子句，超预算先砍 example 再砍 detail |
 | `README.md` | 41 | 本文件 |
 
@@ -36,6 +36,9 @@ assemble    → core.artifact, recall.designated (deliverable, triggers_of)
 `build()` 信任 `arts` 的传入顺序就是相关度降序；`select()` 的候选既可以是
 裸 `Artifact`，也可以是 `(Artifact, activation)` 二元组（`main.py` 即后者）；
 `now_days` 传 0 会用 `time.created` 推算年龄，传正小数视为年龄，传大数
-视为绝对天数（epoch days / ordinal）。`build()` 的 `text` / `is_private` 是
+视为绝对天数（epoch days / ordinal）。`select()` 默认开启相关性闸门：
+`score >= min_abs` 且 `score >= top_score × min_rel` 的候选才保留，全不达标
+返回空列表；`gate=False` 回到“凑满 top-k”的旧行为，供消融对比。`build()` 的
+`text` / `is_private` 是
 可选会话上下文：不传时 designated 只给托付提示（旧行为），传了才按三条硬
 条件交付正文。
