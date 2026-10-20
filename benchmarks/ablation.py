@@ -142,8 +142,8 @@ def _dedupe(cfg: Cfg):
         assemble_mod._dedupe = old
 
 
-def pipeline(cfg: Cfg, pool, source, graph, cache, q: str) -> tuple[str, list[Artifact]]:
-    """按配置组合 seeds → activate → select → assemble，返回注入文本与选中。"""
+def pipeline(cfg: Cfg, pool, source, graph, cache, q: str) -> tuple[str, list, list]:
+    """按配置组合 seeds → activate → select → assemble，返回注入文本、检索层与常驻层。"""
     seed_ids = [] if cfg.literal_only else seeds(q, source)
     activation = {} if (not cfg.spread or cfg.literal_only) else activate(seed_ids, graph, cache)
     if cfg.literal_only:
@@ -156,41 +156,49 @@ def pipeline(cfg: Cfg, pool, source, graph, cache, q: str) -> tuple[str, list[Ar
         picked = select(candidates, q, 0.0, k=K, explore=0.0, gate=cfg.gate)
     if not cfg.layer:
         picked = [_without_level(a) for a in picked]
+    pin = gate_mod.pinned(cache)
     with _dedupe(cfg):
-        return assemble(picked, budget=BUDGET), picked
+        return assemble(pin + picked, budget=BUDGET), picked, pin
 
 
 def measure(cfg: Cfg, pool, source, graph, cache) -> dict:
-    """跑完 20 条黄金问句，汇总命中 / 字数 / 噪声 / 边界泄露与注入。"""
-    hit = total = chars = leak = bchars = 0
+    """跑完 20 条黄金问句，分别统计常驻层 / 检索层的字数与检索层噪声。"""
+    hit = total = chars = leak = bchars = pin_chars = ret_chars = 0
     boundary_n = sum(1 for g in GOLD if not g["expect_any"])
     noise_chars = kept_chars = 0
-    misses, rows = [], []
+    misses = []
     for g in GOLD:
-        block, picked = pipeline(cfg, pool, source, graph, cache, g["q"])
+        block, picked, pin = pipeline(cfg, pool, source, graph, cache, g["q"])
         low, exps = block.lower(), [e.lower() for e in g["expect_any"]]
         chars += len(block)
         ok = bool(exps) and any(e in low for e in exps)
+        pin_ids = {id(art) for art in pin}
+        kept = (pin + picked) if not cfg.dedupe else assemble_mod._dedupe(pin + picked)
+        for art in kept:
+            try:
+                n = len(assemble_mod._sentence(art)[1])
+            except Exception:  # noqa: BLE001 - 坏条目按正文长度兜底
+                n = len(content_of(art))
+            if id(art) in pin_ids:
+                pin_chars += n
+                continue
+            ret_chars += n
+            if exps:
+                kept_chars += n
+                if not any(e in content_of(art).lower() for e in exps):
+                    noise_chars += n
         if exps:
             total += 1
             hit += ok
             if not ok:
                 misses.append(g["q"])
-            for art in (picked if not cfg.dedupe else assemble_mod._dedupe(picked)):
-                try:
-                    n = len(assemble_mod._sentence(art)[1])
-                except Exception:  # noqa: BLE001 - 坏条目按正文长度兜底
-                    n = len(content_of(art))
-                kept_chars += n
-                if not any(e in content_of(art).lower() for e in exps):
-                    noise_chars += n
         else:
             leak += sum(low.count(w) for w in FORBIDDEN.get(g["q"], ()))
             bchars += len(block)
-        rows.append((ok, len(block)))
     return {"name": cfg.name, "hit": hit, "total": total, "misses": misses,
-            "chars": chars / len(GOLD), "noise": noise_chars / max(1, kept_chars),
-            "leak": leak, "bchars": bchars / max(1, boundary_n), "rows": rows}
+            "chars": chars / len(GOLD), "pin_chars": pin_chars / len(GOLD),
+            "ret_chars": ret_chars / len(GOLD), "noise": noise_chars / max(1, kept_chars),
+            "leak": leak, "bchars": bchars / max(1, boundary_n)}
 
 
 def report(results: list[dict], stats: dict) -> str:
@@ -201,32 +209,29 @@ def report(results: list[dict], stats: dict) -> str:
     for g in GOLD:
         key = g["note"].split("｜")[0]
         cats[key] = cats.get(key, 0) + 1
-    why = {"事实·跨表述": "与问句零字面重合，考权重先验 / 语义替代",
-           "事实": "名字、目标、家乡、游戏、宠物", "事件": "面试、加班、请客；部分靠关系边扩散",
-           "情绪": "低潮、失眠；正向状态作干扰", "印象": "「倔」「心软」；高权重低字面",
-           "边界": "应返回空：别人的秘密、短期琐事"}
+    why = {"事实·跨表述": "与问句零字面重合，考混合检索", "事实": "名字、目标、家乡、游戏、宠物",
+           "事件": "面试、加班、请客；部分靠关系边扩散", "情绪": "低潮、失眠；正向状态作干扰",
+           "印象": "「倔」「心软」；高权重低字面", "边界": "应返回空：别人的秘密、短期琐事"}
     L = ["# 消融基准：每个组件值多少", "",
-         f"> {stats['n']} 条消息（{stats['noise']:.0%} 是模板闲聊）· 20 条黄金问答"
-         f"（18 条可答 + 2 条边界）· 固定种子 {SEED}",
-         f"> {stats['edges']} 条边（自动 similar/temporal + {stats['causal']} 人工 causal）"
-         f" · 扩散新增 {stats['spread'][0]}（{stats['spread'][1]}/20 题）",
-         "> 检索参数：top-k=8、注入预算 600 字、explore=0（去掉随机探索带来的抖动）",
-         f"> 证据闸门：`evidence >= max({gate_mod.MIN_EV_ABS}, top_evidence × {gate_mod.MIN_EV_REL})`；"
-         "weight/freshness 只排序不能过门，全不达标返回空", "",
+         f"> {stats['n']} 条消息（{stats['noise']:.0%} 是模板闲聊）· 20 条黄金问答（18 条可答 + 2 条边界）· 固定种子 {SEED}",
+         f"> {stats['edges']} 条边（自动 similar/temporal + {stats['causal']} 人工 causal）· 扩散新增 {stats['spread'][0]}（{stats['spread'][1]}/20 题）",
+         "> 检索参数：top-k=8、注入预算 600 字、explore=0；常驻层（persona + 印象前 2）不经闸门",
+         f"> 证据闸门：`evidence >= max({gate_mod.MIN_EV_ABS}, top_evidence × {gate_mod.MIN_EV_REL})`；weight/freshness 只排序", "",
          "## 黄金集", "", "| 类别 | 题数 | 考什么 |", "|---|---:|---|"]
     L += [f"| {c} | {n} | {why[c]} |" for c, n in cats.items()]
     L += ["", f"数据里 {stats['noise_text']}/{stats['n']} 条是模板生成的无关闲聊，"
           "非闲聊只有 20 条；这保证命中不是靠「池子里全是答案」。", "",
-          "## 消融结果", "", "| 配置 | 命中 | 注入字数 | 噪声占比 | 边界正文泄露 | 边界注入字数 |",
-          "|---|---:|---:|---:|---:|---:|"]
-    L += [f"| `{r['name']}` | **{r['hit']}/{r['total']}** | {r['chars']:.0f} 字 | "
-          f"{r['noise']:.0%} | {r['leak']} | {r['bchars']:.0f} 字 |" for r in rs]
-    L += ["", "> 「命中」按 18 条可答题计；2 条边界题单列「边界正文泄露」（FORBIDDEN 词出现次数，"
-          "红线 0）与「边界注入字数」。", "> 注入字数是 20 条问句的平均值；噪声占比只统计 18 条可答题。",
+          "## 消融结果", "",
+          "| 配置 | 命中 | 总注入 | 常驻层 | 检索层 | 检索层噪声 | 边界正文泄露 | 边界注入 |",
+          "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    L += [f"| `{r['name']}` | **{r['hit']}/{r['total']}** | {r['chars']:.0f} 字 | {r['pin_chars']:.0f} 字 | "
+          f"{r['ret_chars']:.0f} 字 | {r['noise']:.0%} | {r['leak']} | {r['bchars']:.0f} 字 |" for r in rs]
+    L += ["", "> 「命中」按 18 条可答题计；边界题单列「边界正文泄露」（FORBIDDEN 词次数，红线 0）与注入字数。",
+          "> 字数是 20 条问句的平均值。**噪声只统计检索层**：常驻层是固定画像开销，混进噪声会逼着砍人格。",
           "", "## 逐项解读", ""]
     explain = {
-        "full": "证据闸门生效后的基线：命中由字面/标签/激活/情绪证据决定，权重先验不再单独过门。",
-        "no_gate": "关掉闸门即旧 top-k 行为：噪声与字数回到未过滤水平；多出的命中靠凑满 top-8 带进零证据题。",
+        "full": "证据闸门生效后的检索层基线：命中由字面/标签/激活/情绪证据决定；常驻层是固定画像，不经闸门。",
+        "no_gate": "关掉闸门即旧 top-k 行为：检索层噪声与字数回到未过滤水平；多出的命中靠凑满 top-8。",
         "no_spread": "激活扩散是证据之一：关掉后「面试结果」（靠 causal 边拿到 offer）与「我是不是嘴硬心软」掉出闸门。",
         "no_score_emotion": "情绪对齐算证据：关掉后带情绪词的问句失去匹配信号，面试结果、累、印象类共 4 条掉出闸门。",
         "no_score_tag": "标签是零字面事实的主要证据：关掉后名字/职业/家乡/游戏/睡眠等只剩字面，7 条掉出闸门。",
@@ -253,21 +258,17 @@ def _conclusion(base: dict, by: dict) -> str:
     ng = by["no_gate"]
     misses = "、".join(f"「{q}」" for q in base["misses"]) or "无"
     return "\n".join([
-        f"1. **证据是闸门的唯一入场券**：关掉标签掉 {loss['no_score_tag']} 条、情绪掉 "
-        f"{loss['no_score_emotion']} 条、激活掉 {loss['no_spread']} 条；只留字面时只剩 "
-        f"{by['literal_only']['hit']}/18。权重（{loss['no_weight_prior']} 条）、新鲜度"
-        f"（{loss['no_decay']} 条）、层级（{loss['no_layer']} 条）只影响排序，不进证据。",
-        f"2. **闸门买的是精度**：`full` 噪声 {base['noise']:.0%}、平均 {base['chars']:.0f} 字；"
-        f"`no_gate` 噪声 {ng['noise']:.0%}、{ng['chars']:.0f} 字。代价是命中 {base['hit']}/18 vs "
-        f"{ng['hit']}/18——`no_gate` 靠凑满 top-8 把零证据题也带进来。",
-        f"3. **丢掉的是零证据题**：{misses}——问句与记忆零字面、零标签、零激活，只剩权重先验；"
-        "证据闸门按设计不再放行，这类跨表述检索归 ISSUE-0001。",
-        f"4. **边界**：两列都不看 block 是否为空——正文泄露 {base['leak']}（`no_gate` {ng['leak']}），"
-        f"边界注入 {base['bchars']:.0f} 字（`no_gate` {ng['bchars']:.0f} 字）。"
-        "时钟题（今天几号）在 select 入口直接返回空；影子题只输出遮蔽句是 DESIGN 7.4 的既定行为。",
+        f"1. **证据是检索层的唯一入场券**：关掉标签掉 {loss['no_score_tag']} 条、情绪掉 {loss['no_score_emotion']} 条、"
+        f"激活掉 {loss['no_spread']} 条；只留字面时只剩 {by['literal_only']['hit']}/18。权重/新鲜度/层级只排序。",
+        f"2. **闸门买的是精度**：`full` 检索层噪声 {base['noise']:.0%}、{base['ret_chars']:.0f} 字；`no_gate` 噪声 "
+        f"{ng['noise']:.0%}、{ng['ret_chars']:.0f} 字；命中 {base['hit']}/18 vs {ng['hit']}/18（后者凑满 top-8 带进零证据题）。",
+        f"3. **常驻层是固定开销**：两个配置都注入 {base['pin_chars']:.0f} 字/轮"
+        f"（persona + 印象前 2，不经闸门），总注入 = 常驻 + 检索。印象题命中有一部分来自常驻层，"
+        f"不算闸门功劳；仍掉的零证据题是 {misses}，归 ISSUE-0001。",
+        f"4. **边界**：正文泄露 {base['leak']}（`no_gate` {ng['leak']}）。不看注入块是否为空——"
+        "时钟题不检索，常驻层照常注入；影子题只输出遮蔽句是 DESIGN 7.4 行为。",
         "",
-        f"一句话：**双阈值只管分数，证据闸门才能把 weight/freshness 从相关性里拆出来；"
-        f"噪声 {ng['noise']:.0%}→{base['noise']:.0%} 的代价是零证据题，留给混合检索。**", ""])
+        f"一句话：**证据闸门把 weight/freshness 从检索里拆出来，常驻层单独计价；检索层噪声 {ng['noise']:.0%}→{base['noise']:.0%} 的代价是零证据题，留给混合检索。**", ""])
 
 
 def main() -> None:
@@ -284,8 +285,8 @@ def main() -> None:
         for cfg in CONFIGS:
             results.append(measure(cfg, _transform(cfg, source), source, graph, cache))
             r = results[-1]
-            print(f"[{cfg.name:<16}] 命中 {r['hit']}/{r['total']} 注入 {r['chars']:.0f} 字 "
-                  f"噪声 {r['noise']:.0%} 泄露 {r['leak']} 边界 {r['bchars']:.0f} 字")
+            print(f"[{cfg.name:<16}] 命中 {r['hit']}/{r['total']} 总注入 {r['chars']:.0f} 常驻 {r['pin_chars']:.0f} "
+                  f"检索 {r['ret_chars']:.0f} 检索噪声 {r['noise']:.0%} 泄露 {r['leak']}")
         out = os.path.join(ROOT, "benchmarks", "results", "ablation.md")
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:
