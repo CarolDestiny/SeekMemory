@@ -225,5 +225,5 @@ class Main(star.Star):
             return
         today = datetime.date.today().isoformat()
         dropped = decay_all(self.db, self.cache, today)
-        merged = merge_similar(self.db, self.cache, 0.6, self._c("max_episodes", 500))
+        merged = merge_similar(self.db, self.cache, threshold=0.6)
         logger.info(f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组")
