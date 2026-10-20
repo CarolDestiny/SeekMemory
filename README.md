@@ -263,8 +263,8 @@ git clone https://github.com/<you>/SeekMemory astrbot_plugin_seekmemory
   "budget_chars": 600,              // 每轮注入记忆的字数上限
   "recall_k": 8,                    // 每轮最多注入几条记忆
   "explore_rate": 0.1,              // 随机探索比例（0~1）
-  "recall_min_abs": 1.2,            // 相关性闸门绝对下限
-  "recall_min_rel": 0.35,           // 相关性闸门相对下限（占本轮最高分）
+  "recall_min_ev_abs": 0.5,         // 证据闸门绝对下限（字面/标签/情绪/激活）
+  "recall_min_ev_rel": 0.3,         // 证据闸门相对下限（占本轮最高证据）
   "summary_time": "23:50",          // 每晚抽取记忆的时间
   "weekly_day": 6,                  // 每周整理日（0=周一 … 6=周日）
   "enable_reflect": true,           // 启用自我反思
