@@ -88,19 +88,22 @@ def report(records, results, meta):
     row = large_lib.row
     index = {(r["persona"], r["q"], r["strategy"]): r for r in results}
 
+    def effective(usage):
+        """缓存后等效成本：输入未命中 + 0.1×输入命中 + 输出。"""
+        return usage["prompt"] - 0.9 * usage["cached"] + usage["completion"]
+
     def cell(strategy, persona="", category=""):
         rows = [r for r in results if r["strategy"] == strategy
                 and (not persona or r["persona"] == persona)
                 and (not category or r["category"] == category)]
         return f"{sum(r['hit'] for r in rows)}/{len(rows)}"
 
-    msgs = sum(rec["total"] for rec in records)
     lines = ["# 大规模端到端评测", "",
-             f"> 模型 `{MODEL}`（固定，temperature=0，关闭 thinking）· "
-             f"{len(records)} 种人格画像 · {questions} 题 · {msgs:,} 条消息（私聊 "
+             f"> 模型 `{MODEL}`（固定，temperature=0，关闭 thinking）· {len(records)} 种人格画像 · "
+             f"{questions} 题 · {sum(rec['total'] for rec in records):,} 条消息（私聊 "
              f"{sum(rec['private'] for rec in records):,} / 群聊 "
              f"{sum(rec['group'] for rec in records):,}）· 运行 {meta['run_date']} · "
-             f"总耗时 {meta['elapsed']:.0f}s（准备 {meta['prepared']:.0f}s）· "
+             f"总耗时 {meta['elapsed']:.0f}s（准备 {meta['prepared']:.0f}s）· 基线 commit `{meta['commit']}` · "
              f"API 尝试 {stats['attempts']} 次 / 失败 {stats['failed']} 次", ""]
     lines += ["## 总表", ""] + large_lib.table(
         ("策略", "命中率", "非边界命中", "人味均分", "平均注入字数", "平均 prompt token",
@@ -123,22 +126,21 @@ def report(records, results, meta):
               row("---", "---", "---")]
     lines += [row(f"`{s}`", f"{pre[s][0]}/{none['plain_n']}", f"{pre[s][1]}/{boundary}")
               for s in STRATS]
-    lines += ["", "块内含答案 = 注入块里出现任一 `expect` 词，只说明上下文给到了，"
-              "不代表模型会答对；这张表和下面的真实 E2E 命中不是同一件事。", ""]
+    lines.append("")
 
     per, persona_rows = {}, []
     for rec in records:
         key, n = rec["key"], len(rec["gold"])
         hits = {s: int(cell(s, persona=key).split("/")[0]) for s in STRATS}
         per[key] = hits
-        best = max(hits[s] for s in ("no_memory", "full", "keyword"))
         persona_rows.append((rec["label"], f"{rec['total']:,} 条",
                              *(f"{hits[s]}/{n}" for s in ("no_memory", "full", "keyword")),
-                             f"**{hits['seekmemory']}/{n}**", f"{hits['seekmemory'] - best:+d} 题"))
+                             f"**{hits['seekmemory']}/{n}**",
+                             f"{hits['seekmemory'] - max(hits[s] for s in ('no_memory', 'full', 'keyword')):+d} 题"))
     lines += ["## 分人格命中率", ""] + large_lib.table(
         ("画像", "数据量", "no_memory", "full", "keyword", "seekmemory",
          "SeekMemory − 最强基线"), persona_rows)
-    lines += ["", "每格 10 题，差 1 题就是 10 个百分点；最强基线取另外三种策略里命中最多的。", ""]
+    lines.append("")
 
     lines += ["## 分题型命中率", ""] + large_lib.table(
         ("类别", "题数", *STRATS),
@@ -147,27 +149,22 @@ def report(records, results, meta):
           *[cell(s, category=cat) for s in STRATS]) for cat in CATS])
     lines.append("")
 
-    lines += ["## 逐题明细（60 行）", "",
-              row("画像", "问题", "类别", *STRATS, "SeekMemory 人味"),
-              row("---", "---", "---", "---", "---", "---", "---", "---")]
-    for rec in records:
-        for q in rec["gold"]:
-            marks = [index[(rec["key"], q["q"], s)]["hit"] for s in STRATS]
-            human = index[(rec["key"], q["q"], "seekmemory")]["human"]
-            lines.append(row(rec["label"], q["q"], q["category"],
-                             *["✅" if mark else "❌" for mark in marks], human or "—"))
+    lines += ["## 逐题明细（60 行）", ""] + large_lib.table(
+        ("画像", "问题", "类别", *STRATS, "SeekMemory 人味"),
+        [(rec["label"], q["q"], q["category"],
+          *["✅" if index[(rec["key"], q["q"], s)]["hit"] else "❌" for s in STRATS],
+          index[(rec["key"], q["q"], "seekmemory")]["human"] or "—")
+         for rec in records for q in rec["gold"]])
     lines.append("")
 
-    lines += ["## 边界题（boundary 道数）" .replace("道数", str(boundary)) + "：块与回答", "",
-              row("策略", "注入块为空", "命中拒绝", "泄漏关键词"),
-              row("---", "---", "---", "---")]
-    for s in STRATS:
-        rows = [r for r in sums[s]["rows"] if r["category"] == "boundary"]
-        lines.append(row(f"`{s}`", f"{sum(1 for r in rows if r['chars'] == 0)}/{len(rows)}",
-                         f"{sum(r['hit'] for r in rows)}/{len(rows)}",
-                         f"{sum(r['leak'] for r in rows)}/{len(rows)}"))
-    lines += ["", "boundary 题要的是“拒绝”，不是检索：`no_memory` 块为空但天然答“不知道”，"
-              "所以命中；`full`/`keyword` 把影子原文带进上下文，越界即答错。", ""]
+    bound_rows = {s: [r for r in sums[s]["rows"] if r["category"] == "boundary"] for s in STRATS}
+    lines += [f"## 边界题（boundary {boundary}）：块与回答", ""] + large_lib.table(
+        ("策略", "注入块为空", "命中拒绝", "泄漏关键词"),
+        [(f"`{s}`", f"{sum(1 for r in bound_rows[s] if r['chars'] == 0)}/{boundary}",
+          f"{sum(r['hit'] for r in bound_rows[s])}/{boundary}",
+          f"{sum(r['leak'] for r in bound_rows[s])}/{boundary}") for s in STRATS])
+    lines += ["", "boundary 题要的是“拒绝”不是检索：`no_memory` 块空但天然答“不知道”，"
+              "`full`/`keyword` 把影子原文带进上下文，越界即答错。", ""]
 
     lines += ["## 差值：SeekMemory 相对各基线", ""] + large_lib.table(
         ("对照基线", "命中率差", "非边界命中率差", "人味差",
@@ -179,45 +176,50 @@ def report(records, results, meta):
           f"{seek['usage']['answer']['prompt'] / max(1.0, base['usage']['answer']['prompt']):.2f}×",
           f"{large_lib.total_of(seek['usage']['total']) / max(1.0, large_lib.total_of(base['usage']['total'])):.2f}×")
          for name, base in (("keyword", kw), ("full", full), ("no_memory", none))])
-    lines += ["", "> 正数 = SeekMemory 更好；token 比 <1 = SeekMemory 更省。判分成本各策略"
-              "相同，会稀释主回答的 token 差距。", ""]
+    lines += ["", "> 正数 = SeekMemory 更好；token 比 <1 = SeekMemory 更省；判分成本各策略相同，会稀释主回答差距。", ""]
 
+    full_cache = full['usage']['total']['cached'] / max(1, full['usage']['total']['prompt'])
     lines += ["## Token 成本（API 真实返回）", ""] + large_lib.table(
-        ("策略", "主回答输入", "主回答输出", "判分输入", "判分输出", "合计", "缓存命中", "计费调用"),
+        ("策略", "主回答输入", "主回答输出", "判分输入", "判分输出", "账面合计", "缓存命中",
+         "缓存后等效"),
         [(f"`{s}`", f"{sums[s]['usage']['answer']['prompt']:,}",
           f"{sums[s]['usage']['answer']['completion']:,}",
           f"{sums[s]['usage']['judge']['prompt']:,}",
           f"{sums[s]['usage']['judge']['completion']:,}",
-          f"{large_lib.total_of(sums[s]['usage']['total']):,}", f"{sums[s]['usage']['total']['cached']:,}",
-          f"{sums[s]['usage']['total']['calls']}") for s in STRATS],
+          f"{large_lib.total_of(sums[s]['usage']['total']):,}",
+          f"{sums[s]['usage']['total']['cached']:,}",
+          f"{effective(sums[s]['usage']['total']):,.0f}") for s in STRATS],
         ["---"] + ["---:"] * 7)
-    lines += ["", f"总计 **{stats['success']} 次成功响应 / {stats['attempts']} 次尝试**"
-              f"（重试 {stats['retries']} 次，最终失败 {stats['failed']} 次），"
+    lines += ["", f"总计 **{stats['success']} 次成功 / {stats['attempts']} 次尝试**"
+              f"（重试 {stats['retries']}，最终失败 {stats['failed']}），账面 "
               f"**{total_tokens:,} token**（输入 {grand['total']['prompt']:,} / 输出 "
               f"{grand['total']['completion']:,} / 缓存命中 {grand['total']['cached']:,}），"
-              f"平均每题 {total_tokens / max(1, questions * len(STRATS)):,.0f} token。"
-              f"全量注入只取最近 {FULL_BUDGET:,} 字符，全部画像原文合计 "
-              f"{sum(rec['raw_chars'] for rec in records):,} 字。", ""]
-    wins, lost = [], []
+              f"缓存后等效 **{effective(grand['total']):,.0f} token**（输入未命中 + 0.1×命中 + 输出）。"
+              f"`full` 输入缓存命中 {full_cache * 100:.0f}%，账面高估约 "
+              f"{large_lib.total_of(full['usage']['total']) / max(1, effective(full['usage']['total'])):.1f}×。", ""]
+    solo, lost = 0, []
     for rec in records:
         for q in rec["gold"]:
             marks = [index[(rec["key"], q["q"], s)]["hit"] for s in STRATS]
             if marks[3] and not any(marks[:3]):
-                wins.append(f"- {rec['label']}｜{q['q']}（{q['category']}）")
+                solo += 1
             elif not marks[3] and any(marks[:3]):
                 answer = " ".join(str(index[(rec["key"], q["q"], "seekmemory")]["answer"]).split())
                 who = [s for s in STRATS[:3] if index[(rec["key"], q["q"], s)]["hit"]]
-                lost.append(f"- {rec['label']}｜{q['q']}（{q['category']}）→ "
-                            f"{'、'.join(who)} 命中；SeekMemory 答「{answer[:46] or '（空）'}」")
-    lines += ["## SeekMemory 独赢与漏题", "",
-              f"**独赢 {len(wins)} 题**（另外三种策略全未命中）：", ""] + (wins or ["- 无。"])
-    lines += ["", f"**漏掉 {len(lost)} 题**（其他策略命中）：", ""] + (lost or ["- 无。"])
+                block = rec["blocks"][("seekmemory", q["q"])]
+                has = any(large_lib.norm(x) in large_lib.norm(block) for x in q["expect_any"])
+                lost.append(f"- {rec['label']}｜{q['q']}（{q['category']}）→ {'、'.join(who)} 命中；"
+                            f"块内{'有' if has else '无'}答案；SeekMemory 答「{answer[:40] or '（空）'}」")
+    lines += ["## 独赢与漏题", "",
+              f"**独赢 {solo} 题**（另外三种策略全未命中）；**漏掉 {len(lost)} 题**（其他策略命中）：", ""]
+    lines += lost or ["- 无。"]
     lines.append("")
 
     labels = {rec["key"]: rec["label"] for rec in records}
     per_line = "；".join(f"{labels[k]} {v['seekmemory']}/10" for k, v in per.items())
     seeks_total, kw_total = large_lib.total_of(seek["usage"]["total"]), large_lib.total_of(kw["usage"]["total"])
     full_total = large_lib.total_of(full["usage"]["total"])
+    seek_eff, kw_eff, full_eff = (effective(o["usage"]["total"]) for o in (seek, kw, full))
     bounds = "，".join(f"`{s}` {sums[s]['leaks']}/{sums[s]['bound']}" for s in STRATS)
     lines += ["## 结论", "",
               f"1. **命中**：SeekMemory {seek['hits']}/{seek['n']}（非边界 {seek['plain_hits']}/"
@@ -225,30 +227,33 @@ def report(records, results, meta):
               f"{kw['plain_n']}），full {full['hits']}/{full['n']}，no_memory {none['hits']}/{none['n']}。",
               f"2. **成本**：SeekMemory 平均注入 {seek['chars']:.0f} 字，full {full['chars']:.0f} 字"
               f"（压缩 {full['chars'] / max(1.0, seek['chars']):.1f}×），keyword {kw['chars']:.0f} 字；"
-              f"总 token（含判分）{seeks_total:,} vs full {full_total:,} vs keyword {kw_total:,}。",
+              f"账面总 token {seeks_total:,} vs full {full_total:,} vs keyword {kw_total:,}；"
+              f"缓存后等效 {seek_eff:,.0f} vs {full_eff:,.0f} vs {kw_eff:,.0f}。",
               f"3. **人味**：SeekMemory {seek['human']:.2f} / keyword {kw['human']:.2f} / full "
               f"{full['human']:.2f} / no_memory {none['human']:.2f}（1~5）。",
               f"4. **分人格命中**：{per_line}。",
               f"5. **是否支撑「更省 token 且更准」**："
-              f"{'相对 full 成立' if seeks_total < full_total and seek['hits'] >= full['hits'] else '相对 full 不成立'}；"
-              f"{'相对 keyword 成立' if seeks_total < kw_total and seek['hits'] >= kw['hits'] else '相对 keyword 不成立'}。"
-              "keyword 是最强基线：检索全部原文（含别人私聊与影子秘密），不做 scope 与时间衰减，"
-              "字面重合的题天然占优。SeekMemory 的价值主要在 scope 隔离、叙述化注入和"
-              "「成本不随记忆量线性上涨」，而不是每题都比字面检索更准。",
+              f"{'相对 full 成立' if seek_eff < full_eff and seek['hits'] >= full['hits'] else '相对 full 不成立'}；"
+              f"{'相对 keyword 成立' if seek_eff <= kw_eff and seek['hits'] >= kw['hits'] else '相对 keyword 不成立'}。"
+              "keyword 是最强基线：检索全部原文（含别人私聊与影子秘密）、不做 scope 与时间衰减，"
+              "字面重合的题天然占优；SeekMemory 的价值在 scope 隔离、叙述化注入和成本不随记忆量线性上涨。",
               f"6. **边界**：{bounds}。", ""]
 
     lines += ["## 可信度自评", "",
               f"- **失败调用**：尝试 {stats['attempts']} 次、重试 {stats['retries']} 次、"
               f"最终失败 {stats['failed']} 次；失败题按未命中计，不进人味均分。",
               "- **判分主观**：人味分由 deepseek-flash 自己打，可能偏爱长答案；单次采样、"
-              "temperature=0 也不保证严格确定，只用来横向看趋势。",
+              "temperature=0 也不保证严格确定；boundary 命中要求出现约定拒绝词，"
+              "语义拒绝但措辞不同会判 miss，读边界结论以泄漏列和块级预检为准。",
               "- **基线有削有补**：full 是最近 16000 字符尾部截断，早期事实题天然吃亏；"
               "keyword 不做 scope 过滤，边界题天然越界，但普通事实题拿到了最全原文。",
-              "- **有没有挑数据**：60 题跑之前写死，统计覆盖全部 60 题 × 4 策略，并列出全部漏题明细，没有删题；"
-              "但数据、题目、命中词表由同一脚本设计，存在构造偏差，合成语料不能直接外推。",
-              "- **样本量**：60 题、每人 10 题、每类 5~15 题，单格差 1 题 = 10 个百分点，"
-              "差 2 题以内不算结论。",
-              "- **复现性**：固定种子、固定模型、关闭 thinking；日期以运行当天为锚点滚动。"]
+              "- **数据与样本量**：60 题跑之前写死，统计覆盖全部 60 题 × 4 策略、列出全部漏题明细，"
+              "没有删题；但数据/题目/词表由同一脚本设计，存在构造偏差，单格差 1 题 = 10 个百分点，"
+              "差 2 题以内不算结论，合成语料不能直接外推。固定种子/模型/thinking，日期以运行当天滚动。"]
+    lines += ["", "## 附录：判分词表", "",
+              "| 画像 | 问题 | expect_any | boundary 泄漏词 |", "|---|---|---|---|"]
+    lines += [row(rec["label"], q["q"], "、".join(q["expect_any"]), "、".join(q["leak"]) or "—")
+              for rec in records for q in rec["gold"]]
     return lines
 
 
@@ -276,8 +281,8 @@ def main(argv=None):
     stats = large_lib.stats_snapshot()
     print(f"[完成] {len(results)} 条结果，耗时 {elapsed:.1f}s，"
           f"API 尝试 {stats['attempts']} 次 / 失败 {stats['failed']} 次")
-    lines = report(records, results, {"elapsed": elapsed, "prepared": prepared,
-                                      "workers": workers, "stats": stats,
+    lines = report(records, results, {"elapsed": elapsed, "prepared": prepared, "workers": workers,
+                                      "stats": stats, "commit": os.environ.get("BENCH_COMMIT", "未记录"),
                                       "run_date": dt.datetime.now().isoformat(timespec="seconds")})
     if not out:
         print("\n".join(lines))
