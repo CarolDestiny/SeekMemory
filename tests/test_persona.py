@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.artifact import Artifact, make
 from maintain.persona import TOP_N, compose, distill_persona
 from maintain.promote import AGE_DAYS, HITS_BAR, WEIGHT_BAR, promote_candidates
+from recall.assemble import build as assemble
 from store.cache import Cache
 from store.db import DB
 from store.ledger import Ledger
@@ -153,6 +154,14 @@ class ComposeTest(unittest.TestCase):
         self.assertNotIn(f"习惯{TOP_N}", text)
         self.assertTrue(text.startswith("你"))
         self.assertEqual(compose([_memory("")]), "")
+
+    def test_persona_is_first_in_assembled_text(self) -> None:
+        """有 persona 时组装头部第一句就是人格，不再补成「你记得你……」。"""
+        persona = make("persona", {"text": "你不轻易说重话。"})
+        memory = _memory("他加班到很晚", "scene")
+        text = assemble([memory, persona], budget=300)
+        self.assertTrue(text.startswith("你不轻易说重话。"))
+        self.assertNotIn("你记得你", text)
 
 
 class DistillTest(_PersonaCase):
