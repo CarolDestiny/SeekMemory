@@ -155,7 +155,7 @@ def pipeline(cfg: Cfg, pool, source, graph, cache, q: str) -> tuple[str, list[Ar
     else:
         candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
     with _clock(cfg):
-        picked = select(candidates, q, 0.0, k=K, explore=0.0)
+        picked = select(candidates, q, 0.0, k=K, explore=0.0, gate=False)
     if not cfg.layer:
         picked = [_without_level(a) for a in picked]
     with _dedupe(cfg):
