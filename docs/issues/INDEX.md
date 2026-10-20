@@ -58,3 +58,4 @@ grep -rn "promote_candidates\|add_source\|link_evidence\|reinforce(" --include="
 grep -n "def _when\|def _guarded_sentence\|def _memory_sentence" recall/assemble.py
 grep -n "MAX_ACTIVE\|len(pool)\|family != \"memory\"" maintain/merge.py maintain/decay.py
 ```
+| [ISSUE-0017](ISSUE-0017.md) | 没有相关性闸门：select 永远凑满 top-k | P1 | open | 噪声占比 81%，边界题 2/2 越界；缺绝对+相对双阈值，且允许返回空。 |
