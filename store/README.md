@@ -20,7 +20,7 @@ SQLite + 内存热数据。**整个项目只有这个目录写 SQL**，换存储
 |---|---:|---|
 | `__init__.py` | 0 | 空文件，标记 store 包 |
 | `schema.sql` | 69 | v3 建表与索引；幂等，每次打开时 `executescript` |
-| `db.py` | 220 | `DB`：Artifact ↔ 行转换、节点/边/来源/证据、ledger 底层 SQL |
+| `db.py` | 226 | `DB`：Artifact ↔ 行转换、节点/边/来源/证据、ledger 底层 SQL、`source_umo` 归属反查 |
 | `cache.py` | 80 | `Cache`：active 热数据 + family / level 两套索引 |
 | `ledger.py` | 50 | `Ledger`：追加日志编排、哈希链重算校验 |
 | `README.md` | 52 | 本说明 |
