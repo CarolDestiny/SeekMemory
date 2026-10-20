@@ -21,9 +21,11 @@ sys.path.insert(0, ROOT)
 
 import recall.assemble as assemble_mod  # noqa: E402
 import recall.score as score_mod  # noqa: E402
+from benchmarks.edge_stats import spread_counts  # noqa: E402
 from benchmarks.goldset import FORBIDDEN, GOLD, SEED, TODAY, build, noise_share  # noqa: E402
 from core.artifact import Artifact, content_of, make  # noqa: E402
 from core.graph import Graph  # noqa: E402
+from maintain.link import persist  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
 from recall.score import select  # noqa: E402
 from recall.seed import bigrams, dice, seeds  # noqa: E402
@@ -47,10 +49,12 @@ class Cfg:
     layer: bool = True
     decay: bool = True
     literal_only: bool = False
+    gate: bool = True  # 相关性双阈值闸门（ISSUE-0017）
 
 
 CONFIGS = (
     Cfg("full"),
+    Cfg("no_gate", gate=False),
     Cfg("no_spread", spread=False),
     Cfg("no_score_emotion", emotion=False),
     Cfg("no_score_tag", tag=False),
@@ -76,25 +80,17 @@ def _artifact(m) -> Artifact:
 
 
 def _load(mems) -> tuple[DB, Cache, Graph, list[Artifact]]:
-    """写入临时库、连好关系边，返回 active 池。"""
+    """走生产写入路径建 similar/temporal 边；causal 仍由人工金标补。"""
     db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_abl_"), "abl.db"))
     cache = Cache(db)
     graph = Graph(db, cache)
     for m in mems:
-        art = _artifact(m)
-        db.upsert(art)
-        cache.put(art)
+        persist(_artifact(m), db, cache, graph)
     pool = cache.active()
     by_text = {str(a.payload.get("text")): a for a in pool}
-    edges = (
-        ("他叫吕宇轩，也叫BangBang", "他在做量化交易项目", "similar", .8),
-        ("他在做量化交易项目", "他想成为核心架构师", "similar", .7),
-        ("他去万兴科技面试了", "万兴那边给他发了offer，他过了", "causal", .9),
-        ("他加班到凌晨两点才回家", "最近被领导骂了，整个人很低落", "temporal", .8),
-        ("他有点倔，嘴上不饶人，但真有事会帮", "他心软，见不得别人难受", "similar", .6),
-    )
-    for a, b, kind, weight in edges:
-        graph.link(by_text[a].header.id, by_text[b].header.id, kind, weight)
+    if os.environ.get("ABLATION_NO_CAUSAL") != "1":
+        graph.link(by_text["他去万兴科技面试了"].header.id,
+                   by_text["万兴那边给他发了offer，他过了"].header.id, "causal", .9)
     return db, cache, graph, pool
 
 
@@ -157,7 +153,7 @@ def pipeline(cfg: Cfg, pool, source, graph, cache, q: str) -> tuple[str, list[Ar
     else:
         candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
     with _clock(cfg):
-        picked = select(candidates, q, 0.0, k=K, explore=0.0)
+        picked = select(candidates, q, 0.0, k=K, explore=0.0, gate=cfg.gate)
     if not cfg.layer:
         picked = [_without_level(a) for a in picked]
     with _dedupe(cfg):
@@ -211,7 +207,11 @@ def report(results: list[dict], stats: dict) -> str:
     L = ["# 消融基准：每个组件值多少", "",
          f"> {stats['n']} 条消息（{stats['noise']:.0%} 是模板闲聊）· 20 条黄金问答"
          f"（18 条可答 + 2 条边界）· 固定种子 {SEED}",
-         "> 检索参数：top-k=8、注入预算 600 字、explore=0（去掉随机探索带来的抖动）", "",
+         f"> {stats['edges']} 条边（自动 similar/temporal + {stats['causal']} 人工 causal）"
+         f" · 扩散新增 {stats['spread'][0]}（{stats['spread'][1]}/20 题）",
+         "> 检索参数：top-k=8、注入预算 600 字、explore=0（去掉随机探索带来的抖动）",
+         f"> 相关性闸门：`score >= max({score_mod.MIN_ABS}, top_score × {score_mod.MIN_REL})`"
+         " 才注入，全不达标返回空；`no_gate` 关掉闸门做对照", "",
          "## 黄金集", "", "| 类别 | 题数 | 考什么 |", "|---|---:|---|"]
     L += [f"| {c} | {n} | {why[c]} |" for c, n in cats.items()]
     L += ["", f"数据里 {stats['noise_text']}/{stats['n']} 条是模板生成的无关闲聊，"
@@ -223,8 +223,9 @@ def report(results: list[dict], stats: dict) -> str:
           "> 注入字数是 20 条问句的平均值；噪声占比只统计 18 条可答题（边界题单列）。",
           "", "## 逐项解读", ""]
     explain = {
-        "full": "基线顶到黄金集天花板；但八成注入字与本题无关，命中靠 1~3 条相关记忆挤进 top-8。",
-        "no_spread": "「面试结果」正文没有「面试」二字，失去 1.5×activation 后掉出 top-8。",
+        "full": "带闸门的基线。当前阈值 1.2/0.35 与 no_gate 数字完全一致：分数量级压不过闸门，见 ISSUE-0017。",
+        "no_gate": "关掉闸门即旧 top-k 行为。与 full 的差值就是闸门单独贡献的精度与代价。",
+        "no_spread": "「面试结果」正文没有「面试」二字，失去人工 causal 边的 1.5×activation 后掉出 top-8；生产自动建边只覆盖 similar/temporal。",
         "no_score_emotion": "问句含「累」，情绪分原本给负效价高唤醒的失眠记忆 +1.3；置 0 后被中权重闲聊挤出 top-8。",
         "no_score_tag": "标签一撤，家乡/游戏/睡眠这类零字面事实只剩权重，挤不进 top-8；宠物题因正文含「养了」还有字面重合，反而活下来。",
         "no_weight_prior": "跨表述事实和开放印象题失去唯一抓手；其余题由标签、字面、情绪接住。",
@@ -263,11 +264,11 @@ def _conclusion(base: dict, by: dict) -> str:
         f"仍有 {w['hit']}/18；掉的是「我是干什么的」和「你最了解我什么」——零字面、零标签、只能靠权重的题。"
         f"对应旧 6 题（名字/职业/面试结果/加班/睡眠/印象）关掉权重后是 {len(legacy) - len(lost)}/6，"
         f"掉的正是「{'、'.join(lost) or '无'}」。所以 6/6 不是全靠权重先验，但跨表述那一分确实是权重买的。",
-        f"6. **边界是系统性缺口**：所有配置都越界 2/2（注入了非空上下文），但 shadow 正文被 "
-        f"scope 过滤挡住，直接泄露 {by['full']['leak']}/2。缺的不是隔离，是「相关性不足就返回空」"
-        "的闸门：select 永远凑满 top-8。这不是某个组件能消融出来的，是缺了一个组件。", "",
+        f"6. **边界**：所有配置都越界 2/2（注入了非空上下文），shadow 正文由 scope 过滤，"
+        f"直接泄露 {by['full']['leak']}/2；相关性闸门已在 PR-0017 落地，本数据 full/no_gate "
+        "数字相同，阈值仍需更大规模数据校准。", "",
         "一句话：**字面 + 标签 + 权重是三条腿，扩散和情绪是补丁，level 和衰减目前是装饰；"
-        "去重省字不救命；边界没有门。**", ""])
+        "去重省字不救命；边界已有门，但阈值还没校准。**", ""])
 
 
 def main() -> None:
@@ -275,6 +276,10 @@ def main() -> None:
     stats = {"n": len(mems), "noise": noise_share(mems),
              "noise_text": sum(1 for m in mems if m.noise)}
     db, cache, graph, source = _load(mems)
+    stats["edges"] = db.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+    stats["causal"] = db.conn.execute(
+        "SELECT COUNT(*) FROM edges WHERE kind = 'causal'").fetchone()[0]
+    stats["spread"] = spread_counts(source, graph, cache, GOLD)
     try:
         results = []
         for cfg in CONFIGS:

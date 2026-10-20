@@ -9,10 +9,10 @@
 |---|---|
 | 编号 | ISSUE-0006 |
 | 级别 | P2（能力缺失：人格与抽象树没有产出路径） |
-| 状态 | open |
+| 状态 | closed |
 | 报告人 | 审计记录（agent） |
 | 日期 | 2026-10-21 |
-| 关联 PR | 待开（建议分支 `feat/issue-0006-persona-distill`） |
+| 关联 PR | PR-0009（`fix/issue-0009-0006-edges-and-persona`） |
 | 影响版本 | `main` @ `1be8baa` |
 | GitHub | 待同步 |
 
@@ -141,19 +141,49 @@ recall/assemble.py:197      header = [i for i, (layer, _) in enumerate(entries) 
 
 ## 验收标准
 
-- [ ] 一条 `hits > 10` 的 active 记忆能在周任务后进入 persona 候选，并产出
+> 逐条对照（2026-10-21，PR-0009）。验证命令：`python3 -m unittest tests.test_persona`。
+
+- [x] 一条 `hits > 10` 的 active 记忆能在周任务后进入 persona 候选，并产出
       `family=persona` 节点（或明确记录“候选为空”）。
-- [ ] `assemble.build()` 的头部第一句是 persona（有 persona 时）。
+      口径按本 PR 调整为 `weight >= 1.5` 且（`hits >= 3` 或存在 ≥ 30 天），
+      纯规则不调模型；`tests/test_persona.py:PromoteTest` 覆盖四条边界，
+      `DistillTest` 验证命中即产出 `family=persona`；没有候选时返回 `None`。
+- [x] `assemble.build()` 的头部第一句是 persona（有 persona 时）。
+      `tests/test_persona.py:ComposeTest.test_persona_is_first_in_assembled_text`：
+      输出以人格句开头，且不再出现「你记得你……」。
 - [ ] 合并出的 impression 能通过 `Tree.children()` 找到其 scene/detail。
-- [ ] persona 有 `revision` 与 `lineage.sources`，能追溯到候选记忆。
-- [ ] 蒸馏失败/空输出不覆盖旧 persona；有日志。
+      **遗留**：`merge_similar()` 仍未挂 parent，`Tree.add_under()` 的生产接线
+      不在本 PR 范围（容量/编排议题），此条未完成。
+- [x] persona 有 `revision` 与 `lineage.sources`，能追溯到候选记忆。
+      `DistillTest.test_persona_text_lineage_and_strength`：新 persona
+      `revision=1`、更新后 `revision=2`；`derived_from` 指向 weight 最高的 3 条
+      impression，`sources` 合并去重（`src_a`/`src_b`/`src_c`）。
+- [x] 蒸馏失败/空输出不覆盖旧 persona；有日志。
+      `DistillTest.test_no_candidate_keeps_old_persona` 返回 `None`，旧 persona
+      仍 active 且账本不新增；`main._weekly` 记录「人格 已更新/无变化」。
 - [ ] 新增测试：树挂载、promote 阈值、persona 写入/修订、空输出保留旧值。
+      promote 阈值、persona 写入/修订、空输出保留旧值均已覆盖
+      （`tests/test_persona.py` 15 条）；**树挂载**未覆盖（见上条遗留）。
 
 ## 决策记录
 
 - 2026-10-21：开 issue，只记录现状，不改代码。
 - 待定：persona 是全局唯一还是按 scope；蒸馏用哪个模型/温度；
   树根是单根还是每个 scope 一根。
+
+### 实现记录（2026-10-21，PR-0009）
+
+- 采用方案 B（规则蒸馏，不调模型）：`maintain/persona.py:distill_persona()`。
+- 输入口径：active、`level=impression`、`weight >= 1.5`，且
+  `hits >= 3` 或存在 ≥ 30 天；`maintain/promote.py` 改为同一口径并接上调用方。
+- 输出：`family=persona`、`payload["text"]` 为第二人称规则文本；取 weight 最高的 3 条，
+  旧 persona 置 `state="merged"`，新 persona 的 `lineage.derived_from` 指向来源 impression。
+- 每周任务 `main._weekly` 在 decay/merge 之后调用；没有候选时保留旧人格。
+- 账本：新旧 persona 各写 `op="merge"`，reason 带来源 id 与合并说明。
+- 注入：`recall.assemble` 原先已把 persona 放头部，但会拼成“你记得你……”，
+  已改为直接输出第二人称文本；新增测试覆盖“persona 在头部”。
+- 未包含：抽象树的 `add_under()` 生产接线仍不在本 PR 范围（属容量/编排议题）。
+- 合并：`b7f9a05`（`Merge PR-0009: 联想边与人格沉淀`），2026-10-21。
 
 ## 参考
 

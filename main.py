@@ -19,6 +19,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from .core.artifact import Strength, make, validate
 from .core.graph import Graph
 from .core.tree import Tree
+from .maintain.link import persist
 from .perceive.compress import build_compress_prompt, parse_compress
 from .perceive.extract import (
     build_prompt,
@@ -170,6 +171,9 @@ class Main(star.Star):
             0.0,
             k=self._c("recall_k", 8),
             explore=self._c("explore_rate", 0.1),
+            gate=True,
+            min_abs=self._c("recall_min_abs", 1.2),
+            min_rel=self._c("recall_min_rel", 0.35),
         )
         block = assemble_text(
             designated + picked,
@@ -265,9 +269,7 @@ class Main(star.Star):
                 logger.error(f"[seekmemory] 构造记忆失败，已跳过：{e}")
                 continue
             try:
-                self.db.upsert(art)
-                if self.cache:
-                    self.cache.put(art)
+                persist(art, self.db, self.cache, self.graph)
                 written += 1
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 写入失败：{e}")
@@ -284,10 +286,15 @@ class Main(star.Star):
     async def _weekly(self) -> None:
         from .maintain.decay import decay_all
         from .maintain.merge import merge_similar
+        from .maintain.persona import distill_persona
 
         if self.db is None or self.cache is None:
             return
         today = datetime.date.today().isoformat()
         dropped = decay_all(self.db, self.cache, today)
         merged = merge_similar(self.db, self.cache, threshold=0.6)
-        logger.info(f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组")
+        persona = distill_persona(self.db, self.cache, today)
+        logger.info(
+            f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组，"
+            f"人格 {'已更新' if persona else '无变化'}"
+        )
