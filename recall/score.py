@@ -188,8 +188,6 @@ def select(
     explore: float = 0.1,
     seed: int | str | None = None,
     gate: bool = True,
-    min_abs: float | None = None,
-    min_rel: float | None = None,
     min_ev_abs: float | None = None,
     min_ev_rel: float | None = None,
 ) -> list[Artifact]:
@@ -204,8 +202,7 @@ def select(
     才注入；weight / freshness / recent 只参与排序。没有候选达标、或消息
     是纯问时间的时钟类问题，都返回 []（不相关就不注入）。
     gate=False 保持旧行为（永远尽量凑满 k），供消融实验对比。
-    min_abs / min_rel 是 PR-0017 双阈值闸门的遗留参数，仅为兼容 main.py
-    的显式传参保留；证据闸门用 min_ev_abs / min_ev_rel 覆盖默认阈值。
+    min_ev_abs / min_ev_rel 用来覆盖 recall.gate 的默认证据阈值（配置/标定）。
     """
     if k <= 0 or not candidates:
         return []

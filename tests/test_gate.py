@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.artifact import Artifact, make
 from recall.assemble import build
-from recall.gate import MIN_EV_ABS, MIN_EV_REL, evidence_floor, is_clock_query
+from recall.gate import MIN_EV_ABS, MIN_EV_REL, evidence_floor, is_clock_query, pinned
 from recall.score import select
 
 
@@ -171,6 +171,87 @@ class GateConstantTest(unittest.TestCase):
         self.assertAlmostEqual(evidence_floor(10.0), max(MIN_EV_ABS, 10.0 * MIN_EV_REL))
         self.assertAlmostEqual(evidence_floor(10.0, 0.0, 0.5), 5.0)
         self.assertEqual(evidence_floor(1.0, 2.0, 0.0), 2.0)
+
+
+def _persona(text: str) -> Artifact:
+    """构造一条 persona（常驻人格骨架）。"""
+    return make("persona", {"text": text})
+
+
+def _impression(text: str, weight: float) -> Artifact:
+    """构造一条印象层记忆；weight 决定常驻层排序。"""
+    return make("memory",
+                {"text": text, "level": "impression", "shape": "pattern",
+                 "chrono": "once", "about": "other"},
+                strength={"weight": weight, "arousal": 0.2, "valence": 0.0})
+
+
+class _FakeCache:
+    """只提供 pinned 所需的 active() 的最小 cache stub。"""
+
+    def __init__(self, arts: list[Artifact]) -> None:
+        self._arts = list(arts)
+
+    def active(self) -> list[Artifact]:
+        return list(self._arts)
+
+
+class _BrokenCache:
+    """active() 抛异常，用来验证常驻层 fail-open。"""
+
+    def active(self) -> list[Artifact]:
+        raise RuntimeError("boom")
+
+
+class PinnedTest(unittest.TestCase):
+    """常驻层（persona + 印象前 2）不经过检索闸门。"""
+
+    def test_pinned_persona_all_and_top_impressions(self) -> None:
+        """persona 全部保留，印象层按 weight 取前 2，普通记忆不进常驻层。"""
+        p1, p2 = _persona("我嘴硬心软"), _persona("我有点慢热")
+        low = _impression("印象低", 0.5)
+        mid = _impression("印象中", 1.0)
+        high = _impression("印象高", 2.0)
+        ordinary = _memory("他今天加班到很晚")
+        got = pinned(_FakeCache([ordinary, low, mid, high, p1, p2]))
+        self.assertEqual([a.header.id for a in got],
+                         [p1.header.id, p2.header.id, high.header.id, mid.header.id])
+
+    def test_pinned_fail_open_on_broken_cache(self) -> None:
+        """cache.active() 异常时常驻层返回空，不拖垮注入流程。"""
+        self.assertEqual(pinned(_BrokenCache()), [])
+
+    def test_pinned_not_dropped_by_evidence_gate(self) -> None:
+        """检索层零证据返回空时，常驻层仍照常注入。"""
+        impression = _impression("他有点倔，嘴上不饶人", 1.0)
+        pin = pinned(_FakeCache([impression]))
+        self.assertEqual(len(pin), 1)
+        self.assertEqual(select([_low("他今天弄了数据库")], "量子力学", 0.0,
+                                k=8, explore=0.0), [])
+        self.assertIn("倔", build(pin, budget=500))
+
+    def test_pinned_deduped_when_retrieved_again(self) -> None:
+        """同一条印象既常驻又被检索命中时，组装里只出现一次。"""
+        impression = _impression("他有点倔，嘴上不饶人", 1.0)
+        retrieved = select([impression], "我是不是有点倔", 0.0, k=8, explore=0.0)
+        self.assertTrue(retrieved)
+        block = build(pinned(_FakeCache([impression])) + retrieved, budget=500)
+        self.assertEqual(block.count("倔"), 1)
+
+    def test_ablation_splits_pinned_and_retrieval(self) -> None:
+        """消融报告把常驻层字数与检索层字数/噪声分开统计，且不重复计。"""
+        from benchmarks import ablation as abl
+        from benchmarks.goldset import build as build_gold
+
+        db, cache, graph, source = abl._load(build_gold())
+        try:
+            r = abl.measure(abl.Cfg("full"), source, source, graph, cache)
+        finally:
+            db.close()
+        self.assertGreater(r["pin_chars"], 0)
+        self.assertGreater(r["ret_chars"], 0)
+        self.assertLessEqual(r["pin_chars"] + r["ret_chars"], r["chars"])
+        self.assertGreaterEqual(r["noise"], 0.0)
 
 
 class EmptyCaseTest(unittest.TestCase):

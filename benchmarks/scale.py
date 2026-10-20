@@ -24,6 +24,7 @@ sys.path.insert(0, ROOT)
 from core.artifact import content_of  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
+from recall.gate import pinned  # noqa: E402
 from recall.score import select  # noqa: E402
 from recall.seed import seeds  # noqa: E402
 from recall.spread import activate  # noqa: E402
@@ -122,12 +123,13 @@ def main() -> None:
     leak = 0
     t_ret = 0.0
     cells = []
+    pin = pinned(cache)
     for q, expect in queries:
         s = time.perf_counter()
         sid = seeds(q, owner_pool)
         act = activate(sid, graph, cache)
-        picked = select([(a, float(act.get(a.header.id, 0.0))) for a in owner_pool],
-                        q, 0.0, k=8, explore=0.0)
+        picked = pin + select([(a, float(act.get(a.header.id, 0.0))) for a in owner_pool],
+                              q, 0.0, k=8, explore=0.0)
         block = assemble(picked, budget=600)
         t_ret += (time.perf_counter() - s) * 1000
         chars += len(block)
