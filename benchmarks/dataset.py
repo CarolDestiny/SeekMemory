@@ -76,7 +76,9 @@ def build(seed: int = 42) -> tuple[list[Event], list[Query]]:
         Query("你还记得我名字吗", ["吕宇轩"], "fact"),
         Query("我最近心情不太好", ["被领导骂", "睡不着"], "scene"),
         Query("你之前给我发过什么视频", ["大肥鱼由来的视频"], "detail"),
-        Query("我是不是跟你说过一件事不让说", ["私事"], "detail"),
+        # DESIGN：secret/shadow 只交付遮蔽句，不交付正文。旧期望 ["私事"]/detail
+        # 要求把别人的秘密正文召回来，与规范冲突，PR-0018 修正为「不应召回」。
+        Query("我是不是跟你说过一件事不让说", [], None),
         Query("我今天几号", [], None),          # 不该召回任何长期记忆
     ]
     return E, queries
