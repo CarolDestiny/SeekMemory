@@ -41,13 +41,15 @@ def decay_all(db: DB, cache: Cache, today: str) -> int:
         return 0
     forgotten = 0
     for art in list(cache.active()):
+        if art.header.family != "memory":
+            continue  # 只有 memory 家族参与衰减；persona/media/example 等没有 level
         anchor = _anchor(art)
         if anchor is None:
             continue
         days = max((base - anchor).days, 0)
         level = str(art.payload.get("level") or "")
-        if level in ("fact", "impression"):
-            continue  # 事实不衰减；印象由 shape=pattern 自身极慢衰减
+        if level == "fact":
+            continue  # 事实永久豁免；印象由 shape=pattern 自身极慢衰减
         shape = str(art.payload.get("shape") or "point")
         if retention(art.header.strength, shape, float(days)) >= FORGET_BELOW:
             continue

@@ -13,7 +13,25 @@ _NEGATIONS = (
     "理解错了",
     "说错了",
 )
-_FOLLOWUPS = ("然后", "还有", "继续", "对", "嗯")
+# 疑问式里也含“不是/不对”，先整体剔掉，避免把反问当成明确否定
+_QUESTION_FORMS = ("是不是", "对不对", "好不好", "行不行", "能不能", "要不要", "有没有")
+_FOLLOWUPS = (
+    "然后呢",
+    "还有呢",
+    "继续",
+    "对啊",
+    "对的",
+    "没错",
+    "然后",
+    "还有",
+    "嗯",
+)
+# 否定词必须出现在句首或标点/空白之后；句首允许带一个短主语（我不是这个意思）
+_NEGATION_RE = re.compile(
+    r"(?:^|[。！？!?；;，,、\s])"
+    r"(?:我们|你们|他们|她们|我|你|他|她|它)?"
+    r"(" + "|".join(re.escape(word) for word in _NEGATIONS) + r")"
+)
 
 
 def _bigrams(text: str) -> set[str]:
@@ -33,15 +51,20 @@ def _overlap(left: str, right: str) -> float:
 
 
 def _find_negation(text: str) -> str:
-    """返回命中的明确否定词，没命中返回空串。"""
-    for word in _NEGATIONS:
-        if word in text:
-            return word
-    return ""
+    """返回命中的明确否定词，没命中返回空串。
+
+    先用整句正则匹配：否定词要落在句首或标点之后，且先剔掉“是不是 /
+    对不对”这类疑问式，避免裸子串把反问误判成否定。
+    """
+    cleaned = text
+    for form in _QUESTION_FORMS:
+        cleaned = cleaned.replace(form, "")
+    match = _NEGATION_RE.search(cleaned)
+    return match.group(1) if match else ""
 
 
 def _find_followup(text: str) -> str:
-    """返回命中的追问/接话词；先把否定词剔掉，避免“不对”里的“对”误判。"""
+    """返回命中的追问/接话词；先剔掉否定词，避免否定句里的字面误判。"""
     cleaned = text
     for word in _NEGATIONS:
         cleaned = cleaned.replace(word, "")

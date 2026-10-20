@@ -13,8 +13,8 @@ WEIGHT_BAR = 1.5
 
 
 def _hits(art: Artifact) -> int:
-    """从 payload 读取命中次数；缺失或非法时按 0 处理。"""
-    raw = art.payload.get("hits", 0)
+    """从 header.strength 读取命中次数；缺失或非法时按 0 处理。"""
+    raw = getattr(art.header.strength, "hits", 0)
     try:
         return int(raw)
     except (TypeError, ValueError):

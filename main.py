@@ -16,7 +16,7 @@ import os
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-from .core.artifact import Artifact, make
+from .core.artifact import Strength, make, validate
 from .core.graph import Graph
 from .core.tree import Tree
 from .perceive.compress import build_compress_prompt, parse_compress
@@ -31,6 +31,34 @@ from .recall.seed import seeds
 from .recall.spread import activate
 from .store.cache import Cache
 from .store.db import DB
+
+
+def _clamp(value: object, default: float, low: float, high: float) -> float:
+    """把模型给的数值收敛到区间；缺失、NaN 或非法值回落到默认值。"""
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    if number != number:  # NaN
+        return default
+    return max(low, min(high, number))
+
+
+def _strength_of(item: dict) -> dict:
+    """从抽取结果取情绪与命中字段，缺省回落到 Strength 的默认值。"""
+    base = Strength()
+    strength = {
+        "arousal": _clamp(item.get("arousal"), base.arousal, 0.0, 1.0),
+        "valence": _clamp(item.get("valence"), base.valence, -1.0, 1.0),
+        "funny": _clamp(item.get("funny"), base.funny, 0.0, 1.0),
+    }
+    hits = item.get("hits")
+    if hits is not None:
+        try:
+            strength["hits"] = max(0, int(hits))
+        except (TypeError, ValueError):
+            pass
+    return strength
 
 
 class Main(star.Star):
@@ -199,16 +227,26 @@ class Main(star.Star):
             self._pending = []
             return
 
+        written = 0
         for it in items[:3]:
             try:
-                art = make("memory", it)
+                art = make("memory", it, strength=_strength_of(it))
+                validate(art)
+            except ValueError as e:
+                logger.warning(f"[seekmemory] 抽取结果校验失败，已跳过：{e}")
+                continue
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[seekmemory] 构造记忆失败，已跳过：{e}")
+                continue
+            try:
                 self.db.upsert(art)
                 if self.cache:
                     self.cache.put(art)
+                written += 1
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 写入失败：{e}")
         self._pending = []
-        logger.info(f"[seekmemory] 夜间写入 {len(items[:3])} 条")
+        logger.info(f"[seekmemory] 夜间写入 {written} 条")
 
     def _existing_texts(self) -> list[str]:
         if not self.cache:
