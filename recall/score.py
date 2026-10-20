@@ -25,6 +25,11 @@ ABS_DAYS = 10_000
 ORDINAL_DAYS = 500_000
 EPOCH_ORDINAL = date(1970, 1, 1).toordinal()
 
+# 相关性闸门（Recall Gate）：绝对下限 + 相对最高分的下限。
+# 两条都过才注入；全不过时宁可不注入，也不硬凑 top-k。
+MIN_ABS = 1.2
+MIN_REL = 0.35
+
 TEXT_CACHE_LIMIT = 16
 STATIC_CACHE_LIMIT = 20_000
 FRESH_CACHE_LIMIT = 4096
@@ -183,6 +188,9 @@ def select(
     k: int = 8,
     explore: float = 0.1,
     seed: int | str | None = None,
+    gate: bool = True,
+    min_abs: float = MIN_ABS,
+    min_rel: float = MIN_REL,
 ) -> list[Artifact]:
     """
     按分数取 top-k，并以 explore 概率随机捞一条非 top 的记忆做探索。
@@ -190,6 +198,10 @@ def select(
     candidates 兼容裸 Artifact 与 (Artifact, activation) 二元组；seed
     固定即可复现，不传时用 text 当种子，保证同一条消息选出同一批。
     批量打分只改变计算方式，分数、排序与探索结果与原实现一致。
+
+    gate=True 时先过相关性闸门：score >= min_abs 且 >= top_score × min_rel
+    的候选才参与排序；没有候选达标就返回 []（不相关就不注入）。
+    gate=False 保持旧行为（永远尽量凑满 k），供消融实验对比。
     """
     if k <= 0 or not candidates:
         return []
@@ -237,6 +249,14 @@ def select(
         value -= 2.0 * recent
         append((-value, art.header.id, order, art))
     scored.sort()
+    if gate:
+        if not scored:
+            return []
+        top_score = -scored[0][0]
+        floor = max(min_abs, top_score * min_rel)
+        scored = [item for item in scored if -item[0] >= floor]
+        if not scored:
+            return []
     top = [item[3] for item in scored[:k]]
     rest = scored[k:]
     if rest and 0.0 < explore <= 1.0:

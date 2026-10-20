@@ -22,6 +22,7 @@
 | [ISSUE-0014](ISSUE-0014.md) | 反思模块没接线：signals 只有测试在调，冷处理、错误留档、负权重、情绪闭环都没有 | P2 | open | `enable_reflect` 是死配置；没有 pending 表、没有 mistake、没有 weight=-0.3。 |
 | [ISSUE-0015](ISSUE-0015.md) | 措辞没有三档不确定，也没有 metamemory：confidence 不参与表达，分不清“我忘了”和“你没说过” | P3 | open | `_memory_sentence()` 永远“你记得”；缓存只装 active，查不到同话题 forgotten。 |
 | [ISSUE-0016](ISSUE-0016.md) | 无语境回忆（random_recall）完全没实现：空消息直接 return，10% 探索只在有 query 时发生 | P3 | open | 没有 `funny × weight × noise` 排序，也没有 hot/sensitive 排除和“长期+缓冲”双池。 |
+| [ISSUE-0017](ISSUE-0017.md) | 没有相关性闸门：select 永远凑满 top-k | P1 | open | 闸门已落地（PR-0017 / `8453f93`），但默认 1.2/0.35 下噪声仍 81%、边界 2/2，验收未达标。 |
 
 ## 关系图（读的顺序）
 
@@ -58,4 +59,3 @@ grep -rn "promote_candidates\|add_source\|link_evidence\|reinforce(" --include="
 grep -n "def _when\|def _guarded_sentence\|def _memory_sentence" recall/assemble.py
 grep -n "MAX_ACTIVE\|len(pool)\|family != \"memory\"" maintain/merge.py maintain/decay.py
 ```
-| [ISSUE-0017](ISSUE-0017.md) | 没有相关性闸门：select 永远凑满 top-k | P1 | open | 噪声占比 81%，边界题 2/2 越界；缺绝对+相对双阈值，且允许返回空。 |
