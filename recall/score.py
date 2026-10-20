@@ -14,9 +14,11 @@ from datetime import date
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact
+    from . import gate as gate_mod
     from .seed import bigrams, dice, signals_of
 except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
     from core.artifact import Artifact
+    from recall import gate as gate_mod
     from recall.seed import bigrams, dice, signals_of
 
 POSITIVE = ("开心", "高兴", "喜欢", "哈哈", "笑", "好玩", "可爱", "棒")
@@ -25,10 +27,7 @@ ABS_DAYS = 10_000
 ORDINAL_DAYS = 500_000
 EPOCH_ORDINAL = date(1970, 1, 1).toordinal()
 
-# 相关性闸门（Recall Gate）：绝对下限 + 相对最高分的下限。
-# 两条都过才注入；全不过时宁可不注入，也不硬凑 top-k。
-MIN_ABS = 1.2
-MIN_REL = 0.35
+# 相关性闸门（Recall Gate）只认证据，阈值与常量见 recall.gate。
 
 TEXT_CACHE_LIMIT = 16
 STATIC_CACHE_LIMIT = 20_000
@@ -189,28 +188,35 @@ def select(
     explore: float = 0.1,
     seed: int | str | None = None,
     gate: bool = True,
-    min_abs: float = MIN_ABS,
-    min_rel: float = MIN_REL,
+    min_abs: float | None = None,
+    min_rel: float | None = None,
+    min_ev_abs: float | None = None,
+    min_ev_rel: float | None = None,
 ) -> list[Artifact]:
     """
     按分数取 top-k，并以 explore 概率随机捞一条非 top 的记忆做探索。
 
     candidates 兼容裸 Artifact 与 (Artifact, activation) 二元组；seed
     固定即可复现，不传时用 text 当种子，保证同一条消息选出同一批。
-    批量打分只改变计算方式，分数、排序与探索结果与原实现一致。
 
-    gate=True 时先过相关性闸门：score >= min_abs 且 >= top_score × min_rel
-    的候选才参与排序；没有候选达标就返回 []（不相关就不注入）。
+    gate=True 时先过证据闸门（ISSUE-0017）：只有字面、标签、激活、情绪
+    四项累计的 evidence 达到 max(绝对下限, top_evidence × 相对下限) 的候选
+    才注入；weight / freshness / recent 只参与排序。没有候选达标、或消息
+    是纯问时间的时钟类问题，都返回 []（不相关就不注入）。
     gate=False 保持旧行为（永远尽量凑满 k），供消融实验对比。
+    min_abs / min_rel 是 PR-0017 双阈值闸门的遗留参数，仅为兼容 main.py
+    的显式传参保留；证据闸门用 min_ev_abs / min_ev_rel 覆盖默认阈值。
     """
     if k <= 0 or not candidates:
+        return []
+    if gate and gate_mod.is_clock_query(text):
         return []
     pairs = [item if isinstance(item, tuple) else (item, 0.0) for item in candidates]
     text_grams, total, low, pos, neg, smile = _text_stats(text)
     plain = not pos and not neg
     polarity = 0 if plain else (1 if pos > neg else -1 if neg > pos else 0)
     fresh: dict[str, float] = {}
-    scored: list[tuple[float, str, int, Artifact]] = []
+    scored: list[tuple[float, str, int, Artifact, float]] = []
     append = scored.append
     cache = _STATIC_CACHE
     for order, (art, act) in enumerate(pairs):
@@ -219,17 +225,22 @@ def select(
             entry = _static(art)
         _, grams, tags, weight, arousal, valence, funny, created, recent = entry
         value = 0.0
+        evidence = 0.0
         if total and grams:
             inter = 0
             for gram in text_grams:
                 if gram in grams:
                     inter += 1
             if inter:
-                value = 3.0 * (2.0 * inter / (total + len(grams)))
+                literal = 3.0 * (2.0 * inter / (total + len(grams)))
+                value += literal
+                evidence += literal
         if tags:
-            value += 2.0 * _tag_match(low, text_grams, total, tags)
+            tag_hit = 2.0 * _tag_match(low, text_grams, total, tags)
+            value += tag_hit
+            evidence += tag_hit
         if plain:
-            value += 1.5 * (0.3 * arousal)
+            emotion = 1.5 * (0.3 * arousal)
         else:
             if polarity == 0 or abs(valence) < 1e-9:
                 align = 0.6
@@ -238,23 +249,27 @@ def select(
             else:
                 align = 0.2
             bonus = 0.2 if funny > 0.5 and smile else 0.0
-            value += 1.5 * min(1.0, align * (0.4 + 0.6 * arousal) + bonus)
+            emotion = 1.5 * min(1.0, align * (0.4 + 0.6 * arousal) + bonus)
+        value += emotion
+        evidence += emotion
         value += weight
         age = fresh.get(created)
         if age is None:
             age = math.exp(-_age_days(created, now_days) / 14.0)
             fresh[created] = age
         value += 0.5 * age
-        value += 1.5 * max(0.0, float(act))
+        activation = 1.5 * max(0.0, float(act))
+        value += activation
+        evidence += activation
         value -= 2.0 * recent
-        append((-value, art.header.id, order, art))
+        append((-value, art.header.id, order, art, evidence))
     scored.sort()
     if gate:
         if not scored:
             return []
-        top_score = -scored[0][0]
-        floor = max(min_abs, top_score * min_rel)
-        scored = [item for item in scored if -item[0] >= floor]
+        top_evidence = max(item[4] for item in scored)
+        floor = gate_mod.evidence_floor(top_evidence, min_ev_abs, min_ev_rel)
+        scored = [item for item in scored if item[4] >= floor]
         if not scored:
             return []
     top = [item[3] for item in scored[:k]]
