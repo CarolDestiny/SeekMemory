@@ -1,6 +1,6 @@
 """memory family：统一记忆 payload 的校验。
 
-必填 text / level；level 限定三级抽象（impression/scene/detail）。
+必填 text / level；level 限定四级：fact / scene / detail / impression。
 shape / chrono / about 若出现，必须落在设计文档的取值域内。
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-LEVELS = ("impression", "scene", "detail")
+LEVELS = ("fact", "scene", "detail", "impression")
 SHAPES = ("point", "span", "pattern", "rule")
 CHRONOS = ("once", "periodic", "annual")
 ABOUTS = ("self", "other", "relation", "world")
