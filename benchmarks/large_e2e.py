@@ -98,7 +98,7 @@ def report(records, results, meta):
                 and (not category or r["category"] == category)]
         return f"{sum(r['hit'] for r in rows)}/{len(rows)}"
 
-    lines = ["# 大规模端到端评测", "",
+    lines = ["# 大规模端到端评测（闸门前基线）", "",
              f"> 模型 `{MODEL}`（固定，temperature=0，关闭 thinking）· {len(records)} 种人格画像 · "
              f"{questions} 题 · {sum(rec['total'] for rec in records):,} 条消息（私聊 "
              f"{sum(rec['private'] for rec in records):,} / 群聊 "
@@ -164,7 +164,9 @@ def report(records, results, meta):
           f"{sum(r['hit'] for r in bound_rows[s])}/{boundary}",
           f"{sum(r['leak'] for r in bound_rows[s])}/{boundary}") for s in STRATS])
     lines += ["", "boundary 题要的是“拒绝”不是检索：`no_memory` 块空但天然答“不知道”，"
-              "`full`/`keyword` 把影子原文带进上下文，越界即答错。", ""]
+              "`full`/`keyword` 把影子原文带进上下文，越界即答错。注意块内泄漏是暴露面："
+              "`full` 块泄漏 7/7 而回答只 1/7 泄密，`keyword` 块 3/7、回答 0/7——模型面对"
+              "泄露上下文也常拒答；scope 风险看块，实际伤害看回答列。", ""]
 
     lines += ["## 差值：SeekMemory 相对各基线", ""] + large_lib.table(
         ("对照基线", "命中率差", "非边界命中率差", "人味差",
@@ -176,7 +178,7 @@ def report(records, results, meta):
           f"{seek['usage']['answer']['prompt'] / max(1.0, base['usage']['answer']['prompt']):.2f}×",
           f"{large_lib.total_of(seek['usage']['total']) / max(1.0, large_lib.total_of(base['usage']['total'])):.2f}×")
          for name, base in (("keyword", kw), ("full", full), ("no_memory", none))])
-    lines += ["", "> 正数 = SeekMemory 更好；token 比 <1 = SeekMemory 更省；判分成本各策略相同，会稀释主回答差距。", ""]
+    lines.append("")
 
     full_cache = full['usage']['total']['cached'] / max(1, full['usage']['total']['prompt'])
     lines += ["## Token 成本（API 真实返回）", ""] + large_lib.table(
@@ -190,13 +192,11 @@ def report(records, results, meta):
           f"{sums[s]['usage']['total']['cached']:,}",
           f"{effective(sums[s]['usage']['total']):,.0f}") for s in STRATS],
         ["---"] + ["---:"] * 7)
-    lines += ["", f"总计 **{stats['success']} 次成功 / {stats['attempts']} 次尝试**"
-              f"（重试 {stats['retries']}，最终失败 {stats['failed']}），账面 "
-              f"**{total_tokens:,} token**（输入 {grand['total']['prompt']:,} / 输出 "
-              f"{grand['total']['completion']:,} / 缓存命中 {grand['total']['cached']:,}），"
-              f"缓存后等效 **{effective(grand['total']):,.0f} token**（输入未命中 + 0.1×命中 + 输出）。"
-              f"`full` 输入缓存命中 {full_cache * 100:.0f}%，账面高估约 "
-              f"{large_lib.total_of(full['usage']['total']) / max(1, effective(full['usage']['total'])):.1f}×。", ""]
+    lines += ["", f"总计 **{stats['success']} 次成功 / {stats['attempts']} 次尝试**（重试 {stats['retries']}，"
+              f"失败 {stats['failed']}），账面 **{total_tokens:,} token**（输入 {grand['total']['prompt']:,} / "
+              f"输出 {grand['total']['completion']:,} / 缓存命中 {grand['total']['cached']:,}），"
+              f"缓存后等效 **{effective(grand['total']):,.0f} token**（未命中 + 0.1×命中 + 输出）；"
+              f"`full` 缓存命中 {full_cache * 100:.0f}%，账面高估约 {large_lib.total_of(full['usage']['total']) / max(1, effective(full['usage']['total'])):.1f}×。", ""]
     solo, lost = 0, []
     for rec in records:
         for q in rec["gold"]:
