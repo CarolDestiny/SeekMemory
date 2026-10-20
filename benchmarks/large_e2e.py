@@ -1,8 +1,7 @@
 """多画像大规模 E2E：6 人格 × 180 天 × 4 策略 × 60 题，真实模型 + LLM 判分。
 
-每个画像先把全部消息写入临时库，再为每道题预生成四种记忆块，最后并发调
-deepseek-flash 回答并判分，结果写入 benchmarks/results/large_e2e.md。
-API 调用、判分、命中判定与并发池在 large_lib.py。运行：
+每个画像先把全部消息写入临时库，再为每道题预生成四种记忆块，最后并发调 deepseek-flash
+回答并判分，结果写入 benchmarks/results/large_e2e.md；API/判分/并发池在 large_lib.py。运行：
 
     export DEEPSEEK_API_KEY=sk-...
     python3 benchmarks/large_e2e.py --smoke   # 1 人格 × 10 题 × 4 策略
@@ -20,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import large_lib, personas  # noqa: E402
 from core.artifact import content_of  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
+from recall.gate import pinned  # noqa: E402
 from recall.scope import visible  # noqa: E402
 from recall.score import select  # noqa: E402
 from recall.seed import seeds  # noqa: E402
@@ -41,6 +41,9 @@ def blocks_for(key, cache, graph, gold):
     if len(raw) > FULL_BUDGET and "\n" in full:
         full = full[full.find("\n") + 1:]
     keyword = large_lib.Keywords(all_arts)
+    pinned_arts = visible(pinned(cache), "u0", owner_umo="u0")
+    pin_text = assemble(pinned_arts, budget=SEEK_BUDGET) if pinned_arts else ""
+    pin_chars = len(pin_text)
     blocks = {}
     for item in gold:
         question = item["q"]
@@ -49,10 +52,10 @@ def blocks_for(key, cache, graph, gold):
         blocks[("keyword", question)] = keyword(question)
         act = activate(seeds(question, pool, limit=5), graph, cache)
         picked = select([(a, act.get(a.header.id, 0.0)) for a in pool],
-                        question, 0.0, k=TOPK, explore=0.0)
+                        question, 0.0, k=TOPK, explore=0.0, gate=True)
         blocks[("seekmemory", question)] = assemble(
-            picked, budget=SEEK_BUDGET, text=question, is_private=True)
-    return blocks, len(raw)
+            pinned_arts + picked, budget=SEEK_BUDGET, text=question, is_private=True)
+    return blocks, len(raw), pin_chars
 
 
 def build_all(only="", limit=0):
@@ -65,15 +68,15 @@ def build_all(only="", limit=0):
             gold = gold[:limit]
         tmp, db, cache, graph = large_lib.ingest(key, messages)
         try:
-            blocks, raw_chars = blocks_for(key, cache, graph, gold)
+            blocks, raw_chars, pin_chars = blocks_for(key, cache, graph, gold)
         finally:
             db.close()
             shutil.rmtree(tmp, ignore_errors=True)
         private = sum(1 for m in messages if m[2] == "private")
         records.append({"key": key, "label": personas.SPECS[key]["label"],
                         "gold": gold, "blocks": blocks, "raw_chars": raw_chars,
-                        "total": len(messages), "private": private,
-                        "group": len(messages) - private})
+                        "pin_chars": pin_chars, "total": len(messages),
+                        "private": private, "group": len(messages) - private})
         print(f"[数据] {key:<10} {len(messages):>5} 条  {time.perf_counter() - started:.1f}s")
     return records
 
@@ -85,6 +88,8 @@ def report(records, results, meta):
     stats, grand = meta["stats"], large_lib.sum_usage(results)
     seek, full, kw, none = (sums[s] for s in ("seekmemory", "full", "keyword", "no_memory"))
     total_tokens, boundary = large_lib.total_of(grand["total"]), none["bound"]
+    pin_avg = {s: (sum(rec["pin_chars"] * len(rec["gold"]) for rec in records) / max(1, questions)
+                   if s == "seekmemory" else 0.0) for s in STRATS}
     row = large_lib.row
     index = {(r["persona"], r["q"], r["strategy"]): r for r in results}
 
@@ -98,27 +103,25 @@ def report(records, results, meta):
                 and (not category or r["category"] == category)]
         return f"{sum(r['hit'] for r in rows)}/{len(rows)}"
 
-    lines = ["# 大规模端到端评测（闸门前基线）", "",
+    lines = ["# 大规模端到端评测（闸门后终稿）", "",
              f"> 模型 `{MODEL}`（固定，temperature=0，关闭 thinking）· {len(records)} 种人格画像 · "
-             f"{questions} 题 · {sum(rec['total'] for rec in records):,} 条消息（私聊 "
-             f"{sum(rec['private'] for rec in records):,} / 群聊 "
-             f"{sum(rec['group'] for rec in records):,}）· 运行 {meta['run_date']} · "
+             f"{questions} 题 · {sum(rec['total'] for rec in records):,} 条消息 · 运行 {meta['run_date']} · "
              f"总耗时 {meta['elapsed']:.0f}s（准备 {meta['prepared']:.0f}s）· 基线 commit `{meta['commit']}` · "
              f"API 尝试 {stats['attempts']} 次 / 失败 {stats['failed']} 次", ""]
     lines += ["## 总表", ""] + large_lib.table(
-        ("策略", "命中率", "非边界命中", "人味均分", "平均注入字数", "平均 prompt token",
-         "平均 completion token", "平均耗时", "边界题越界", "错误"),
+        ("策略", "命中率", "非边界命中", "人味均分", "常驻层字数", "检索层字数",
+         "平均 prompt token", "平均 completion token", "平均耗时", "边界题越界", "错误"),
         [(f"`{s}`", f"**{sums[s]['hits']}/{sums[s]['n']}**",
           f"{sums[s]['plain_hits']}/{sums[s]['plain_n']}", f"{sums[s]['human']:.2f}",
-          f"{sums[s]['chars']:.0f}",
+          f"{pin_avg[s]:.0f}", f"{sums[s]['chars'] - pin_avg[s]:.0f}",
           f"{sums[s]['usage']['answer']['prompt'] / max(1, sums[s]['n']):.0f}",
           f"{sums[s]['usage']['answer']['completion'] / max(1, sums[s]['n']):.0f}",
           f"{sums[s]['ms'] / 1000:.2f}s", f"{sums[s]['leaks']}/{sums[s]['bound']}",
           f"{sums[s]['errors']}") for s in STRATS])
-    lines += ["", f"> 命中判定是字符串匹配，`expect_any` 跑之前给定。boundary {boundary} 道"
-              "要求明确拒绝且不出现秘密词；`no_memory` 天然答“不知道”，相当于送分，故另列"
-              "非边界命中。人味分由同一模型打 1~5，仅横向参考；平均耗时含主回答与判分两次调用；"
-              "边界越界只统计 boundary 题；错误 = 主回答或判分失败。", ""]
+    lines += ["", f"> 命中判定是字符串匹配，`expect_any` 跑之前给定。boundary {boundary} 道要求"
+              "明确拒绝且不出现秘密词，`no_memory` 天然答“不知道”相当于送分，故另列非边界命中。"
+              "人味分由同一模型打 1~5，仅横向参考；平均耗时含两次调用。"
+              "常驻层 = persona + 印象前 2（不经证据闸门），检索层 = 过证据闸门后的候选。", ""]
 
     pre = {s: large_lib.block_precheck(records, s) for s in STRATS}
     lines += ["## 无模型块级预检（不查模型，只看注入块）", "",
@@ -164,9 +167,8 @@ def report(records, results, meta):
           f"{sum(r['hit'] for r in bound_rows[s])}/{boundary}",
           f"{sum(r['leak'] for r in bound_rows[s])}/{boundary}") for s in STRATS])
     lines += ["", "boundary 题要的是“拒绝”不是检索：`no_memory` 块空但天然答“不知道”，"
-              "`full`/`keyword` 把影子原文带进上下文，越界即答错。注意块内泄漏是暴露面："
-              "`full` 块泄漏 7/7 而回答只 1/7 泄密，`keyword` 块 3/7、回答 0/7——模型面对"
-              "泄露上下文也常拒答；scope 风险看块，实际伤害看回答列。", ""]
+              "`full`/`keyword` 把影子原文带进上下文，越界即答错。块内泄漏是暴露面，"
+              "`full` 块 7/7 但回答只 1/7 泄密、`keyword` 块 3/7 回答 0/7——scope 风险看块，实际伤害看回答。", ""]
 
     lines += ["## 差值：SeekMemory 相对各基线", ""] + large_lib.table(
         ("对照基线", "命中率差", "非边界命中率差", "人味差",
@@ -212,7 +214,7 @@ def report(records, results, meta):
                             f"块内{'有' if has else '无'}答案；SeekMemory 答「{answer[:40] or '（空）'}」")
     lines += ["## 独赢与漏题", "",
               f"**独赢 {solo} 题**（另外三种策略全未命中）；**漏掉 {len(lost)} 题**（其他策略命中）：", ""]
-    lines += lost or ["- 无。"]
+    lines += (lost or ["- 无。"])
     lines.append("")
 
     labels = {rec["key"]: rec["label"] for rec in records}
@@ -225,7 +227,8 @@ def report(records, results, meta):
               f"1. **命中**：SeekMemory {seek['hits']}/{seek['n']}（非边界 {seek['plain_hits']}/"
               f"{seek['plain_n']}），keyword {kw['hits']}/{kw['n']}（非边界 {kw['plain_hits']}/"
               f"{kw['plain_n']}），full {full['hits']}/{full['n']}，no_memory {none['hits']}/{none['n']}。",
-              f"2. **成本**：SeekMemory 平均注入 {seek['chars']:.0f} 字，full {full['chars']:.0f} 字"
+              f"2. **成本**：SeekMemory 平均注入 {seek['chars']:.0f} 字（常驻 {pin_avg['seekmemory']:.0f} + 检索 "
+              f"{seek['chars'] - pin_avg['seekmemory']:.0f}），full {full['chars']:.0f} 字"
               f"（压缩 {full['chars'] / max(1.0, seek['chars']):.1f}×），keyword {kw['chars']:.0f} 字；"
               f"账面总 token {seeks_total:,} vs full {full_total:,} vs keyword {kw_total:,}；"
               f"缓存后等效 {seek_eff:,.0f} vs {full_eff:,.0f} vs {kw_eff:,.0f}。",
@@ -235,8 +238,7 @@ def report(records, results, meta):
               f"5. **是否支撑「更省 token 且更准」**："
               f"{'相对 full 成立' if seek_eff < full_eff and seek['hits'] >= full['hits'] else '相对 full 不成立'}；"
               f"{'相对 keyword 成立' if seek_eff <= kw_eff and seek['hits'] >= kw['hits'] else '相对 keyword 不成立'}。"
-              "keyword 是最强基线：检索全部原文（含别人私聊与影子秘密）、不做 scope 与时间衰减，"
-              "字面重合的题天然占优；SeekMemory 的价值在 scope 隔离、叙述化注入和成本不随记忆量线性上涨。",
+              "keyword 是最强基线：检索全部原文（含别人私聊与影子秘密）、不做 scope 与时间衰减，字面重合的题天然占优；SeekMemory 的价值在 scope 隔离、叙述化注入和成本不随记忆量线性上涨。",
               f"6. **边界**：{bounds}。", ""]
 
     lines += ["## 可信度自评", "",
@@ -245,11 +247,9 @@ def report(records, results, meta):
               "- **判分主观**：人味分由 deepseek-flash 自己打，可能偏爱长答案；单次采样、"
               "temperature=0 也不保证严格确定；boundary 命中要求出现约定拒绝词，"
               "语义拒绝但措辞不同会判 miss，读边界结论以泄漏列和块级预检为准。",
-              "- **基线有削有补**：full 是最近 16000 字符尾部截断，早期事实题天然吃亏；"
-              "keyword 不做 scope 过滤，边界题天然越界，但普通事实题拿到了最全原文。",
-              "- **数据与样本量**：60 题跑之前写死，统计覆盖全部 60 题 × 4 策略、列出全部漏题明细，"
-              "没有删题；但数据/题目/词表由同一脚本设计，存在构造偏差，单格差 1 题 = 10 个百分点，"
-              "差 2 题以内不算结论，合成语料不能直接外推。固定种子/模型/thinking，日期以运行当天滚动。"]
+              "- **构造与可比性**：full 是最近 16000 字符尾部截断、keyword 不做 scope 过滤，两者对 "
+              "SeekMemory 一削一补；数据/题目/词表由同一脚本设计，60 题跑之前写死、没有删题，但单格差 1 题 = "
+              "10 个百分点，差 2 题以内不算结论，合成语料不能直接外推。固定种子/模型/thinking，日期按运行当天滚动。"]
     lines += ["", "## 附录：判分词表", "",
               "| 画像 | 问题 | expect_any | boundary 泄漏词 |", "|---|---|---|---|"]
     lines += [row(rec["label"], q["q"], "、".join(q["expect_any"]), "、".join(q["leak"]) or "—")
