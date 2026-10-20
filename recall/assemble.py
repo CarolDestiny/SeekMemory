@@ -6,7 +6,10 @@ import re
 from datetime import date
 from typing import Any
 
-from core.artifact import Artifact, content_of
+try:  # 作为 astrbot 插件包的一部分导入
+    from ..core.artifact import Artifact, content_of
+except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
+    from core.artifact import Artifact, content_of
 
 MEDIA = {
     "video": ("个", "视频"),
@@ -18,10 +21,9 @@ MEDIA = {
     "link": ("篇", "文章"),
 }
 CORE_LAYERS = ("persona", "impression")
-MAX_SENTENCE = 180
 
 
-def _clean(value: Any, limit: int = MAX_SENTENCE) -> str:
+def _clean(value: Any, limit: int = 180) -> str:
     """压平空白、补「但」前逗号、去句末符号，最后加上句号。"""
     text = " ".join(str(value or "").split())
     text = re.sub(r"(?<=[^，。！？；：、\s不非])但", "，但", text)
@@ -69,21 +71,16 @@ def _when(created: str) -> str:
     return f"{delta // 30}个月前" if delta < 365 else "去年"
 
 
-def _topic(title: str) -> str:
-    """从标题里剥出主题词，让「讲大肥鱼的视频」读起来顺。"""
-    text = title.strip("《》「」“”\"' ")
-    for tail in ("是怎么来的", "的由来", "是怎么火起来的", "是什么", "的介绍"):
-        if text.endswith(tail) and len(text) > len(tail):
-            return text[: -len(tail)]
-    return text
-
-
 def _media_sentence(art: Artifact) -> str:
     """media 层：谁给谁看过什么，带类型与主题。"""
     payload = art.payload
     kind = str(payload.get("type") or "video").lower()
     measure, noun = MEDIA.get(kind, ("个", "视频"))
-    topic = _topic(_clip(payload.get("title") or payload.get("summary"), 60))
+    topic = _clip(payload.get("title") or payload.get("summary"), 60)
+    for tail in ("是怎么来的", "的由来", "是怎么火起来的", "是什么", "的介绍"):
+        if topic.endswith(tail) and len(topic) > len(tail):
+            topic = topic[: -len(tail)]
+            break
     verb = "叫" if kind == "music" else "讲" if kind in ("video", "article", "link") else "关于"
     thing = f"一{measure}{verb}{topic}的{noun}" if topic else f"一{measure}{noun}"
     who = str(payload.get("shared_by") or art.header.said_by or "other")
@@ -194,6 +191,13 @@ def build(arts: list[Artifact], budget: int = 2000) -> str:
     while len(_render(items)) > budget and _drop(items, rest):
         pass
     text = _render(items)
+    if text and not text.startswith(("你记得", "你印象里", "你还记得")):
+        text = "你记得，" + text
     if len(text) > budget:
-        text = text[: max(0, budget - 2)].rstrip("，。；、 ") + "……"
+        cut = text[: max(0, budget - 2)]
+        # 尽量切在句末，避免半句话
+        pos = max(cut.rfind("。"), cut.rfind("；"), cut.rfind("，"))
+        if pos > budget * 0.6:
+            cut = cut[: pos + 1]
+        text = cut.rstrip("，。；、 ") + "……"
     return text if len(text) <= budget else "…" * budget

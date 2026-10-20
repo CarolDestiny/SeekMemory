@@ -56,8 +56,15 @@ def _emotion_factor(s: Strength) -> float:
 
 
 def _hits(s: Strength) -> float:
-    """有效命中：weight 从 1.0 起每 +0.1 记一次命中。"""
+    """有效命中次数。优先用显式 hits；旧数据没有 hits 时用 weight 折算。"""
+    if getattr(s, "hits", 0):
+        return float(s.hits)
     return max(0.0, (s.weight - 1.0) / HIT_STEP)
+
+
+def _salience(s: Strength) -> float:
+    """显著度：越重要的事基础寿命越长。限制在 [0.3, 3.0] 防止极端值。"""
+    return min(3.0, max(0.3, float(s.weight)))
 
 
 def retention(s: Strength, shape: str, days: float) -> float:
@@ -65,6 +72,7 @@ def retention(s: Strength, shape: str, days: float) -> float:
     elapsed = max(0.0, float(days))
     stability = (
         BASE_DAYS
+        * _salience(s)
         * (1.0 + 0.5 * _hits(s))
         * _shape_factor(shape)
         * _emotion_factor(s)

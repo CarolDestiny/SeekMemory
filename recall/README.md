@@ -12,11 +12,11 @@
 | 文件 | 行数 | 职责 |
 | --- | ---: | --- |
 | `__init__.py` | 0 | 空包标记 |
-| `seed.py` | 66 | `seeds()`：二元组重合度 + 梗标签加分，取 top-limit 个种子 id |
-| `spread.py` | 71 | `activate()`：每跳乘 0.5、每轮只留 top 20 的激活扩散 |
-| `score.py` | 139 | `score()` 按 DESIGN 5.1 打分；`select()` 取 top-k + 10% 探索 |
-| `assemble.py` | 199 | `build()`：叙述化组装，超预算先砍 example 再砍 detail |
-| `README.md` | 33 | 本文件 |
+| `seed.py` | 69 | `seeds()`：二元组重合度 + 梗标签加分，取 top-limit 个种子 id |
+| `spread.py` | 75 | `activate()`：每跳乘 0.5、每轮只留 top 20 的激活扩散 |
+| `score.py` | 137 | `score()` 按 DESIGN 5.1 打分；`select()` 取 top-k + 10% 探索 |
+| `assemble.py` | 198 | `build()`：叙述化组装，超预算先砍 example 再砍 detail |
+| `README.md` | 34 | 本文件 |
 
 ## 依赖方向
 
@@ -28,6 +28,7 @@ assemble  → core.artifact (Artifact, content_of)
 ```
 
 只向下依赖 `core/` 与 `store/`，不反向依赖、不 import `astrbot`、不碰 SQL。
-`build()` 信任 `arts` 的传入顺序就是相关度降序；`select()` 的 `activation`
-可选，直接接 `activate()` 的返回值即可；`now_days` 传「距今多少天」或
-绝对天数（epoch days / ordinal）都能被 `score()` 正确归一。
+`build()` 信任 `arts` 的传入顺序就是相关度降序；`select()` 的候选既可以是
+裸 `Artifact`，也可以是 `(Artifact, activation)` 二元组（`main.py` 即后者）；
+`now_days` 传 0 会用 `time.created` 推算年龄，传正小数视为年龄，传大数
+视为绝对天数（epoch days / ordinal）。
