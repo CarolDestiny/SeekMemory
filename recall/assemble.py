@@ -140,9 +140,8 @@ def _memory_sentence(art: Artifact) -> str:
 
 
 def _persona_sentence(art: Artifact) -> str:
-    """persona 层：人格沉淀，用第二人称陈述。"""
-    text = _clean(_voice(_raw(art), "self"))
-    return f"你记得{text}" if text else ""
+    """persona 层：人格沉淀本身已是第二人称自述，不再补「你记得」。"""
+    return _clean(_voice(_raw(art), "self"))
 
 
 def _sentence(art: Artifact, text: str | None = None,
@@ -252,7 +251,7 @@ def build(arts: list[Artifact], budget: int = 2000,
     while len(_render(items)) > budget and _drop(items, rest):
         pass
     text = _render(items)
-    if text and not text.startswith(("你记得", "你印象里", "你还记得")):
+    if text and not text.startswith("你"):
         text = "你记得，" + text
     if len(text) > budget:
         cut = text[: max(0, budget - 2)]
