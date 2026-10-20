@@ -181,8 +181,22 @@ def merge_similar(
         )
         db.upsert(art)
         cache.put(art)
+        db.ledger_append(
+            "merge",
+            art.header.id,
+            None,
+            art.header.id,
+            f"合并 {count} 条相似记忆为新印象：{payload['text']}",
+        )
         for member in members:
             db.upsert(revise(member, state="merged"))
             cache.remove(member.header.id)
+            db.ledger_append(
+                "merge",
+                member.header.id,
+                member.header.id,
+                art.header.id,
+                f"与另外 {count - 1} 条相似记忆合并进 {art.header.id}",
+            )
         made += 1
     return made

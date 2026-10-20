@@ -159,20 +159,20 @@ def _drop(items: list[tuple[str, str]], layers: tuple[str, ...]) -> bool:
 
 
 def _dedupe(arts: list[Artifact]) -> list[Artifact]:
-    """内容去重：同一段话只保留权重最高的一条。"""
+    """内容去重：同一段话只保留一条；取不到文本的坏条目直接跳过（fail-open）。"""
     kept: list[Artifact] = []
+    seen: list[str] = []
     for a in arts:
-        t = content_of(a).strip()
+        try:
+            t = content_of(a).strip()
+        except Exception:  # noqa: BLE001 - 单条坏记忆不能拖垮整段注入
+            continue
         if not t:
             continue
-        dup = False
-        for k in kept:
-            o = content_of(k).strip()
-            if t == o or t in o or o in t:
-                dup = True
-                break
-        if not dup:
-            kept.append(a)
+        if any(t == o or t in o or o in t for o in seen):
+            continue
+        kept.append(a)
+        seen.append(t)
     return kept
 
 
