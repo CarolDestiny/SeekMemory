@@ -170,6 +170,9 @@ class Main(star.Star):
             0.0,
             k=self._c("recall_k", 8),
             explore=self._c("explore_rate", 0.1),
+            gate=True,
+            min_abs=self._c("recall_min_abs", 1.2),
+            min_rel=self._c("recall_min_rel", 0.35),
         )
         block = assemble_text(
             designated + picked,
