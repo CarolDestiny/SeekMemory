@@ -68,3 +68,21 @@ QQ 消息
 
 - 单文件 ≤ 300 行，目标 150
 - 超过就拆，拆的依据是**职责**，不是行数
+
+## 开发流程
+
+> 多人/多 agent 协作从 [CONTRIBUTING](../CONTRIBUTING.md) 开始：P0/P1 先开 issue，
+> 再在分支上修，最后走 PR 合并。
+
+| 事项 | 入口 |
+|---|---|
+| 问题分级、分支命名、合并与提交规范 | [CONTRIBUTING.md](../CONTRIBUTING.md) |
+| 所有 issue 与 PR 记录 | [docs/issues/](issues/) |
+| 开新 issue | [TEMPLATE-ISSUE.md](issues/TEMPLATE-ISSUE.md) |
+| 写 PR 描述 | [TEMPLATE-PR.md](issues/TEMPLATE-PR.md) |
+| 已记录的问题 | [ISSUE-0001](issues/ISSUE-0001.md)：无 BM25 / 向量检索，同跨度问法的召回为 0 |
+
+- GitHub CLI 未登录期间，`docs/issues/` 是 issue/PR 的唯一事实源；登录后按
+  CONTRIBUTING 的「同步到 GitHub」补链接。
+- issue/PR 文件只追加，不改历史；合并后把 issue 状态改为 `closed`。
+- P2 可以直接提交，但涉及 `recall/`、`core/`、`store/` 的行为变化仍建议先开 issue。
