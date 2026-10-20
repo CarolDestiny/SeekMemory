@@ -189,6 +189,7 @@ recall/spread.py:64            contribution = value * DECAY * _weight(weight)
   金标；自动建出 488 条边，扩散新增候选从 8 个升到 153 个。命中面
   `full 18/18`、`no_spread 17/18` 不变——本黄金集里唯一靠扩散的题是 causal，
   说明下一步要补的是语义因果边，不是继续加相似/时序边。
+- 合并：`b7f9a05`（`Merge PR-0009: 联想边与人格沉淀`），2026-10-21。
 
 ## 参考
 
