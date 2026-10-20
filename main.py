@@ -28,6 +28,7 @@ from .perceive.extract import (
 )
 from .recall.assemble import build as assemble_text
 from .recall.designated import deliverable, is_private, mark_given
+from .recall.gate import pinned
 from .recall.scope import visible
 from .recall.score import select
 from .recall.seed import seeds
@@ -153,11 +154,10 @@ class Main(star.Star):
 
     def _recall_block(self, text: str, umo: str = "", private: bool = False) -> str:
         assert self.cache is not None and self.graph is not None
-        pool = [
-            a for a in self._visible(self.cache.active(), umo)
-            if deliverable(a, text, private)
-        ]
-        if not pool:
+        # 常驻层（persona + 印象前 2）是固定画像，不经过检索证据闸门。
+        pinned_arts = self._visible(pinned(self.cache), umo)
+        pool = [a for a in self._visible(self.cache.active(), umo) if deliverable(a, text, private)]
+        if not pool and not pinned_arts:
             return ""
 
         designated = [a for a in pool if a.header.family == "designated"]
@@ -172,11 +172,11 @@ class Main(star.Star):
             k=self._c("recall_k", 8),
             explore=self._c("explore_rate", 0.1),
             gate=True,
-            min_abs=self._c("recall_min_abs", 1.2),
-            min_rel=self._c("recall_min_rel", 0.35),
+            min_ev_abs=self._c("recall_min_ev_abs", 0.5),
+            min_ev_rel=self._c("recall_min_ev_rel", 0.3),
         )
         block = assemble_text(
-            designated + picked,
+            pinned_arts + designated + picked,
             budget=self._c("budget_chars", 600),
             text=text,
             is_private=private,

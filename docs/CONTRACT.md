@@ -139,11 +139,15 @@ def score(art: Artifact, text: str, activation: float, now_days: float) -> float
 def select(candidates: list[Artifact] | list[tuple[Artifact, float]],
            text: str, now_days: float, k: int = 8, explore: float = 0.1,
            seed: int | str | None = None, gate: bool = True,
-           min_abs: float = 1.2, min_rel: float = 0.35) -> list[Artifact]: ...
+           min_ev_abs: float = 0.5, min_ev_rel: float = 0.3) -> list[Artifact]: ...
+def pinned(cache: Cache) -> list[Artifact]: ...   # recall/gate.py
 ```
 
-`gate=True` 时只保留 `score >= max(min_abs, top_score × min_rel)` 的候选，
-没有候选达标就返回 `[]`；`gate=False` 保持旧的 top-k 行为。
+`gate=True` 时只保留相关性证据（字面 + 标签 + 情绪 + 激活）达到
+`max(min_ev_abs, top_evidence × min_ev_rel)` 的候选，没有候选达标就返回 `[]`；
+`weight` / `freshness` 只参与排序。纯问时间的时钟类消息直接返回 `[]`。
+`gate=False` 保持旧的 top-k 行为。`pinned(cache)` 返回常驻层
+（active persona 全部 + 印象层按 weight 前 2），该层不经过证据闸门。
 
 ## recall/scope.py
 
