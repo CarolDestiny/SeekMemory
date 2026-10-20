@@ -158,6 +158,24 @@ def _drop(items: list[tuple[str, str]], layers: tuple[str, ...]) -> bool:
     return True
 
 
+def _dedupe(arts: list[Artifact]) -> list[Artifact]:
+    """内容去重：同一段话只保留权重最高的一条。"""
+    kept: list[Artifact] = []
+    for a in arts:
+        t = content_of(a).strip()
+        if not t:
+            continue
+        dup = False
+        for k in kept:
+            o = content_of(k).strip()
+            if t == o or t in o or o in t:
+                dup = True
+                break
+        if not dup:
+            kept.append(a)
+    return kept
+
+
 def build(arts: list[Artifact], budget: int = 2000) -> str:
     """
     组装叙述式注入文本（DESIGN 5.3 / 6.1）。
@@ -166,6 +184,7 @@ def build(arts: list[Artifact], budget: int = 2000) -> str:
     细节 / 例子；尾部留给调用方。超 budget 时从后往前砍，先 example
     再 detail，最后砍其余中部。
     """
+    arts = _dedupe(arts)
     if not arts or budget <= 0:
         return ""
     entries: list[tuple[str, str]] = []
