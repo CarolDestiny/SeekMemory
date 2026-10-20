@@ -36,15 +36,15 @@
     "type": "float",
     "default": 0.1
   },
-  "recall_min_abs": {
-    "description": "相关性闸门绝对下限：综合分低于它的记忆不注入",
+  "recall_min_ev_abs": {
+    "description": "证据闸门绝对下限：字面/标签/情绪/激活累计证据低于它的记忆不注入",
     "type": "float",
-    "default": 1.2
+    "default": 0.5
   },
-  "recall_min_rel": {
-    "description": "相关性闸门相对下限：低于本轮最高分该比例的记忆不注入",
+  "recall_min_ev_rel": {
+    "description": "证据闸门相对下限：低于本轮最高证据该比例的记忆不注入",
     "type": "float",
-    "default": 0.35
+    "default": 0.3
   },
   "summary_time": {
     "description": "每晚抽取记忆的时间 HH:MM",
