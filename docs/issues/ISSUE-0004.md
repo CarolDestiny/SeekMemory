@@ -8,10 +8,10 @@
 |---|---|
 | 编号 | ISSUE-0004 |
 | 级别 | P1（功能失效：指定记忆存进去就取不回来） |
-| 状态 | open |
+| 状态 | closed |
 | 报告人 | 审计记录（agent） |
 | 日期 | 2026-10-21 |
-| 关联 PR | 待开（建议分支 `fix/issue-0004-designated-return`） |
+| 关联 PR | [PR-0003](PR-0003.md)（分支 `fix/issue-0003-0004-scope-and-designated`） |
 | 影响版本 | `main` @ `1be8baa` |
 | GitHub | 待同步 |
 
@@ -131,6 +131,9 @@ main.py:139       req.system_prompt = (req.system_prompt or "") + "\n\n" + block
 ## 决策记录
 
 - 2026-10-21：开 issue，只记录现状，不改代码。
+- 2026-10-21：PR-0003 修复并合并（merge `fa26feb`）。`recall/designated.py`
+  实现私聊 + 触发词 + 未 given 三条硬条件，命中后交付 `payload["text"]` 并写回
+  `given`；群里/私聊未触发不注入。新增 11 条回归测试，其中 5 条覆盖 designated。
 - 待定：AstrBot 私聊判断用哪个字段；触发词是否支持模糊/同义；交付后是否保留
   `given` 时间而不是布尔；群里打岔的固定文案。
 
