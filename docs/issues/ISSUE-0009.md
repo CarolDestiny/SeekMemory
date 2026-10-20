@@ -141,13 +141,34 @@ recall/spread.py:64            contribution = value * DECAY * _weight(weight)
 
 ## 验收标准
 
-- [ ] 新写入的记忆在同一 scope 内能自动产生 `similar/temporal` 边；
+> 逐条对照（2026-10-21，PR-0009）。验证命令：`python3 -m unittest tests.test_link`。
+
+- [x] 新写入的记忆在同一 scope 内能自动产生 `similar/temporal` 边；
       `edges` 表非空。
-- [ ] 单节点出度不超过配置上限；重复写入不产生重复边。
-- [ ] 构造“只在 B 中出现关键词、A 与 B 有边”的用例：查询 A 能通过 1 跳召回 B。
+      `tests/test_link.py:SimilarEdgeTest`：相似文本建 `similar`（权重 = Dice
+      重合度 1.0 / 0.92），同日不相似文本建 `temporal`（0.3）；写入后
+      `db.edges_of()` 与 `graph.neighbours()` 均非空。
+- [x] 单节点出度不超过配置上限；重复写入不产生重复边。
+      `tests/test_link.py:BudgetTest`：连续写 8 条相似记忆，每节点边数 ≤
+      `MAX_EDGES`=5 且最高值触顶 5；重复 `link_new()` 返回 0、边数不变；
+      同一条边重复 `graph.link()` 只更新权重。
+- [x] 构造“只在 B 中出现关键词、A 与 B 有边”的用例：查询 A 能通过 1 跳召回 B。
+      `tests/test_link.py:SpreadRecallTest`：B 的 `seeds()` 为空；A/B 同一天
+      写入自动建 `temporal` 边后，`activate([A])` 给 B 0.15 激活值；
+      `seeds(A∪B)` 只命中 A。
 - [ ] `scale.py` 的“有边/无边”对照里，扩散新增候选 >0；`e2e.py` 不再手工建边。
+      **遗留**：本 PR 未改 `benchmarks/scale.py` / `e2e.py`（不在写范围）；
+      改由 `benchmarks/ablation.py` 做有边/无边对照：生产写入自动建 488 条边，
+      扩散新增候选 8 → 153（12/20 题有新增），`ABLATION_NO_CAUSAL=1` 可对照。
+      `e2e.py` 需模型 API，按任务约束未运行。
 - [ ] 误连边可清理：提供按权重/时间删除边的维护函数（或在下一次整理时重建）。
-- [ ] 新增测试：相似/时序/因果三类边、出度上限、跨 scope 不连边。
+      **遗留**：未实现删边/重建维护函数；当前只做规模约束（总边数 ≤5、
+      `similar` ≤3、`temporal` ≤2、只在同 scope），误连边待后续维护任务处理。
+- [x] 新增测试：相似/时序/因果三类边、出度上限、跨 scope 不连边。
+      `tests/test_link.py` 共 11 条：similar / temporal 自动建、跨 scope 不连边、
+      出度上限、重复边幂等、graph/cache 缺失与异常 fail-open、一跳扩散召回；
+      `causal` 按本任务约定不自动建，只测 `Graph.link_causal()` 接口
+      （`GraphApiTest`）。
 
 ## 决策记录
 

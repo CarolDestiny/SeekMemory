@@ -141,13 +141,29 @@ recall/assemble.py:197      header = [i for i, (layer, _) in enumerate(entries) 
 
 ## 验收标准
 
-- [ ] 一条 `hits > 10` 的 active 记忆能在周任务后进入 persona 候选，并产出
+> 逐条对照（2026-10-21，PR-0009）。验证命令：`python3 -m unittest tests.test_persona`。
+
+- [x] 一条 `hits > 10` 的 active 记忆能在周任务后进入 persona 候选，并产出
       `family=persona` 节点（或明确记录“候选为空”）。
-- [ ] `assemble.build()` 的头部第一句是 persona（有 persona 时）。
+      口径按本 PR 调整为 `weight >= 1.5` 且（`hits >= 3` 或存在 ≥ 30 天），
+      纯规则不调模型；`tests/test_persona.py:PromoteTest` 覆盖四条边界，
+      `DistillTest` 验证命中即产出 `family=persona`；没有候选时返回 `None`。
+- [x] `assemble.build()` 的头部第一句是 persona（有 persona 时）。
+      `tests/test_persona.py:ComposeTest.test_persona_is_first_in_assembled_text`：
+      输出以人格句开头，且不再出现「你记得你……」。
 - [ ] 合并出的 impression 能通过 `Tree.children()` 找到其 scene/detail。
-- [ ] persona 有 `revision` 与 `lineage.sources`，能追溯到候选记忆。
-- [ ] 蒸馏失败/空输出不覆盖旧 persona；有日志。
+      **遗留**：`merge_similar()` 仍未挂 parent，`Tree.add_under()` 的生产接线
+      不在本 PR 范围（容量/编排议题），此条未完成。
+- [x] persona 有 `revision` 与 `lineage.sources`，能追溯到候选记忆。
+      `DistillTest.test_persona_text_lineage_and_strength`：新 persona
+      `revision=1`、更新后 `revision=2`；`derived_from` 指向 weight 最高的 3 条
+      impression，`sources` 合并去重（`src_a`/`src_b`/`src_c`）。
+- [x] 蒸馏失败/空输出不覆盖旧 persona；有日志。
+      `DistillTest.test_no_candidate_keeps_old_persona` 返回 `None`，旧 persona
+      仍 active 且账本不新增；`main._weekly` 记录「人格 已更新/无变化」。
 - [ ] 新增测试：树挂载、promote 阈值、persona 写入/修订、空输出保留旧值。
+      promote 阈值、persona 写入/修订、空输出保留旧值均已覆盖
+      （`tests/test_persona.py` 15 条）；**树挂载**未覆盖（见上条遗留）。
 
 ## 决策记录
 
