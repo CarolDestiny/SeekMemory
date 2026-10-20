@@ -1,6 +1,11 @@
 # 回归基线
 
-> 改动后跑 `python3 benchmarks/run.py`、`python3 benchmarks/scale.py`、`python3 benchmarks/e2e.py`，不得低于此表。
+> **本文件是 PR-0003 时代的快照（代码基线 `b55e6a5`）。PR-0018 之后的数字已变，以
+> `benchmarks/results/` 为准**：`run.py` 100/100、检索层 17 字/850×（常驻层另计 38 字/轮）、
+> `scale.py` 13 字 / 5/6、端到端改用 `large_e2e.md`（6 画像 × 31,926 条 × 60 题）。
+> 下表保留作历史对照，红线数值仍然是下限。
+>
+> 改动后跑 `python3 benchmarks/run.py`、`python3 benchmarks/scale.py`、`python3 benchmarks/ablation.py`、`python3 benchmarks/large_e2e.py`，不得低于此表。
 > 数据来源：`benchmarks/results/latest.md`、`scale.md`、`e2e.md`（代码基线 `b55e6a5`，2026-10-21）。
 > 红线是**建议值**：一次性设定后只允许上调（更严），不允许下调。离线确定性指标的子项不设缓冲；综合分与毫秒数按表内红线执行。
 
