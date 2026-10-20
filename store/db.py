@@ -120,6 +120,12 @@ class DB:
         rows = self.conn.execute(sql + " ORDER BY n.created_at, n.id", args).fetchall()
         return [art for art in map(self._to_artifact, rows) if art is not None]
 
+    def source_umo(self, source_id: str) -> str:
+        """按来源 id 取它所属的会话 umo；来源不存在时返回空串。"""
+        row = self.conn.execute(
+            "SELECT umo FROM sources WHERE id = ?", (source_id,)).fetchone()
+        return str(row["umo"]) if row is not None else ""
+
     def set_parent(self, node_id: str, parent_id: str | None) -> None:
         """单独调整抽象树父子关系（CONTRACT 未列出，供 core/tree 使用）。"""
         with self.conn:

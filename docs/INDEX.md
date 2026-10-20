@@ -40,12 +40,14 @@ perceive/  maintain/  recall/
 
 ```
 QQ 消息
-  → main.py  buffer_message      存进当天缓冲
+  → main.py  buffer_message      存进当天缓冲（带 umo）
   → main.py  inject_memory
+       → recall/scope.py         按 scope 过滤：private 只给归属会话
+       → recall/designated.py    指定记忆：私聊 + 触发词 + 未 given 才交付
        → recall/seed.py          从消息里找种子
        → recall/spread.py        沿关系边扩散
        → recall/score.py         打分 + 探索
-       → recall/assemble.py      按层级措辞，卡预算
+       → recall/assemble.py      按层级措辞，卡预算；shadow 只给影子句
   → 拼进 system_prompt 中部
   → LLM 回复
 ```
