@@ -183,6 +183,7 @@ recall/assemble.py:197      header = [i for i, (layer, _) in enumerate(entries) 
 - 注入：`recall.assemble` 原先已把 persona 放头部，但会拼成“你记得你……”，
   已改为直接输出第二人称文本；新增测试覆盖“persona 在头部”。
 - 未包含：抽象树的 `add_under()` 生产接线仍不在本 PR 范围（属容量/编排议题）。
+- 合并：`b7f9a05`（`Merge PR-0009: 联想边与人格沉淀`），2026-10-21。
 
 ## 参考
 
