@@ -25,8 +25,10 @@ from store.db import DB  # noqa: E402
 
 
 def to_artifact(e):
-    """Event -> Artifact"""
+    """Event -> Artifact；标签与生产 perceive/extract 的输出保持同构。"""
     payload = {"text": e.text, "level": e.level, "shape": "point", "chrono": "once", "about": "other"}
+    if e.tags:
+        payload["tags"] = list(e.tags)
     if e.level == "impression":
         payload["shape"] = "pattern"
     return make(

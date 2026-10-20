@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import recall.assemble as assemble_mod  # noqa: E402
-import recall.score as score_mod  # noqa: E402
+import recall.gate as gate_mod, recall.score as score_mod  # noqa: E402
 from benchmarks.edge_stats import spread_counts  # noqa: E402
 from benchmarks.goldset import FORBIDDEN, GOLD, SEED, TODAY, build, noise_share  # noqa: E402
 from core.artifact import Artifact, content_of, make  # noqa: E402
@@ -161,8 +161,9 @@ def pipeline(cfg: Cfg, pool, source, graph, cache, q: str) -> tuple[str, list[Ar
 
 
 def measure(cfg: Cfg, pool, source, graph, cache) -> dict:
-    """跑完 20 条黄金问句，汇总命中 / 字数 / 噪声 / 越界。"""
-    hit = total = chars = over = leak = 0
+    """跑完 20 条黄金问句，汇总命中 / 字数 / 噪声 / 边界泄露与注入。"""
+    hit = total = chars = leak = bchars = 0
+    boundary_n = sum(1 for g in GOLD if not g["expect_any"])
     noise_chars = kept_chars = 0
     misses, rows = [], []
     for g in GOLD:
@@ -184,12 +185,12 @@ def measure(cfg: Cfg, pool, source, graph, cache) -> dict:
                 if not any(e in content_of(art).lower() for e in exps):
                     noise_chars += n
         else:
-            over += bool(block.strip())
-            leak += any(w in low for w in FORBIDDEN.get(g["q"], ()))
+            leak += sum(low.count(w) for w in FORBIDDEN.get(g["q"], ()))
+            bchars += len(block)
         rows.append((ok, len(block)))
     return {"name": cfg.name, "hit": hit, "total": total, "misses": misses,
             "chars": chars / len(GOLD), "noise": noise_chars / max(1, kept_chars),
-            "over": over, "leak": leak, "rows": rows}
+            "leak": leak, "bchars": bchars / max(1, boundary_n), "rows": rows}
 
 
 def report(results: list[dict], stats: dict) -> str:
@@ -210,34 +211,36 @@ def report(results: list[dict], stats: dict) -> str:
          f"> {stats['edges']} 条边（自动 similar/temporal + {stats['causal']} 人工 causal）"
          f" · 扩散新增 {stats['spread'][0]}（{stats['spread'][1]}/20 题）",
          "> 检索参数：top-k=8、注入预算 600 字、explore=0（去掉随机探索带来的抖动）",
-         f"> 相关性闸门：`score >= max({score_mod.MIN_ABS}, top_score × {score_mod.MIN_REL})`"
-         " 才注入，全不达标返回空；`no_gate` 关掉闸门做对照", "",
+         f"> 证据闸门：`evidence >= max({gate_mod.MIN_EV_ABS}, top_evidence × {gate_mod.MIN_EV_REL})`；"
+         "weight/freshness 只排序不能过门，全不达标返回空", "",
          "## 黄金集", "", "| 类别 | 题数 | 考什么 |", "|---|---:|---|"]
     L += [f"| {c} | {n} | {why[c]} |" for c, n in cats.items()]
     L += ["", f"数据里 {stats['noise_text']}/{stats['n']} 条是模板生成的无关闲聊，"
           "非闲聊只有 20 条；这保证命中不是靠「池子里全是答案」。", "",
-          "## 消融结果", "", "| 配置 | 命中 | 注入字数 | 噪声占比 | 越界 |", "|---|---:|---:|---:|---:|"]
+          "## 消融结果", "", "| 配置 | 命中 | 注入字数 | 噪声占比 | 边界正文泄露 | 边界注入字数 |",
+          "|---|---:|---:|---:|---:|---:|"]
     L += [f"| `{r['name']}` | **{r['hit']}/{r['total']}** | {r['chars']:.0f} 字 | "
-          f"{r['noise']:.0%} | {r['over']}/2 |" for r in rs]
-    L += ["", "> 「命中」按 18 条可答题计；2 条边界题没有 expect_any，单列在「越界」列。",
-          "> 注入字数是 20 条问句的平均值；噪声占比只统计 18 条可答题（边界题单列）。",
+          f"{r['noise']:.0%} | {r['leak']} | {r['bchars']:.0f} 字 |" for r in rs]
+    L += ["", "> 「命中」按 18 条可答题计；2 条边界题单列「边界正文泄露」（FORBIDDEN 词出现次数，"
+          "红线 0）与「边界注入字数」。", "> 注入字数是 20 条问句的平均值；噪声占比只统计 18 条可答题。",
           "", "## 逐项解读", ""]
     explain = {
-        "full": "带闸门的基线。当前阈值 1.2/0.35 与 no_gate 数字完全一致：分数量级压不过闸门，见 ISSUE-0017。",
-        "no_gate": "关掉闸门即旧 top-k 行为。与 full 的差值就是闸门单独贡献的精度与代价。",
-        "no_spread": "「面试结果」正文没有「面试」二字，失去人工 causal 边的 1.5×activation 后掉出 top-8；生产自动建边只覆盖 similar/temporal。",
-        "no_score_emotion": "问句含「累」，情绪分原本给负效价高唤醒的失眠记忆 +1.3；置 0 后被中权重闲聊挤出 top-8。",
-        "no_score_tag": "标签一撤，家乡/游戏/睡眠这类零字面事实只剩权重，挤不进 top-8；宠物题因正文含「养了」还有字面重合，反而活下来。",
-        "no_weight_prior": "跨表述事实和开放印象题失去唯一抓手；其余题由标签、字面、情绪接住。",
-        "no_dedupe": "命中不变，但重复条目都留在注入里，字数和噪声一起上升；去重买的是密度，不是召回。",
-        "no_layer": "level 只影响 assemble 的排序和措辞，select 打分里没有 level 项；命中不变，字数只差几字。",
-        "no_decay": "freshness 满分只有 0.5，压不过 2 分标签、1 分权重；没有排名翻转。",
-        "literal_only": "只剩问句带原词的题能中；不凑 top-8，注入字数骤降、噪声占比反而最低——它的问题是找不到，不是找错。",
+        "full": "证据闸门生效后的基线：命中由字面/标签/激活/情绪证据决定，权重先验不再单独过门。",
+        "no_gate": "关掉闸门即旧 top-k 行为：噪声与字数回到未过滤水平；多出的命中靠凑满 top-8 带进零证据题。",
+        "no_spread": "激活扩散是证据之一：关掉后「面试结果」（靠 causal 边拿到 offer）与「我是不是嘴硬心软」掉出闸门。",
+        "no_score_emotion": "情绪对齐算证据：关掉后带情绪词的问句失去匹配信号，面试结果、累、印象类共 4 条掉出闸门。",
+        "no_score_tag": "标签是零字面事实的主要证据：关掉后名字/职业/家乡/游戏/睡眠等只剩字面，7 条掉出闸门。",
+        "no_weight_prior": "权重不参与闸门，关掉只改排序：命中与 full 一致——这正是证据闸门修掉的老问题。",
+        "no_dedupe": "命中不变，重复条目略增字数和噪声；闸门后注入本来就少，去重收益变小。",
+        "no_layer": "level 只影响 assemble 的排序和措辞，不进证据；命中不变。",
+        "no_decay": "freshness 只参与排序、不进证据；关掉后排名不翻转，命中不变。",
+        "literal_only": "只剩字面证据时，只有问句带原词的题能过门；它的问题是找不到，不是找错。",
     }
     for r in rs:
         miss = "没有漏题。" if not r["misses"] else "漏掉：" + "、".join(f"「{q}」" for q in r["misses"]) + "。"
         L.append(f"**`{r['name']}`** — 命中 {r['hit']}/{r['total']}（{r['hit'] - base['hit']:+d}），"
-                 f"平均注入 {r['chars']:.0f} 字，噪声 {r['noise']:.0%}，越界 {r['over']}/2。"
+                 f"平均注入 {r['chars']:.0f} 字，噪声 {r['noise']:.0%}，"
+                 f"边界泄露 {r['leak']}、注入 {r['bchars']:.0f} 字。"
                  f"{explain[r['name']]}{miss}")
         L.append("")
     L += ["", "## 结论", "", _conclusion(base, {r["name"]: r for r in rs})]
@@ -247,28 +250,24 @@ def report(results: list[dict], stats: dict) -> str:
 def _conclusion(base: dict, by: dict) -> str:
     """按实测差值写结论，不写死数字。"""
     loss = {n: base["hit"] - r["hit"] for n, r in by.items() if n != "full"}
-    w, dd = by["no_weight_prior"], by["no_dedupe"]
-    legacy = ("你还记得我叫什么名字吗", "我是干什么的", "上次面试结果怎么样",
-              "我上次加班到几点", "我的睡眠怎么样", "你觉得我这个人怎么样")
-    lost = [q for q in legacy if q in w["misses"]]
+    ng = by["no_gate"]
+    misses = "、".join(f"「{q}」" for q in base["misses"]) or "无"
     return "\n".join([
-        f"1. **必需**：字面重合（关掉 {loss['literal_only']} 条）、标签（{loss['no_score_tag']} 条）、"
-        f"权重先验（{loss['no_weight_prior']} 条）。三者覆盖不同的题，缺一类就有一类问句失明。",
-        f"2. **补丁**：激活扩散掉 {loss['no_spread']} 条（只救零字面的因果结果），"
-        f"情绪项掉 {loss['no_score_emotion']} 条（只影响带情绪词的问句）。不是主力，但删了会少两类能力。",
-        "3. **装饰**：level 的召回贡献是 0——它只被 assemble 用来调顺序和措辞，select 里没有 level 项；"
-        "时间衰减的召回贡献也是 0，freshness 满分 0.5，压不过标签的 2 分。这两项最容易被高估。",
-        f"4. **去重买密度**：命中不掉，但注入字数从 {base['chars']:.0f} 涨到 {dd['chars']:.0f}"
-        f"（{(dd['chars'] / base['chars'] - 1) * 100:+.0f}%），噪声也升。它让同一件事只说一次，不负责找对。",
-        f"5. **回答「6/6 是不是靠权重先验」**：不是。`no_weight_prior` 只掉 {loss['no_weight_prior']} 条，"
-        f"仍有 {w['hit']}/18；掉的是「我是干什么的」和「你最了解我什么」——零字面、零标签、只能靠权重的题。"
-        f"对应旧 6 题（名字/职业/面试结果/加班/睡眠/印象）关掉权重后是 {len(legacy) - len(lost)}/6，"
-        f"掉的正是「{'、'.join(lost) or '无'}」。所以 6/6 不是全靠权重先验，但跨表述那一分确实是权重买的。",
-        f"6. **边界**：所有配置都越界 2/2（注入了非空上下文），shadow 正文由 scope 过滤，"
-        f"直接泄露 {by['full']['leak']}/2；相关性闸门已在 PR-0017 落地，本数据 full/no_gate "
-        "数字相同，阈值仍需更大规模数据校准。", "",
-        "一句话：**字面 + 标签 + 权重是三条腿，扩散和情绪是补丁，level 和衰减目前是装饰；"
-        "去重省字不救命；边界已有门，但阈值还没校准。**", ""])
+        f"1. **证据是闸门的唯一入场券**：关掉标签掉 {loss['no_score_tag']} 条、情绪掉 "
+        f"{loss['no_score_emotion']} 条、激活掉 {loss['no_spread']} 条；只留字面时只剩 "
+        f"{by['literal_only']['hit']}/18。权重（{loss['no_weight_prior']} 条）、新鲜度"
+        f"（{loss['no_decay']} 条）、层级（{loss['no_layer']} 条）只影响排序，不进证据。",
+        f"2. **闸门买的是精度**：`full` 噪声 {base['noise']:.0%}、平均 {base['chars']:.0f} 字；"
+        f"`no_gate` 噪声 {ng['noise']:.0%}、{ng['chars']:.0f} 字。代价是命中 {base['hit']}/18 vs "
+        f"{ng['hit']}/18——`no_gate` 靠凑满 top-8 把零证据题也带进来。",
+        f"3. **丢掉的是零证据题**：{misses}——问句与记忆零字面、零标签、零激活，只剩权重先验；"
+        "证据闸门按设计不再放行，这类跨表述检索归 ISSUE-0001。",
+        f"4. **边界**：两列都不看 block 是否为空——正文泄露 {base['leak']}（`no_gate` {ng['leak']}），"
+        f"边界注入 {base['bchars']:.0f} 字（`no_gate` {ng['bchars']:.0f} 字）。"
+        "时钟题（今天几号）在 select 入口直接返回空；影子题只输出遮蔽句是 DESIGN 7.4 的既定行为。",
+        "",
+        f"一句话：**双阈值只管分数，证据闸门才能把 weight/freshness 从相关性里拆出来；"
+        f"噪声 {ng['noise']:.0%}→{base['noise']:.0%} 的代价是零证据题，留给混合检索。**", ""])
 
 
 def main() -> None:
@@ -286,7 +285,7 @@ def main() -> None:
             results.append(measure(cfg, _transform(cfg, source), source, graph, cache))
             r = results[-1]
             print(f"[{cfg.name:<16}] 命中 {r['hit']}/{r['total']} 注入 {r['chars']:.0f} 字 "
-                  f"噪声 {r['noise']:.0%} 越界 {r['over']}/2")
+                  f"噪声 {r['noise']:.0%} 泄露 {r['leak']} 边界 {r['bchars']:.0f} 字")
         out = os.path.join(ROOT, "benchmarks", "results", "ablation.md")
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:

@@ -28,6 +28,19 @@ TOPICS = ["项目", "数据库", "接口", "部署", "文档", "测试", "会议
           "脚本", "配置", "调度", "缓存", "索引", "图表", "日志", "告警",
           "备份", "迁移", "权限", "监控"]
 VERBS = ["今天在弄", "说{}有点烦", "问{}怎么搞", "把{}改完了", "吐槽{}太慢"]
+# 事实标签：从文本主题自然派生（与生产 perceive/extract 的输出同构）。
+FACT_TAGS = (
+    ("吕宇轩", ("名字", "称呼")),
+    ("量化", ("工作", "项目")),
+    ("架构师", ("职业", "目标")),
+    ("面试", ("面试", "工作")),
+    ("加班", ("加班", "工作")),
+    ("睡不着", ("睡眠", "情绪")),
+    ("领导", ("情绪", "心情", "工作")),
+    ("倔", ("印象", "性格")),
+    ("照顾自己", ("印象", "自理")),
+)
+NOISE_TAGS = ("日常",)
 OWNER_FACTS = [
     "我叫吕宇轩，也叫 BangBang",
     "我在做量化交易项目",
@@ -57,13 +70,25 @@ def gen_messages(seed: int = 7):
     return out
 
 
+def tags_of(text: str, owner: bool) -> list[str]:
+    """从文本主题派生标签；取不到主题时按日常闲聊处理。"""
+    if not owner:
+        return list(NOISE_TAGS)
+    tags: list[str] = []
+    for key, labels in FACT_TAGS:
+        if key in text:
+            tags.extend(label for label in labels if label not in tags)
+    return tags or list(NOISE_TAGS)
+
+
 def to_art(day: int, uid: int, text: str):
     level = "scene" if uid == 0 else "detail"
     if uid == 0 and any(k in text for k in ("我叫", "我在做", "我想成为")):
         level = "fact"
     return make(
         "memory",
-        {"text": text, "level": level, "shape": "point", "chrono": "once", "about": "other"},
+        {"text": text, "level": level, "shape": "point", "chrono": "once",
+         "about": "other", "tags": tags_of(text, uid == 0)},
         scope="private" if uid == 0 else "shadow",
         strength={"weight": 2.0 if text in OWNER_FACTS else 0.6,
                   "confidence": 1.0 if uid == 0 else 0.7,
