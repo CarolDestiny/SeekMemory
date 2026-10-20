@@ -1,8 +1,8 @@
 # 缺陷档案
 
 > 记录开发期抓到的真实缺陷，作为回归与优化依据。
-> 核对基准：HEAD `f5cb2b9`（2026-10-21）。行号为当前代码；改动后行号会漂移，按每条的文件名与代码锚点重新定位。
-> 修复提交：`b90cbd2`（父提交 `a8128cb`）。本文所有“修复前”行为都在该父提交的完整副本上实测过。
+> 核对基准：代码树 `b55e6a5`（2026-10-21）。行号为该提交下的代码；改动后行号会漂移，按每条的文件名与代码锚点重新定位。
+> 修复提交：`b55e6a5`（父提交 `c650633`）。本文所有“修复前”行为都在该父提交的完整副本上实测过。
 
 ## BUG-001 · decay 误杀非 memory 家族，人格 37 天后被“遗忘”
 
@@ -26,7 +26,7 @@
 
 - **严重度**：中高
 - **发现方式**：测试 agent 的写入链路审查——`validate()` 有定义、有单测，但修复前生产代码零调用（`grep -rn "validate("` 只命中 `core/` 的定义与 `tests/`；现在唯一调用点是 `main.py:234`）。
-- **现象**：抽取结果缺 `text`/`level` 或 level 非法也能 `db.upsert` 入库；坏数据一直躺到 recall 组装时才由 `content_of` 抛 `ValueError`（`core/artifact.py:137-141`），被 `main.py:142-143` 的兜底捕获，表现为“这一轮注入直接消失”。修好后坏条目在写库前被跳过并记 warning，不再污染 store。
+- **现象**：抽取结果缺 `text`/`level` 或 level 非法也能 `db.upsert` 入库。缺 `text` 的坏数据一直躺到 recall 组装时才由 `content_of` 抛 `ValueError`（`core/artifact.py:137-141`），被 `main.py:142-143` 的兜底捕获，表现为“这一轮注入直接消失”；非法 `level` 不炸，但会被 `assemble._sentence` 静默当成 `scene`。修好后坏条目在写库前就被跳过并记 warning，不再污染 store。
 - **根因**：`main.py:231-242`。旧循环先 `make` 再 `db.upsert`，中间没有 `validate(art)`；校验函数定义在 `core/artifact.py:127-134`，唯一生产调用点缺失（现在在 `main.py:234`）。
 - **修复**：`main.py:234` 在 `make` 之后、`upsert` 之前调 `validate(art)`；`except ValueError` 记 `logger.warning` 并 `continue`（`:235-237`），其它构造异常记 error 并跳过（`:238-240`）；只有 `db.upsert` + `cache.put` 都成功才 `written += 1`（`:241-247`），日志改为实际写入条数（`:249`）。
 - **回归**：**只测了函数，没测调用点**。`validate()` 本身在 `tests/test_artifact.py:80-167` 有 6 组用例；`main._nightly` 无测试。建议用假 provider（固定返回坏 JSON）跑一遍 `_nightly`，断言坏条目不入库、好条目照写。
@@ -44,7 +44,7 @@
 
 - **严重度**：中
 - **发现方式**：测试 agent 构造 `header.strength.hits=12`、payload 无 `hits` 的节点，分别调 `promote_candidates(min_hits=10)` 与 `_recently_used`。
-- **现象**：晋升永远返回空——因为读的是 `payload["hits"]`，而写入端只写 `header.strength.hits`；“刚用过”的 -2.0 惩罚也永不触发。实测同一节点（weight=2.0、hits=12、payload 有 `last_used`）：修复前 promote 0 条、`_recently_used`=0.0；修复后 1 条、1.0。
+- **现象**：`promote_candidates` 在正常写入路径下永远筛不出人——它读 `payload["hits"]`，而写入端只写 `header.strength.hits`（promote 目前还没接进主流程，接上即失效）；`score` 的“刚用过” -2.0 惩罚则是当下就失效。实测同一节点（weight=2.0、hits=12、payload 有 `last_used`）：修复前 promote 0 条、`_recently_used`=0.0；修复后 1 条、1.0。
 - **根因**：写入端在 `header.strength`：`main.py:55-60` → `core/artifact.py:43` → `store/db.py:97`（整块 JSON 落库）→ `:214` 还原。读端却各读各的：`maintain/promote.py:17` 旧代码 `art.payload.get("hits", 0)`，`recall/score.py:132` 旧代码 `payload.get("hits", 0)`。两个来源，写一个读另一个。
 - **修复**：两个读端统一读 `art.header.strength.hits`：`maintain/promote.py:17`、`recall/score.py:132`；非法值回落 0（`maintain/promote.py:18-21`、`recall/score.py:133-134`）。
 - **回归**：**无直接用例**。`tests/test_store.py:63-93` 只验证 hits 能 roundtrip 回 header（`:78` 写入 7），不验证读者；`maintain/promote.py` 没有任何测试引用。建议补：hits=12 → `promote_candidates` 命中；hits>0 且有 `last_used` → 分数比无 hits 低 2.0。
@@ -53,7 +53,7 @@
 
 - **严重度**：中
 - **发现方式**：测试 agent 的口语化输入探测（“是不是这样”“对方今天怎么样”），观察 `signals()` 的 wrong/right。
-- **现象**：修复前 `signals("我今天加班到很晚", "是不是这样")` 返回 wrong=2、reasons=`明确否定（不是）`，触发 `should_reflect` 的 ≥2 阈值，把正常反问判成“她上轮说错了”；`signals(..., "对方今天怎么样")` 返回 right=1、reasons=`追问（对）`。修复后两者均为 0/0。这两类输入在日常对话里很常见，误判会直接改错记忆。
+- **现象**：修复前 `signals("我今天加班到很晚", "是不是这样")` 返回 wrong=2、reasons=`明确否定（不是）`，语义上等于“她上轮说错了”（`should_reflect` 阈值 ≥2）；`signals(..., "对方今天怎么样")` 返回 right=1、reasons=`追问（对）`。修复后两者均为 0/0。`signals` 目前只被测试调用、尚未接进主流程，但这两类输入在日常对话里很常见，接线后就是直接的误判来源。
 - **根因**：`maintain/reflect.py:53-63`。旧 `_find_negation` 是裸子串 `word in text`，“是不是”里命中“不是”；`:66-74` 旧 `_FOLLOWUPS` 含单字“对”，“对方”里命中“对”。
 - **修复**：四处配合——`:17` 先剔除 7 个疑问式（是不是/对不对/好不好/行不行/能不能/要不要/有没有）；`:30-34` 否定改为整句正则，要求落在句首或标点/空白之后，句首允许一个短主语；`:18-28` 追问词去掉单字“对”，改成“对啊/对的/没错”等多字形式；`:59-63` 先 replace 疑问式再 `search`。
 - **回归**：**部分覆盖，且守不住这两例**。`tests/test_maintain.py:135-155` 的 ReflectTest 覆盖“不是这个意思”“然后呢”“不对”，但“不对”在旧实现里也会先剔否定词再判追问，所以修复前同样通过；“是不是这样”“对方怎么样”没有用例。建议把这两个输入直接写成断言（wrong=0、right=0）。
@@ -69,7 +69,7 @@
 
 ## 附：回归覆盖缺口
 
-本次整理做了回退验证：把 `b90cbd2` 回退到父提交 `a8128cb`（`git archive a8128cb` 解到独立目录，逐个跑 `tests/test_*.py`），**63 条单测仍全部通过**。也就是说，这 7 条缺陷目前没有被测试守住；修复只是把行为改对，回归仍靠人工。
+本次整理做了回退验证：把 `b55e6a5` 回退到父提交 `c650633`（`git archive c650633` 解到独立目录，逐个跑 `tests/test_*.py`），**63 条单测仍全部通过**。也就是说，这 7 条缺陷目前没有被测试守住；修复只是把行为改对，回归仍靠人工。
 
 | 编号 | 最接近的现有用例 | 修复前能否失败 | 缺口 |
 |---|---|---|---|
@@ -100,4 +100,4 @@ python3 tests/test_recall.py
 python3 tests/test_store.py
 ```
 
-行为复核脚本（不写库、可丢弃）：构造 37 天前的 persona 跑 `decay_all`；用缺 `shadow_text` 的 secret + 正常 memory 跑 `build`；构造 `hits=12` 的节点跑 `promote_candidates`；用 `"是不是这样"`/`"对方今天怎么样"` 跑 `signals`。四组都应看到本文“修复后”的结果。
+行为复核脚本（用临时库、可丢弃）：构造 37 天前的 persona 跑 `decay_all`；用缺 `shadow_text` 的 secret + 正常 memory 跑 `build`；构造 `hits=12` 的节点跑 `promote_candidates`；用 `"是不是这样"`/`"对方今天怎么样"` 跑 `signals`。四组都应看到本文“修复后”的结果。
