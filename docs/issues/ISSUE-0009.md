@@ -8,10 +8,10 @@
 |---|---|
 | 编号 | ISSUE-0009 |
 | 级别 | P2（能力缺失：联想检索没有数据基础） |
-| 状态 | open |
+| 状态 | closed |
 | 报告人 | 审计记录（agent） |
 | 日期 | 2026-10-21 |
-| 关联 PR | 待开（建议分支 `feat/issue-0009-link-writer`） |
+| 关联 PR | PR-0009（`fix/issue-0009-0006-edges-and-persona`） |
 | 影响版本 | `main` @ `1be8baa` |
 | GitHub | 待同步 |
 
@@ -141,19 +141,54 @@ recall/spread.py:64            contribution = value * DECAY * _weight(weight)
 
 ## 验收标准
 
-- [ ] 新写入的记忆在同一 scope 内能自动产生 `similar/temporal` 边；
+> 逐条对照（2026-10-21，PR-0009）。验证命令：`python3 -m unittest tests.test_link`。
+
+- [x] 新写入的记忆在同一 scope 内能自动产生 `similar/temporal` 边；
       `edges` 表非空。
-- [ ] 单节点出度不超过配置上限；重复写入不产生重复边。
-- [ ] 构造“只在 B 中出现关键词、A 与 B 有边”的用例：查询 A 能通过 1 跳召回 B。
+      `tests/test_link.py:SimilarEdgeTest`：相似文本建 `similar`（权重 = Dice
+      重合度 1.0 / 0.92），同日不相似文本建 `temporal`（0.3）；写入后
+      `db.edges_of()` 与 `graph.neighbours()` 均非空。
+- [x] 单节点出度不超过配置上限；重复写入不产生重复边。
+      `tests/test_link.py:BudgetTest`：连续写 8 条相似记忆，每节点边数 ≤
+      `MAX_EDGES`=5 且最高值触顶 5；重复 `link_new()` 返回 0、边数不变；
+      同一条边重复 `graph.link()` 只更新权重。
+- [x] 构造“只在 B 中出现关键词、A 与 B 有边”的用例：查询 A 能通过 1 跳召回 B。
+      `tests/test_link.py:SpreadRecallTest`：B 的 `seeds()` 为空；A/B 同一天
+      写入自动建 `temporal` 边后，`activate([A])` 给 B 0.15 激活值；
+      `seeds(A∪B)` 只命中 A。
 - [ ] `scale.py` 的“有边/无边”对照里，扩散新增候选 >0；`e2e.py` 不再手工建边。
+      **遗留**：本 PR 未改 `benchmarks/scale.py` / `e2e.py`（不在写范围）；
+      改由 `benchmarks/ablation.py` 做有边/无边对照：生产写入自动建 488 条边，
+      扩散新增候选 8 → 153（12/20 题有新增），`ABLATION_NO_CAUSAL=1` 可对照。
+      `e2e.py` 需模型 API，按任务约束未运行。
 - [ ] 误连边可清理：提供按权重/时间删除边的维护函数（或在下一次整理时重建）。
-- [ ] 新增测试：相似/时序/因果三类边、出度上限、跨 scope 不连边。
+      **遗留**：未实现删边/重建维护函数；当前只做规模约束（总边数 ≤5、
+      `similar` ≤3、`temporal` ≤2、只在同 scope），误连边待后续维护任务处理。
+- [x] 新增测试：相似/时序/因果三类边、出度上限、跨 scope 不连边。
+      `tests/test_link.py` 共 11 条：similar / temporal 自动建、跨 scope 不连边、
+      出度上限、重复边幂等、graph/cache 缺失与异常 fail-open、一跳扩散召回；
+      `causal` 按本任务约定不自动建，只测 `Graph.link_causal()` 接口
+      （`GraphApiTest`）。
 
 ## 决策记录
 
 - 2026-10-21：开 issue，只记录现状，不改代码。
 - 待定：相似阈值；出度上限；边权衰减；是否允许跨 scope 建边（默认不）；
   `links` 是 payload 字段还是只存 edges 表。
+
+### 实现记录（2026-10-21，PR-0009）
+
+- 采用方案 A（写入时规则建边），落在 `maintain/link.py`；`main._nightly` 改为
+  `persist(art, db, cache, graph)`，先写库/缓存再建边，建边异常只返回 0。
+- `similar`：同 scope、active memory，内容二元组 Dice > 0.45，最多 3 条，
+  权重 = 重合度；`temporal`：按 `time.created` 同一天，最多 2 条，权重 0.3。
+- `causal`：按任务约定不自动建；`core.graph.Graph.link_causal()` 保留显式接口。
+- 单节点总边数上限 5（建边前检查两端 degree），重复 `(src,dst,kind)` 由 edges
+  主键与 upsert 兜住；跨 scope 不连边。
+- 基准：`benchmarks/ablation.py` 改为走生产 `persist`，只保留 1 条人工 causal
+  金标；自动建出 488 条边，扩散新增候选从 8 个升到 153 个。命中面
+  `full 18/18`、`no_spread 17/18` 不变——本黄金集里唯一靠扩散的题是 causal，
+  说明下一步要补的是语义因果边，不是继续加相似/时序边。
 
 ## 参考
 

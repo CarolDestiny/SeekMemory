@@ -28,6 +28,16 @@ class Graph:
             raise ValueError("不能把节点连到自己")
         self.db.add_edge(src, dst, kind, float(weight))
 
+    def link_causal(self, src: str, dst: str, weight: float = 1.0) -> None:
+        """因果边接口：自动建边需要语义判断，暂不调用，留给整理/人工补齐。"""
+        self.link(src, dst, "causal", weight)
+
+    def degree(self, node_id: str) -> int:
+        """返回节点当前的关系边条数（三类联想边与树边都会计入）。"""
+        if not node_id or self.db is None:
+            return 0
+        return len(self.db.edges_of(node_id))
+
     def neighbours(
         self,
         node_id: str,
