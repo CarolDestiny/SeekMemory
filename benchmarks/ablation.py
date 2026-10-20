@@ -47,10 +47,12 @@ class Cfg:
     layer: bool = True
     decay: bool = True
     literal_only: bool = False
+    gate: bool = True  # 相关性双阈值闸门（ISSUE-0017）
 
 
 CONFIGS = (
     Cfg("full"),
+    Cfg("no_gate", gate=False),
     Cfg("no_spread", spread=False),
     Cfg("no_score_emotion", emotion=False),
     Cfg("no_score_tag", tag=False),
@@ -157,7 +159,7 @@ def pipeline(cfg: Cfg, pool, source, graph, cache, q: str) -> tuple[str, list[Ar
     else:
         candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
     with _clock(cfg):
-        picked = select(candidates, q, 0.0, k=K, explore=0.0)
+        picked = select(candidates, q, 0.0, k=K, explore=0.0, gate=cfg.gate)
     if not cfg.layer:
         picked = [_without_level(a) for a in picked]
     with _dedupe(cfg):
@@ -211,7 +213,9 @@ def report(results: list[dict], stats: dict) -> str:
     L = ["# 消融基准：每个组件值多少", "",
          f"> {stats['n']} 条消息（{stats['noise']:.0%} 是模板闲聊）· 20 条黄金问答"
          f"（18 条可答 + 2 条边界）· 固定种子 {SEED}",
-         "> 检索参数：top-k=8、注入预算 600 字、explore=0（去掉随机探索带来的抖动）", "",
+         "> 检索参数：top-k=8、注入预算 600 字、explore=0（去掉随机探索带来的抖动）",
+         f"> 相关性闸门：`score >= max({score_mod.MIN_ABS}, top_score × {score_mod.MIN_REL})`"
+         " 才注入，全不达标返回空；`no_gate` 关掉闸门做对照", "",
          "## 黄金集", "", "| 类别 | 题数 | 考什么 |", "|---|---:|---|"]
     L += [f"| {c} | {n} | {why[c]} |" for c, n in cats.items()]
     L += ["", f"数据里 {stats['noise_text']}/{stats['n']} 条是模板生成的无关闲聊，"
@@ -223,7 +227,8 @@ def report(results: list[dict], stats: dict) -> str:
           "> 注入字数是 20 条问句的平均值；噪声占比只统计 18 条可答题（边界题单列）。",
           "", "## 逐项解读", ""]
     explain = {
-        "full": "基线顶到黄金集天花板；但八成注入字与本题无关，命中靠 1~3 条相关记忆挤进 top-8。",
+        "full": "带闸门的基线。当前阈值 1.2/0.35 与 no_gate 数字完全一致：分数量级压不过闸门，见 ISSUE-0017。",
+        "no_gate": "关掉闸门即旧 top-k 行为。与 full 的差值就是闸门单独贡献的精度与代价。",
         "no_spread": "「面试结果」正文没有「面试」二字，失去 1.5×activation 后掉出 top-8。",
         "no_score_emotion": "问句含「累」，情绪分原本给负效价高唤醒的失眠记忆 +1.3；置 0 后被中权重闲聊挤出 top-8。",
         "no_score_tag": "标签一撤，家乡/游戏/睡眠这类零字面事实只剩权重，挤不进 top-8；宠物题因正文含「养了」还有字面重合，反而活下来。",
