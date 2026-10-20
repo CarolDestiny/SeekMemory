@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: 语法检查
+        run: |
+          find . -name "*.py" -not -path "./.git/*" | xargs -I{} python -c "import ast,sys;ast.parse(open('{}').read())"
+      - name: 单元测试
+        run: |
+          for f in tests/test_*.py; do echo "== $f"; python "$f"; done
+      - name: Benchmark
+        run: python benchmarks/run.py
+      - name: 规模基准
+        run: SCALE_USERS=8 SCALE_DAYS=30 SCALE_MSGS=40 python benchmarks/scale.py
