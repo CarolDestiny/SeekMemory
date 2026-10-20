@@ -36,9 +36,12 @@ assemble    → core.artifact, recall.designated (deliverable, triggers_of)
 `build()` 信任 `arts` 的传入顺序就是相关度降序；`select()` 的候选既可以是
 裸 `Artifact`，也可以是 `(Artifact, activation)` 二元组（`main.py` 即后者）；
 `now_days` 传 0 会用 `time.created` 推算年龄，传正小数视为年龄，传大数
-视为绝对天数（epoch days / ordinal）。`select()` 默认开启相关性闸门：
-`score >= min_abs` 且 `score >= top_score × min_rel` 的候选才保留，全不达标
-返回空列表；`gate=False` 回到“凑满 top-k”的旧行为，供消融对比。`build()` 的
+视为绝对天数（epoch days / ordinal）。`select()` 默认开启证据闸门：
+只有字面 / 标签 / 情绪 / 激活四项累计证据达到
+`max(min_ev_abs, top_evidence × min_ev_rel)` 的候选才保留，全不达标返回空列表；
+`weight` / `freshness` 只参与排序。纯问时间的时钟类消息直接返回空。
+`gate=False` 回到“凑满 top-k”的旧行为，供消融对比。`gate.pinned(cache)` 返回
+常驻层（persona + 印象前 2），不经过证据闸门。`build()` 的
 `text` / `is_private` 是
 可选会话上下文：不传时 designated 只给托付提示（旧行为），传了才按三条硬
 条件交付正文。

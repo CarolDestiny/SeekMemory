@@ -17,6 +17,7 @@ from benchmarks.dataset import build, decayed_events  # noqa: E402
 from core.artifact import content_of, make  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
+from recall.gate import pinned  # noqa: E402
 from recall.score import select  # noqa: E402
 from recall.seed import seeds  # noqa: E402
 from recall.spread import activate  # noqa: E402
@@ -25,8 +26,10 @@ from store.db import DB  # noqa: E402
 
 
 def to_artifact(e):
-    """Event -> Artifact"""
+    """Event -> Artifact；标签与生产 perceive/extract 的输出保持同构。"""
     payload = {"text": e.text, "level": e.level, "shape": "point", "chrono": "once", "about": "other"}
+    if e.tags:
+        payload["tags"] = list(e.tags)
     if e.level == "impression":
         payload["shape"] = "pattern"
     return make(
@@ -101,13 +104,14 @@ def main() -> None:
     eligible_levels = 0
 
     rows = []
+    pin = pinned(cache)
     for q in queries:
         pool = cache.active()
         t0 = time.perf_counter()
         sid = seeds(q.text, pool)
         act = activate(sid, graph, cache)
-        picked = select([(a, float(act.get(a.header.id, 0.0))) for a in pool],
-                        q.text, 0.0, k=8, explore=0.0)
+        picked = pin + select([(a, float(act.get(a.header.id, 0.0))) for a in pool],
+                              q.text, 0.0, k=8, explore=0.0)
         block = assemble(picked, budget=600)
         dt = (time.perf_counter() - t0) * 1000
         injected_chars += len(block)

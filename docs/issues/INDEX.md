@@ -1,8 +1,8 @@
 # SeekMemory Issues 索引
 
-> 审计基准：`main` @ `1be8baa`（2026-10-21）。行号以当前工作树为准。
+> 审计基准：`main` @ 首次审计 `1be8baa`，之后随修复推进更新。行号以当前工作树为准。
 > 级别口径：P1 = 设计承诺的核心功能失效或隐私边界失效；P2 = 能力缺失/未接线；
-> P3 = 增强。状态均为 `open`，本轮只记录，不改代码。
+> P3 = 增强。状态：`open` 未修、`merged` 已修并合入、`closed` 已关闭。
 
 | 编号 | 标题 | 级别 | 状态 | 一句话 |
 |---|---|---|---|---|
@@ -22,7 +22,8 @@
 | [ISSUE-0014](ISSUE-0014.md) | 反思模块没接线：signals 只有测试在调，冷处理、错误留档、负权重、情绪闭环都没有 | P2 | open | `enable_reflect` 是死配置；没有 pending 表、没有 mistake、没有 weight=-0.3。 |
 | [ISSUE-0015](ISSUE-0015.md) | 措辞没有三档不确定，也没有 metamemory：confidence 不参与表达，分不清“我忘了”和“你没说过” | P3 | open | `_memory_sentence()` 永远“你记得”；缓存只装 active，查不到同话题 forgotten。 |
 | [ISSUE-0016](ISSUE-0016.md) | 无语境回忆（random_recall）完全没实现：空消息直接 return，10% 探索只在有 query 时发生 | P3 | open | 没有 `funny × weight × noise` 排序，也没有 hot/sensitive 排除和“长期+缓冲”双池。 |
-| [ISSUE-0017](ISSUE-0017.md) | 没有相关性闸门：select 永远凑满 top-k | P1 | open | 闸门已落地（PR-0017 / `8453f93`），但默认 1.2/0.35 下噪声仍 81%、边界 2/2，验收未达标。 |
+| [ISSUE-0017](ISSUE-0017.md) | 没有相关性闸门：select 永远凑满 top-k | P1 | merged | PR-0017 落双阈值（无效）→ PR-0018 换证据闸门：检索层噪声 81%→40%、常驻层 38 字单列、边界正文泄露 0、时钟题 0 检索。 |
+| [ISSUE-0019](ISSUE-0019.md) | 静态黄金集饱和：run.py 100/100、ablation 17/18 | P2 | open | 三个静态基准全部贴顶，下一轮改动会得到「没有变化」的假结论；需要多跳/时序撤回/冲突消解/跨会话任务集。 |
 
 ## 关系图（读的顺序）
 
