@@ -75,7 +75,7 @@ grep -rn "DELETE\|delete\|GC\|gc" --include="*.py" store maintain
 grep -n "max_episodes" _conf_schema.json main.py maintain/*.py
 ```
 
-`first` 只出现在 `core/families/memory.py:44-46` 的校验和 `merge.py:157` 的
+`first` 只出现在 `core/families/memory.py:44-46` 的校验和 `maintain/merge.py:157` 的
 `"first": False`，衰减路径没有读。`max_episodes` 只出现在
 `_conf_schema.json:54-58`，没有调用方。
 

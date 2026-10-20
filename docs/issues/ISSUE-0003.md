@@ -44,7 +44,7 @@ store/db.py:112   def list(self, family=None, state=None):
 store/db.py:116       for column, value in (("family", family), ("state", state)):
 ```
 
-`scope` 只出现在写入/持久化：
+`scope` 只被写入、持久化和还原，没有任何筛选：
 
 ```text
 core/artifact.py:67   scope: str = "private"
