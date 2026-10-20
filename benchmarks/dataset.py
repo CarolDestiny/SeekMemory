@@ -73,7 +73,7 @@ def build(seed: int = 42) -> tuple[list[Event], list[Query]]:
         Query("你觉得我这个人怎么样", ["他有点倔", "不会照顾自己"], "impression"),
         Query("我面试怎么样了", ["面试了万兴", "面试过了"], "scene"),
         Query("上次加班到几点", ["加班到两点"], "scene"),
-        Query("你还记得我名字吗", ["吕宇轩"], "detail"),
+        Query("你还记得我名字吗", ["吕宇轩"], "fact"),
         Query("我最近心情不太好", ["被领导骂", "睡不着"], "scene"),
         Query("你之前给我发过什么视频", ["大肥鱼由来的视频"], "detail"),
         Query("我是不是跟你说过一件事不让说", ["私事"], "detail"),
