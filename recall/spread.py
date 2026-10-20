@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from core.graph import Graph
-from store.cache import Cache
+try:  # 作为 astrbot 插件包的一部分导入
+    from ..core.graph import Graph
+    from ..store.cache import Cache
+except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
+    from core.graph import Graph
+    from store.cache import Cache
 
 DECAY = 0.5
 MAX_PER_ROUND = 20

@@ -122,13 +122,13 @@ class Main(star.Star):
 
         seed_ids = seeds(text, pool)
         activation = activate(seed_ids, self.graph, self.cache)
+        candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
         picked = select(
-            pool,
+            candidates,
             text,
             0.0,
             k=self._c("recall_k", 8),
             explore=self._c("explore_rate", 0.1),
-            activation=activation,
         )
         return assemble_text(picked, budget=self._c("budget_chars", 600))
 

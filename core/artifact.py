@@ -40,6 +40,7 @@ class Strength:
     arousal: float = 0.3
     valence: float = 0.0
     funny: float = 0.0
+    hits: int = 0
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,7 @@ class Artifact:
 
 
 def _now() -> str:
-    return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    return datetime.now().isoformat(timespec="microseconds")
 
 
 def _new_id() -> str:

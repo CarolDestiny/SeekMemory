@@ -71,9 +71,8 @@ def main() -> None:
     activation = activate(seed_ids, graph, cache)
     assert activation, "激活为空"
 
-    picked = select(
-        pool, "我今天加班到很晚，好累", 0.0, k=3, explore=0.0, activation=activation
-    )
+    cands = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
+    picked = select(cands, "我今天加班到很晚，好累", 0.0, k=3, explore=0.0)
     assert picked, "未选中任何记忆"
 
     block = assemble(picked, budget=600)

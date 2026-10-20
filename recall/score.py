@@ -6,8 +6,12 @@ import math
 import random
 from datetime import date
 
-from core.artifact import Artifact, content_of
-from recall.seed import overlap, tags_of
+try:  # 作为 astrbot 插件包的一部分导入
+    from ..core.artifact import Artifact, content_of
+    from .seed import overlap, tags_of
+except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
+    from core.artifact import Artifact, content_of
+    from recall.seed import overlap, tags_of
 
 POSITIVE = ("开心", "高兴", "喜欢", "哈哈", "笑", "好玩", "可爱", "棒")
 NEGATIVE = ("累", "烦", "难过", "委屈", "生气", "难受", "哭", "焦虑", "压力", "孤单", "怕")

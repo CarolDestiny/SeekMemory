@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 
-from core.artifact import Artifact, content_of
+try:  # 作为 astrbot 插件包的一部分导入
+    from ..core.artifact import Artifact, content_of
+except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
+    from core.artifact import Artifact, content_of
 
 MEME_WORDS: tuple[str, ...] = ("咕咕嘎嘎", "原神", "鸣潮", "抽象", "哈基米")
 MEME_BONUS = 0.75
