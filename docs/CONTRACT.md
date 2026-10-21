@@ -304,3 +304,115 @@ Mock 返回值也对照 YAML 校验。契约未同步生成类型、实现输出
 3. 只有 `store/db.py` 写 SQL
 4. 所有函数带类型标注
 5. 每个文件头部有 docstring：职责一句话
+
+
+---
+
+# v0.3.1 implemented contracts
+
+These contracts are additive to the earlier document.
+
+## core/source.py
+
+```python
+@dataclass(frozen=True)
+class Source:
+    id: str
+    turn_id: str
+    session_id: str
+    speaker_id: str
+    role: str
+    text: str
+    at: str = ""
+    reply_to: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+def make_source_id(*, event_id: str = "", session_id: str, speaker_id: str,
+                   role: str, text: str, at: str = "") -> str: ...
+```
+
+Source is append-only. Both user and assistant messages are Source rows.
+
+## app/contracts.py
+
+```python
+@dataclass(frozen=True)
+class DialogueTurn:
+    session_id: str
+    speaker_id: str
+    role: str
+    text: str
+    at: str = ""
+    source_id: str = ""
+    topic_id: str = ""
+
+@dataclass(frozen=True)
+class WriteOutcome:
+    written: int = 0
+    skipped: int = 0
+    ids: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
+    model_failed: bool = False
+```
+
+## core/retrieval.py
+
+```python
+@dataclass(frozen=True)
+class RetrievalCandidate:
+    artifact: Artifact
+    activation: float = 0.0
+    lexical: float = 0.0
+```
+
+`lexical` is reserved for normalized BM25 or another pluggable lexical retriever.
+
+## store/db.py
+
+```python
+def append_sources(self, sources: list[Source]) -> int: ...
+def source_umos(self, source_ids: list[str]) -> dict[str, str]: ...
+def commit(self, art: Artifact, *, expected_revision: int, op: str,
+           reason: str = "", source_ids: tuple[str, ...] = (),
+           state_events: tuple[StateEvent, ...] = ()) -> None: ...
+def history(self, node_id: str) -> list[dict]: ...
+```
+
+commit is atomic across node head, append-only version, evidence, state events and ledger.
+
+## app/checkpoint.py
+
+```python
+class CheckpointManager:
+    def record(self, art: Artifact, at: str = "") -> None: ...
+    def flush(self, now: str = "") -> int: ...
+    def due(self) -> bool: ...
+```
+
+Checkpoint commits the revision and its StateEvent in one transaction.
+
+## core/disclosure.py
+
+```python
+@dataclass(frozen=True)
+class RecallScene:
+    session_id: str
+    speaker_id: str
+    owner_id: str = ""
+    present_ids: tuple[str, ...] = ()
+
+def decide(art: Artifact, scene: RecallScene, relevance: float,
+           origin_sessions: Iterable[str] = ()) -> DisclosureDecision: ...
+def safe_text(art: Artifact, level: DisclosureLevel) -> str: ...
+```
+
+Levels are full, paraphrase, hint and silence. Cross-session content never receives raw text.
+
+## recall/retriever.py
+
+```python
+class GraphRetriever:
+    def retrieve(self, query: str, pool: list[Artifact]) -> list[RetrievalCandidate]: ...
+```
+
+A future BM25 retriever implements the same candidate contract.
