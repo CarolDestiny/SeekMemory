@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import {
   detailSchema,
+  eventSchema,
   statusSchema,
   updateSchema,
 } from "../src/features/control/model.ts"
@@ -73,6 +74,55 @@ void test("runtime status supports an unavailable engine while retaining diagnos
   assert.equal(statusSchema.parse(value).ready, false)
   assert.equal(
     statusSchema.safeParse({ ...value, schedulerCount: -1 }).success,
+    false
+  )
+})
+
+void test("legacy logs remain readable without fabricating source metadata", () => {
+  const event = eventSchema.parse({
+    id: "old",
+    at: "2026-10-21",
+    kind: "plugin",
+    status: "ready",
+    message: "Legacy event",
+    taskId: "",
+  })
+  assert.equal(event.source, null)
+  assert.equal(event.durationMs, null)
+  assert.deepEqual(event.context, {})
+})
+
+void test("structured logs preserve source, context and bounded exception frames", () => {
+  const source = {
+    module: "seekmemory.main",
+    file: "main.py",
+    function: "_flush",
+    line: 100,
+  }
+  const input = {
+    id: "new",
+    at: "2026-10-21",
+    kind: "extract",
+    status: "failed",
+    message: "Stage interrupted",
+    taskId: "task-1",
+    level: "ERROR",
+    stage: "session.extract",
+    source,
+    durationMs: 1200,
+    context: { messages: 8 },
+    error: { type: "TimeoutError", frames: [source] },
+  }
+  const event = eventSchema.parse(input)
+  assert.deepEqual(event.source, source)
+  assert.equal(event.error?.frames[0]?.function, "_flush")
+  assert.equal(
+    eventSchema.safeParse({ ...input, source: { ...source, line: -1 } })
+      .success,
+    false
+  )
+  assert.equal(
+    eventSchema.safeParse({ ...input, context: { payload: {} } }).success,
     false
   )
 })

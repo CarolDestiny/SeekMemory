@@ -30,6 +30,12 @@ export const statusSchema = z.object({
   schedulerCount: z.number().int().nonnegative(),
   config: z.record(z.string(), z.json()),
 })
+const logSourceSchema = z.object({
+  module: z.string(),
+  file: z.string(),
+  function: z.string(),
+  line: z.number().int().positive(),
+})
 export const eventSchema = z.object({
   id: z.string(),
   at: z.string(),
@@ -37,6 +43,20 @@ export const eventSchema = z.object({
   status: z.string(),
   message: z.string(),
   taskId: z.string(),
+  level: z.enum(["DEBUG", "INFO", "WARNING", "ERROR"]).default("INFO"),
+  stage: z.string().default(""),
+  source: logSourceSchema.nullable().default(null),
+  context: z
+    .record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean(), z.null()])
+    )
+    .default({}),
+  durationMs: z.number().nonnegative().nullable().default(null),
+  error: z
+    .object({ type: z.string(), frames: z.array(logSourceSchema) })
+    .nullable()
+    .default(null),
 })
 export const eventsSchema = z.object({
   events: z.array(eventSchema),

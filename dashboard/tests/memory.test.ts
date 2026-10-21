@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { mockMemories } from "../src/dev/mock-data.ts"
 import {
+  memoryCategories,
   memoryCollectionSchema,
   memoryRecordSchema,
 } from "../src/features/memory/model.ts"
@@ -191,4 +192,16 @@ await test("recent-first ordering is deterministic and never mutates the source"
     reversed.map((record) => record.id),
     originalIds
   )
+})
+
+await test("all nine category entries filter only their own family or memory level", () => {
+  const matrix = memoryCollectionSchema.parse(
+    memoryCategories.map((category) => ({ ...first, id: category, category }))
+  )
+  for (const category of memoryCategories) {
+    const result = selectLibrary(matrix, { ...initialLibraryState, category })
+    assert.equal(result.resultCount, 1)
+    assert.equal(result.selected?.category, category)
+    assert.equal(result.categoryCounts[category], 1)
+  }
 })

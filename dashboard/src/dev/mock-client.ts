@@ -4,6 +4,7 @@ import {
 } from "@/features/memory/model"
 import {
   detailSchema,
+  eventSchema,
   updateSchema,
   type ArtifactDetail,
   type ManagementClient,
@@ -72,18 +73,54 @@ for (const record of records) {
           state: record.state,
           scope: record.scope,
           said_by: record.subject,
+          lineage: {
+            sources: record.id === base.id ? ["demo-source-001"] : [],
+          },
         },
         payload,
       },
       versions: record.versions.map((item) => ({
         revision: item.revision,
         at: item.at,
-        blob: "demo-content-hash",
-        header: "{}",
+        blob: `demo-content-hash-v${item.revision}`,
+        header: JSON.stringify({
+          id: record.id,
+          family,
+          revision: item.revision,
+          scope: record.scope,
+          state: record.state,
+        }),
         content: JSON.stringify({ ...payload, text: item.text }),
       })),
-      sources: [],
-      ledger: [],
+      sources:
+        record.id === base.id
+          ? [
+              {
+                id: "demo-source-001",
+                umo: record.session,
+                at: record.updatedAt,
+                role: "user",
+                blob: "demo-source-hash",
+                text: "虚构来源示例：下午想喝浅烘焙咖啡，不加糖。",
+              },
+            ]
+          : [],
+      ledger:
+        record.id === base.id
+          ? [
+              {
+                seq: 1,
+                at: record.updatedAt,
+                op: "admin_revise",
+                entity: record.id,
+                before_hash: "demo-content-hash-v2",
+                after_hash: "demo-content-hash-v3",
+                reason: "虚构预览：补充晚间低咖啡因偏好",
+                prev_hash: "",
+                self_hash: "demo-ledger-hash",
+              },
+            ]
+          : [],
     })
   )
 }
@@ -112,7 +149,79 @@ let events: OperationEvent[] = [
     message: "sessions=2 written=3",
     taskId: "demo-extract-01",
   },
-].reverse()
+  {
+    id: "phase",
+    at: "2026-10-21T08:02:02Z",
+    kind: "extract",
+    status: "succeeded",
+    message: "Stage completed (fictional preview)",
+    taskId: "demo-extract-01",
+    level: "INFO",
+    stage: "session.extract",
+    durationMs: 1240,
+    source: {
+      module: "seekmemory.main",
+      file: "main.py",
+      function: "_flush",
+      line: 329,
+    },
+    context: { session: "napcat:GroupMessage:10001", messages: 8, written: 3 },
+  },
+  {
+    id: "warning",
+    at: "2026-10-21T08:03:00Z",
+    kind: "extract",
+    status: "warning",
+    message: "Artifact validation failed: ValueError (fictional preview)",
+    taskId: "demo-extract-02",
+    level: "WARNING",
+    stage: "artifact.validate",
+    source: {
+      module: "seekmemory.perceive.absorb",
+      file: "perceive/absorb.py",
+      function: "absorb",
+      line: 209,
+    },
+    context: { rejected: 1 },
+  },
+  {
+    id: "failure",
+    at: "2026-10-21T08:03:02Z",
+    kind: "extract",
+    status: "failed",
+    message: "Stage interrupted (fictional preview)",
+    taskId: "demo-extract-02",
+    level: "ERROR",
+    stage: "session.extract",
+    durationMs: 3012,
+    source: {
+      module: "seekmemory.main",
+      file: "main.py",
+      function: "_flush",
+      line: 329,
+    },
+    context: { messages: 8, retained: 8 },
+    error: {
+      type: "TimeoutError",
+      frames: [
+        {
+          module: "seekmemory.main",
+          file: "main.py",
+          function: "_flush",
+          line: 332,
+        },
+        {
+          module: "seekmemory.perceive.absorb",
+          file: "perceive/absorb.py",
+          function: "absorb",
+          line: 166,
+        },
+      ],
+    },
+  },
+]
+  .map((event) => eventSchema.parse(event))
+  .sort((a, b) => b.at.localeCompare(a.at))
 
 export const mockClient: ManagementClient = {
   async records() {
@@ -198,27 +307,37 @@ export const mockClient: ManagementClient = {
         record.state === "active" &&
         (record.scope !== "private" || record.session === umo)
     )
-    const picked = visible.filter((record) => record.text.includes(query))
+    const picked = visible.filter((record) =>
+      record.text.includes(query.trim())
+    )
     return {
       block: picked.map((record) => record.text).join("\n"),
-      info: { mock: true, mode: "strict", picked: picked.length },
+      info: {
+        mock: true,
+        mode: "strict",
+        picked: picked.length,
+        pinned: 0,
+        chars: picked.map((record) => record.text).join("\n").length,
+      },
       visible: visible.map((record) => record.id),
       excluded: records
-        .filter((record) => !visible.includes(record))
+        .filter(
+          (record) => record.state === "active" && !visible.includes(record)
+        )
         .map((record) => record.id),
     }
   },
   async task(kind) {
     const id = "demo-" + crypto.randomUUID()
     events = [
-      {
+      eventSchema.parse({
         id,
         at: new Date().toISOString(),
         kind,
         status: "succeeded",
         message: "Mock task completed; no model call or real data change",
         taskId: id,
-      },
+      }),
       ...events,
     ]
     return id
