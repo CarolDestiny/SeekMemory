@@ -19,6 +19,7 @@ from .core.graph import Graph
 from .core.tree import Tree
 from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
+from .perceive.calls import log_call
 from .perceive.compress import build_compress_prompt, parse_compress
 from .recall.designated import is_private
 from .recall.pipeline import build_block
@@ -123,8 +124,9 @@ class Main(star.Star):
                 return
 
             umo = str(getattr(event, "unified_msg_origin", "") or "")
-            block = self._recall_block(text, umo, is_private(event),
-                                       str(event.get_sender_id()))
+            block, info = self._recall_block(text, umo, is_private(event),
+                                            str(event.get_sender_id()))
+            log_call(self._calls_path(), umo, info)
             if block:
                 req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
                 if self._c("debug_log", False):
@@ -132,8 +134,14 @@ class Main(star.Star):
         except Exception as e:  # noqa: BLE001
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
 
+    def _calls_path(self) -> str:
+        """调用日志路径：和数据目录放一起。"""
+        db = self._c("db_path", "")
+        base = os.path.dirname(str(db)) if db else "/AstrBot/data/plugin_data/seekmemory"
+        return os.path.join(base, "calls.jsonl")
+
     def _recall_block(self, text: str, umo: str = "", private: bool = False,
-                      speaker: str = "") -> str:
+                      speaker: str = "") -> tuple[str, dict]:
         """交给读路径模块：常驻层 + 检索 + 偶然浮现。"""
         return build_block(self.cache, self.graph, self.db, umo, text, private,
                            self._c, self.owner_umo, speaker,

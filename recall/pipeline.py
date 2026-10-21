@@ -52,15 +52,18 @@ def subject_of(speaker: str, owner_umo: str) -> str:
 def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
                 private: bool, conf: Conf, owner_umo: str,
                 speaker: str = "",
-                log: Callable[[str], None] = lambda _msg: None) -> str:
-    """按"常驻层 + 检索 + 偶然浮现"拼出注入文本；不值得翻时只给常驻层。"""
+                log: Callable[[str], None] = lambda _msg: None) -> tuple[str, dict]:
+    """按"常驻层 + 检索 + 偶然浮现"拼出注入文本。
+
+    返回 (文本, 决策信息)：决策里有唤起档位与命中条数，供监控统计。
+    """
     lookup = db.source_umo if db is not None else None
     subject = subject_of(speaker, owner_umo)
     pinned_arts = visible(pinned(cache, subject), umo, owner_umo, lookup)
     pool = [a for a in visible(cache.active(), umo, owner_umo, lookup)
             if deliverable(a, text, private)]
     if not pool and not pinned_arts:
-        return ""
+        return "", {"mode": "none", "picked": 0, "pinned": 0, "chars": 0}
 
     designated = [a for a in pool if a.header.family == "designated"]
     pool = [a for a in pool if a.header.family != "designated"]
@@ -106,4 +109,6 @@ def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
         notes=notes,
     )
     mark_given(db, cache, designated + picked, block)
-    return block
+    info = {"mode": mode, "picked": len(picked), "pinned": len(pinned_arts),
+            "chars": len(block), "drift": bool(picked) and not designated}
+    return block, info
