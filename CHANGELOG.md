@@ -11,6 +11,9 @@ Artifact kernel foundation and online cutover.
 
 ## 未发布
 
+- WebUI 更新为冷蓝主题：统一浅深色 token、标题区域、统计卡、导航与详情层次；新增语义徽章配色，
+  保持 MVVM 和组件适配边界，补充桌面/手机预览，图片继续存放在独立资源分支。
+
 - 合并上游 v0.2.0 Artifact 内核；WebUI 统一使用上游提交、版本与证据链，保留 subject_id。
   抽取按会话选择模型，checkpoint 纳入调度与卸载生命周期，Release 补充 `app/` 运行模块。
 

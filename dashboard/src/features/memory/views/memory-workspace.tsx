@@ -59,26 +59,31 @@ export function MemoryWorkspace({
           </Badge>
         </header>
         <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-8">
-          <div>
-            <p className="mb-2 text-[10px] font-semibold tracking-[0.24em] text-primary">
-              MEMORY LIBRARY
-            </p>
+          <div className="workspace-intro">
+            <Layers3
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 right-8 hidden size-24 -translate-y-1/2 text-primary/25 sm:block"
+              strokeWidth={1}
+            />
+            <p className="section-kicker">MEMORY LIBRARY</p>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
               记忆库
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground sm:pr-32">
               查看记住了什么，以及它如何变化。
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {stats.map(({ label, value, icon: Icon }) => (
+            {stats.map(({ label, value, icon: Icon }, index) => (
               <div
                 key={label}
-                className="rounded-xl border bg-card px-4 py-4 sm:px-5"
+                className={`surface-panel px-4 py-4 sm:px-5 ${index === 0 ? "metric-feature" : ""}`}
               >
                 <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>{label}</span>
-                  <Icon className="size-3.5 opacity-70" />
+                  <span className="metric-icon">
+                    <Icon className="size-4" />
+                  </span>
                 </div>
                 {status === "loading" ? (
                   <Skeleton className="h-7 w-12" />
@@ -98,7 +103,7 @@ export function MemoryWorkspace({
             <MemoryList vm={vm} onSelect={onSelect} onRetry={onRetry} />
             <aside
               aria-label="选中的记忆"
-              className="hidden w-[350px] shrink-0 overflow-hidden rounded-xl border bg-card xl:block 2xl:w-[380px]"
+              className="surface-panel hidden w-[350px] shrink-0 overflow-hidden xl:block 2xl:w-[380px]"
             >
               {status === "ready" && selected ? (
                 <MemoryDetail

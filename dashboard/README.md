@@ -199,3 +199,20 @@ Python 测试使用真实路由、内存 SQLite、管理服务和任务执行器
 
 OpenAPI、生成源码、代码生成器、Ajv、PyYAML、jsonschema、测试及导出样本都不进入运行 ZIP；
 生产仍仅包含原有后端运行文件和已构建视图，不新增 Python 运行依赖。
+
+## 冷蓝主题与颜色维护
+
+配色集中在 `src/ui/styles.css`，视图只使用语义变量与公共样式类，不直接写色值。
+浅色主色为 `#5168A2`，辅助浅蓝为 `#EAF5FC`，背景为 `#F5F7FD`；淡粉 `#F9EAF0`
+仅用于品牌标记的小圆点。深色模式单独配置海军蓝表面与较亮的蓝色交互色。
+
+- `primary` 用于导航选中、按钮和焦点；`secondary` 用于选中列表与详情标题，`accent` 用于辅助内容。
+- `workspace-intro` 统一标题背景，`surface-panel` 统一卡片圆角与阴影；`metric-feature` 强调核心统计。
+- `Badge` 的 `tone="success|warning|danger|info"` 是应用自有的语义接口；颜色在 UI 适配层映射，视图只决定状态。
+- 正常、警告、错误保留独立颜色和文字，不将危险状态改成品牌蓝。hover、focus 与 disabled 沿用组件行为。
+- 修改主题不需要更改 model、ViewModel、API 或 Mock 业务数据；替换组件库时可保留语义 token 和 Badge 契约。
+
+已检查浅深主题的正文、辅助文字、主按钮（含 hover）及语义徽章基础配色，对比度均不低于 4.5:1。
+这只是明确颜色配对的检查，不等于整站无障碍认证；禁用、透明叠加与实际交互仍需浏览器复核。
+桌面 1440px 和手机 390px 已验证导航、详情/编辑抽屉、键盘焦点、诊断及错误重试。
+截图保存在独立 [预览分支](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews)，不进入代码 PR 或安装包。

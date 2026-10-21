@@ -43,7 +43,7 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
   return (
     <section
       aria-label="记忆列表"
-      className="min-w-0 flex-1 overflow-hidden rounded-xl border bg-card"
+      className="surface-panel min-w-0 flex-1 overflow-hidden"
     >
       <div className="space-y-3 border-b p-4">
         <div className="relative">
@@ -109,7 +109,7 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
         </div>
       ) : status === "error" ? (
         <div role="alert" className="px-6 py-20 text-center">
-          <TriangleAlert className="mx-auto mb-4 size-8 text-amber-500" />
+          <TriangleAlert className="mx-auto mb-4 size-8 text-destructive" />
           <h2 className="font-medium">暂时无法加载记忆</h2>
           <p className="mt-2 mb-5 text-sm text-muted-foreground">
             {source.status === "error" ? source.message : ""}
@@ -142,7 +142,7 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
                   className={cn(
                     "group relative flex w-full gap-3 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset",
                     selected?.id === record.id &&
-                      "bg-primary/5 before:absolute before:inset-y-4 before:left-0 before:w-0.5 before:rounded-r before:bg-primary"
+                      "bg-secondary/70 before:absolute before:inset-y-4 before:left-0 before:w-0.5 before:rounded-r before:bg-primary"
                   )}
                 >
                   <div

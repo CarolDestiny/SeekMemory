@@ -17,13 +17,13 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
   } = useDiagnostics(client)
   return (
     <section className="mx-auto w-full max-w-5xl space-y-6 p-5 sm:p-8">
-      <div>
+      <div className="workspace-intro">
         <h1 className="text-2xl font-semibold">召回诊断</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           使用现有 scope 和召回规则，只读预演，不调用模型、不消耗指定交付。
         </p>
       </div>
-      <div className="space-y-4 rounded-xl border bg-card p-6">
+      <div className="surface-panel space-y-4 p-6">
         <label htmlFor="diagnostic-umo" className="block space-y-2 text-sm">
           <span>会话 UMO</span>
           <Input
@@ -84,7 +84,7 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
                 ["注入字符", result.info["chars"] ?? result.block.length],
               ] as const
             ).map(([label, value]) => (
-              <div key={label} className="rounded-xl border bg-card p-4">
+              <div key={label} className="surface-panel p-4">
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className="mt-2 text-xl font-semibold">
                   {typeof value === "string" || typeof value === "number"

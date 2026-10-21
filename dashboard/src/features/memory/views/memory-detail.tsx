@@ -28,7 +28,7 @@ export function MemoryDetail({
     useMemoryDetail(memory, records)
   return (
     <div className="min-w-0">
-      <div className="space-y-4 p-6 pb-5">
+      <div className="space-y-4 border-b bg-secondary/60 p-6 pb-5">
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs font-medium tracking-wider text-muted-foreground">
             记忆详情
@@ -84,7 +84,7 @@ export function MemoryDetail({
             label: "内容",
             content: (
               <div className="space-y-6 p-6">
-                <div className="rounded-xl border border-primary/10 bg-primary/5 p-4">
+                <div className="rounded-xl border border-info/10 bg-accent p-4">
                   <p className="text-sm leading-7 wrap-anywhere whitespace-pre-wrap">
                     {memory.text}
                   </p>

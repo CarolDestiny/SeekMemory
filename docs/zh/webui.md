@@ -72,16 +72,21 @@ cancelled/interrupted 状态，可按类型、状态、级别、模块、任务 
 Mock 诊断是简化的文本匹配，不能用于验证真实召回质量。源码、Mock、测试和截图不进入安装包。
 完整工程说明见 [dashboard/README](../../dashboard/README.md)。
 
+当前主题使用冷蓝主色、浅蓝辅助色和少量淡粉装饰；实色导航、统计卡和浅蓝标题区形成层次。
+成功、警告、错误分别使用绿色、琥珀色和红色，并保留文字说明；深色模式使用深海军蓝底色。
+
 下图均为虚构 Mock 数据，布局与生产页共用组件。
 截图独立存放在 [webui-previews 资源分支](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews)，代码 PR 与安装包不包含 PNG。
-[完整 25 张预览](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews#readme) 覆盖九种类型、版本关联、来源账本、任务确认、诊断和日志筛选。
+[主题与功能预览索引](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews#readme) 覆盖九种类型、版本关联、来源账本、任务确认、诊断和日志筛选。
 九种类型为四个 memory level 加五个独立 family，均复用统一列表和详情，不是九套专用编辑器。
 
-![记忆库](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-memory.png)
-![手动修订](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-editor.png)
-![运行检测和任务](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-runtime.png)
-![生命周期日志](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-logs.png)
-![手机深色布局](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-mobile.png)
+![记忆库](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-memory-light.png)
+![手动修订](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-editor-dark.png)
+![运行检测和任务](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-runtime-light.png)
+![生命周期日志](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-logs-light.png)
+![手机深色布局](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-mobile-dark.png)
 
-![召回诊断命中与 scope](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-result.png)
+![召回诊断命中与 scope](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-diagnostics-light.png)
+旧主题功能参考（当前配色见上图）：
+
 ![无命中诊断](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-empty.png)
