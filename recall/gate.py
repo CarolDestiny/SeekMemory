@@ -13,6 +13,7 @@ MIN_EV_ABS = 0.5
 MIN_EV_REL = 0.3
 
 # 常驻层：persona 全部 + 印象层按 weight 取前 N 条（DESIGN 5.3 头部常驻）。
+OWNER_SAID_BY = ("owner", "inferred", "")
 MAX_PINNED_IMPRESSION = 2
 
 # 时钟类问题的标志词：命中其一，且去掉填充词后不剩实义词，才算纯问时间。
@@ -48,6 +49,9 @@ def pinned(cache) -> list:
 
     这一层是人格底色与「我怎么看你」的固定上下文，不是检索结果，
     所以不经过 select 的证据闸门；重复条目交给 assemble 的 _dedupe。
+
+    只放关于主人的印象（said_by=owner）：群里别人的印象属于"按人归属"，
+    不能进她的常驻画像，否则会把群里某人的性格当成对人的总印象。
     """
     try:
         active = list(cache.active())
@@ -58,7 +62,8 @@ def pinned(cache) -> list:
         try:
             if art.header.family == "persona":
                 personas.append(art)
-            elif str(art.payload.get("level") or "") == "impression":
+            elif (str(art.payload.get("level") or "") == "impression"
+                  and str(art.header.said_by or "") in OWNER_SAID_BY):
                 impressions.append(art)
         except Exception:  # noqa: BLE001 - 单条坏数据跳过
             continue
