@@ -1,4 +1,13 @@
 # 变更记录
+## 0.2.0 - 2026-10-21
+
+Artifact kernel foundation and online cutover.
+
+- Source is the immutable truth; user and assistant replies are persisted.
+- Artifact writes use CAS commits, append-only versions and version-level evidence.
+- Added subject_id, state_events, 30-minute checkpoints and universal disclosure.
+- Added the ChatModel boundary and wired extraction through the new commit path.
+
 
 ## 0.1.9 — 2026-10-21
 
