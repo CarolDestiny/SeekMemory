@@ -22,12 +22,14 @@ class Cache:
         self._items: dict[str, Artifact] = {}
         self._by_family: dict[str, set[str]] = {}
         self._by_level: dict[str, set[str]] = {}
+        self._by_subject: dict[str, set[str]] = {}
 
     def load(self) -> None:
         """清空后一次性载入所有 active 记忆。"""
         self._items.clear()
         self._by_family.clear()
         self._by_level.clear()
+        self._by_subject.clear()
         for art in self.db.list(state="active"):
             self.put(art)
 
@@ -42,6 +44,9 @@ class Cache:
         level = art.payload.get("level")
         if isinstance(level, str) and level:
             self._by_level.setdefault(level, set()).add(node_id)
+        subject = str(art.header.subject_id or "")
+        if subject:
+            self._by_subject.setdefault(subject, set()).add(node_id)
 
     def get(self, node_id: str) -> Artifact | None:
         """按 id 取一条缓存记忆；没有则返回 None。"""
@@ -55,6 +60,10 @@ class Cache:
     def by_level(self, level: str) -> list[Artifact]:
         """返回某个抽象层级的记忆（impression / scene / detail）。"""
         ids = self._by_level.get(level, set())
+        return [self._items[i] for i in sorted(ids) if i in self._items]
+
+    def by_subject(self, subject_id: str) -> list[Artifact]:
+        ids = self._by_subject.get(str(subject_id or ""), set())
         return [self._items[i] for i in sorted(ids) if i in self._items]
 
     def remove(self, node_id: str) -> None:
@@ -74,6 +83,13 @@ class Cache:
                 level_ids.discard(node_id)
                 if not level_ids:
                     del self._by_level[level]
+        subject = str(art.header.subject_id or "")
+        if subject:
+            subject_ids = self._by_subject.get(subject)
+            if subject_ids is not None:
+                subject_ids.discard(node_id)
+                if not subject_ids:
+                    del self._by_subject[subject]
 
     def size(self) -> int:
         """当前缓存的 active 记忆条数。"""
