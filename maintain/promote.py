@@ -33,6 +33,14 @@ def _hits(art: Artifact) -> int:
     return 0
 
 
+def _from(art: Artifact, umo: str) -> bool:
+    """这条记忆是不是来自指定会话：人格沉淀只吃主人私聊的印象。"""
+    payload = art.payload if isinstance(art.payload, dict) else {}
+    if str(payload.get("owner_umo") or payload.get("umo") or "") != umo:
+        return False
+    return str(art.header.scope) == "private"
+
+
 def _age_days(art: Artifact, today: datetime.date) -> int:
     """按创建时间算存在天数；时间缺失或非法时按 0 天。"""
     raw = art.header.time.created or art.header.time.updated
@@ -47,6 +55,7 @@ def promote_candidates(
     cache: Cache,
     min_hits: int = HITS_BAR,
     today: str | None = None,
+    only_umo: str = "",
 ) -> list[Artifact]:
     """返回稳定 impression，按 weight、hits 降序；阈值不满足时返回空。"""
     try:
@@ -57,6 +66,7 @@ def promote_candidates(
     found = [
         art
         for art in cache.active()
+        if not only_umo or _from(art, only_umo)
         if art.header.family == "memory"
         and art.header.state == "active"
         and str(art.payload.get("level") or "") == LEVEL

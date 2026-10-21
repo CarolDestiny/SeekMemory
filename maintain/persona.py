@@ -99,9 +99,10 @@ def distill_persona(
     db: DB,
     cache: Cache,
     today: str | None = None,
+    only_umo: str = "",
 ) -> Artifact | None:
     """选稳定的 impression 并沉淀成 persona；没有候选时保留旧人格不动。"""
-    impressions = promote_candidates(cache, today=today)
+    impressions = promote_candidates(cache, today=today, only_umo=only_umo)
     if not impressions:
         return None
     text = compose(impressions)

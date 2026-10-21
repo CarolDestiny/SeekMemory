@@ -71,9 +71,9 @@ def strength_of(item: dict) -> dict:
     return out
 
 
-def worth_now(items: list[tuple[str, str, str]]) -> bool:
+def worth_now(items: list[tuple[str, str, str, str]]) -> bool:
     """这批对话里有没有值得当场记住的事（计划/事实/强情绪）。"""
-    for _umo, role, text in items[-30:]:
+    for _umo, _sender, role, text in items[-30:]:
         if str(role) != "user":
             continue
         line = str(text or "").strip()
@@ -84,9 +84,13 @@ def worth_now(items: list[tuple[str, str, str]]) -> bool:
     return False
 
 
-def dialogue_of(items: list[tuple[str, str, str]]) -> str:
-    """把 (umo, role, text) 拼成给模型看的对话文本。"""
-    return "\n".join(f"{role}: {text}" for _umo, role, text in items[-120:])
+def dialogue_of(items: list[tuple[str, str, str, str]]) -> str:
+    """把 (umo, sender, role, text) 拼成给模型看的对话文本；群里带是谁说的。"""
+    lines = []
+    for _umo, sender, role, text in items[-120:]:
+        who = f"{role}({sender})" if sender else role
+        lines.append(f"{who}: {text}")
+    return "\n".join(lines)
 
 
 def existing_texts(cache: Cache | None) -> list[str]:
@@ -99,14 +103,14 @@ def existing_texts(cache: Cache | None) -> list[str]:
         return []
 
 
-def owner_of(items: list[tuple[str, str, str]]) -> str:
+def owner_of(items: list[tuple[str, str, str, str]]) -> str:
     """只有整批来自同一个会话时才记归属，混会话就不写归属。"""
-    umos = {u for u, _r, _t in items if u}
+    umos = {item[0] for item in items if item[0]}
     return next(iter(umos)) if len(umos) == 1 else ""
 
 
 async def absorb(
-    items: list[tuple[str, str, str]],
+    items: list[tuple[str, str, str, str]],
     db: DB,
     cache: Cache | None,
     graph: Graph | None,
@@ -131,12 +135,15 @@ async def absorb(
         return 0
 
     owner = owner_of(items)
+    group = ":GroupMessage:" in owner
     written = 0
     for item in parsed[:MAX_ITEMS]:
         try:
             if owner:
                 item = {**item, "owner_umo": owner}
-            art = make("memory", item, strength=strength_of(item))
+            # 群里看到的事只在该群可见：scope=private + 会话归属，跨群与私聊都看不到
+            art = make("memory", item, strength=strength_of(item),
+                       scope="private" if owner else "shared")
             validate(art)
         except Exception as exc:  # noqa: BLE001 - 单条坏数据跳过
             log(f"构造记忆失败：{exc}")
