@@ -11,6 +11,16 @@
     "hint": "owner_only | owner_and_trusted | everyone",
     "default": "owner_only"
   },
+  "observe_groups": {
+    "description": "群聊也写入记忆（只在该群可见，不进私聊、不进其它群）",
+    "type": "bool",
+    "default": true
+  },
+  "max_sessions_per_flush": {
+    "description": "一次抽取最多处理几个会话（每个会话一次模型调用）",
+    "type": "int",
+    "default": 6
+  },
   "trusted": {
     "description": "受信用户 QQ 号，逗号分隔",
     "type": "string",

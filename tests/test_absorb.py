@@ -69,7 +69,7 @@ class BufferTest(unittest.TestCase):
         buf.add("umo:a", "重启别丢")
         again = Buffer(path)
         self.assertEqual(len(again.items), 1)
-        self.assertEqual(again.items[0][2], "重启别丢")
+        self.assertEqual(again.items[0][3], "重启别丢")
 
     def test_should_flush_needs_idle_and_count(self):
         buf = Buffer()
@@ -92,7 +92,7 @@ class AbsorbTest(unittest.TestCase):
     def test_writes_memories_with_tags(self):
         db, cache, graph = make_db()
         n = asyncio.run(absorb(
-            [("umo:a", "user", "我下周三去杭州出差")], db, cache, graph,
+            [("umo:a", "10001", "user", "我下周三去杭州出差")], db, cache, graph,
             FakeProvider(GOOD),
         ))
         self.assertEqual(n, 2)
@@ -104,7 +104,7 @@ class AbsorbTest(unittest.TestCase):
     def test_provider_failure_returns_zero(self):
         db, cache, graph = make_db()
         n = asyncio.run(absorb(
-            [("umo:a", "user", "随便说说")], db, cache, graph,
+            [("umo:a", "10001", "user", "随便说说")], db, cache, graph,
             FakeProvider("", boom=True),
         ))
         self.assertEqual(n, 0)
@@ -113,37 +113,37 @@ class AbsorbTest(unittest.TestCase):
     def test_bad_items_skipped(self):
         db, cache, graph = make_db()
         n = asyncio.run(absorb(
-            [("umo:a", "user", "说点什么")], db, cache, graph,
+            [("umo:a", "10001", "user", "说点什么")], db, cache, graph,
             FakeProvider('[{"level": "fact"}, {"level": "fact", "text": "他喜欢猫"}]'),
         ))
         self.assertEqual(n, 1)  # 缺字段的被跳过
 
     def test_dialogue_and_owner(self):
-        items = [("umo:a", "user", "一"), ("umo:a", "user", "二")]
-        self.assertIn("user: 一", dialogue_of(items))
+        items = [("umo:a", "10001", "user", "一"), ("umo:a", "10002", "user", "二")]
+        self.assertIn("user(10001): 一", dialogue_of(items))
         self.assertEqual(owner_of(items), "umo:a")
-        self.assertEqual(owner_of([("umo:a", "user", "一"), ("umo:b", "user", "二")]), "")
+        self.assertEqual(owner_of([("umo:a", "", "user", "一"), ("umo:b", "", "user", "二")]), "")
 
 
 class WorthNowTest(unittest.TestCase):
     def test_plan_counts(self):
-        items = [("umo:a", "user", "我下周三要去杭州出差")]
+        items = [("umo:a", "10001", "user", "我下周三要去杭州出差")]
         self.assertTrue(worth_now(items))
 
     def test_fact_counts(self):
-        self.assertTrue(worth_now([("umo:a", "user", "我女朋友叫许棠")]))
+        self.assertTrue(worth_now([("umo:a", "1", "user", "我女朋友叫许棠")]))
 
     def test_strong_emotion_counts(self):
-        self.assertTrue(worth_now([("umo:a", "user", "今天差点崩溃")]))
+        self.assertTrue(worth_now([("umo:a", "1", "user", "今天差点崩溃")]))
 
     def test_chitchat_does_not(self):
-        items = [("umo:a", "user", "在吗"), ("umo:a", "user", "哈哈"),
-                 ("umo:a", "user", "嗯")]
+        items = [("umo:a", "1", "user", "在吗"), ("umo:a", "1", "user", "哈哈"),
+                 ("umo:a", "1", "user", "嗯")]
         self.assertFalse(worth_now(items))
 
     def test_noise_and_own_output_ignored(self):
-        items = [("umo:a", "assistant", "我下周要去杭州出差"),
-                 ("umo:a", "user", "项目联调有点烦")]
+        items = [("umo:a", "1", "assistant", "我下周要去杭州出差"),
+                 ("umo:a", "1", "user", "项目联调有点烦")]
         self.assertFalse(worth_now(items))
 
 

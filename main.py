@@ -20,15 +20,8 @@ from .core.tree import Tree
 from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
 from .perceive.compress import build_compress_prompt, parse_compress
-from .recall.assemble import build as assemble_text
-from .recall.designated import deliverable, is_private, mark_given
-from .recall.drift import best_of as drift_best, should_drift
-from .recall.intent import intent_of
-from .recall.gate import pinned
-from .recall.scope import visible
-from .recall.score import select
-from .recall.seed import seeds
-from .recall.spread import activate
+from .recall.designated import is_private
+from .recall.pipeline import build_block
 from .store.cache import Cache
 from .store.db import DB
 
@@ -90,6 +83,7 @@ class Main(star.Star):
 
     # ---------------- 权限 ----------------
     def _may_remember(self, event: AstrMessageEvent) -> bool:
+        """私聊侧的记忆权限（沿用 open_to 配置）。"""
         mode = str(self._c("open_to", "owner_only"))
         if mode == "everyone":
             return True
@@ -101,13 +95,28 @@ class Main(star.Star):
             return sid in self.trusted_ids or umo == self.owner_umo
         return False
 
+    def _group_chat(self, event: AstrMessageEvent) -> bool:
+        """是不是群聊消息。"""
+        umo = str(getattr(event, "unified_msg_origin", "") or "")
+        return ":GroupMessage:" in umo
+
+    def _may_observe(self, event: AstrMessageEvent) -> bool:
+        """能不能把这句话记下来：私聊按 open_to，群聊按 observe_groups。"""
+        if self._may_remember(event):
+            return True
+        return bool(self._c("observe_groups", True)) and self._group_chat(event)
+
+    def _may_recall(self, event: AstrMessageEvent) -> bool:
+        """能不能给她注入记忆：主人私聊 + 观察中的群；别人的私聊不注入。"""
+        return self._may_observe(event)
+
     # ---------------- 读路径：注入 ----------------
     @filter.on_llm_request()
     async def inject_memory(self, event: AstrMessageEvent, req) -> None:
         if not self.ready or self.cache is None:
             return
         try:
-            if not self._may_remember(event):
+            if not self._may_recall(event):
                 return
             text = (event.message_str or "").strip()
             if not text:
@@ -122,69 +131,22 @@ class Main(star.Star):
         except Exception as e:  # noqa: BLE001
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
 
-    def _visible(self, pool: list, umo: str) -> list:
-        """按 scope 过滤候选池：private 只给归属会话，shared/shadow 全放。"""
-        lookup = self.db.source_umo if self.db is not None else None
-        return visible(pool, umo, self.owner_umo, lookup)
-
     def _recall_block(self, text: str, umo: str = "", private: bool = False) -> str:
-        assert self.cache is not None and self.graph is not None
-        # 常驻层（persona + 印象前 2）是固定画像，不经过检索证据闸门。
-        pinned_arts = self._visible(pinned(self.cache), umo)
-        pool = [a for a in self._visible(self.cache.active(), umo) if deliverable(a, text, private)]
-        if not pool and not pinned_arts:
-            return ""
-
-        designated = [a for a in pool if a.header.family == "designated"]
-        pool = [a for a in pool if a.header.family != "designated"]
-
-        # 这一句值不值得翻记忆：寒暄、问时间、让你写代码都不翻。
-        mode = intent_of(text)
-        picked: list = []
-        if mode != "none" and pool:
-            seed_ids = seeds(text, pool)
-            activation = activate(seed_ids, self.graph, self.cache)
-            candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
-            loose = mode == "loose"
-            picked = select(
-                candidates,
-                text,
-                0.0,
-                k=self._c("recall_k", 8) + (2 if loose else 0),
-                explore=self._c("explore_rate", 0.1),
-                gate=True,
-                min_ev_abs=self._c("recall_min_ev_abs", 0.5),
-                min_ev_rel=0.2 if loose else self._c("recall_min_ev_rel", 0.3),
-            )
-
-        # 没有线索的时候，也可能突然想起一件事——这不是检索，是浮现。
-        if not picked and should_drift(text, seed=text):
-            one = drift_best(pool, seed=text)
-            if one is not None:
-                picked = [one]
-                if self._c("debug_log", False):
-                    logger.info(f"[seekmemory] 主动想起：{one.header.id}")
-
-        budget = self._c("budget_chars", 600)
-        block = assemble_text(
-            pinned_arts + designated + picked,
-            budget=int(budget * (1.4 if mode == "loose" else 1.0)),
-            text=text,
-            is_private=private,
-        )
-        mark_given(self.db, self.cache, designated + picked, block)
-        return block
+        """交给读路径模块：常驻层 + 检索 + 偶然浮现。"""
+        return build_block(self.cache, self.graph, self.db, umo, text, private,
+                           self._c, self.owner_umo,
+                           log=lambda msg: logger.info(f"[seekmemory] {msg}"))
 
     # ---------------- 写路径：缓冲 ----------------
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def buffer_message(self, event: AstrMessageEvent) -> None:
         try:
-            if not self._may_remember(event):
+            if not self._may_observe(event):
                 return
             text = (event.message_str or "").strip()
             if text and self.buffer is not None:
                 umo = str(getattr(event, "unified_msg_origin", "") or "")
-                self.buffer.add(umo, text)
+                self.buffer.add(umo, text, str(event.get_sender_id()))
         except Exception:  # noqa: BLE001
             pass
 
@@ -257,6 +219,15 @@ class Main(star.Star):
         """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
         await self._flush("夜间")
 
+    def _split_sessions(self, items: list) -> list[tuple[str, list]]:
+        """按会话切开，每个会话单独抽一次；单个夜晚最多处理 N 个会话。"""
+        buckets: dict[str, list] = {}
+        for row in items:
+            buckets.setdefault(str(row[0] or ""), []).append(row)
+        cap = int(self._c("max_sessions_per_flush", 6))
+        ordered = sorted(buckets.items(), key=lambda kv: len(kv[1]), reverse=True)
+        return ordered[:max(1, cap)]
+
     async def _flush(self, reason: str) -> None:
         """抽一批：调用模型、解析、写库建边；全程 fail-open。"""
         if self._flushing or self.buffer is None or not self.buffer.items or self.db is None:
@@ -268,13 +239,19 @@ class Main(star.Star):
                 return
             items = self.buffer.take()
             self._flush_count += 1
-            written = await absorb(
-                items, self.db, self.cache, self.graph, prov,
-                log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
-            )
+            sessions = self._split_sessions(items)
+            written = 0
+            for umo, part in sessions:
+                got = await absorb(
+                    part, self.db, self.cache, self.graph, prov,
+                    log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
+                )
+                written += got
+                logger.info(f"[seekmemory] {reason}抽取 {umo or '未知会话'}："
+                            f"{len(part)} 条对话，写入 {got} 条")
             logger.info(
-                f"[seekmemory] {reason}抽取：{len(items)} 条对话，写入 {written} 条"
-                f"（今日第 {self._flush_count} 次）"
+                f"[seekmemory] {reason}抽取：{len(sessions)} 个会话，"
+                f"共写入 {written} 条（今日第 {self._flush_count} 次）"
             )
         finally:
             self._flushing = False
@@ -289,7 +266,7 @@ class Main(star.Star):
         today = datetime.date.today().isoformat()
         dropped = decay_all(self.db, self.cache, today)
         merged = merge_similar(self.db, self.cache, threshold=0.6)
-        persona = distill_persona(self.db, self.cache, today)
+        persona = distill_persona(self.db, self.cache, today, self.owner_umo)
         logger.info(
             f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组，"
             f"人格 {'已更新' if persona else '无变化'}"
