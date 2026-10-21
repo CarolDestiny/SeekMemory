@@ -154,14 +154,26 @@ gh pr create --base main --head fix/issue-0001-paraphrase-recall \
 新增运行资源或包时，应同步修改 `scripts/package_plugin.py` 和打包测试。
 构建产物不提交到 Git，源码归档保持源码形态。后端无需编译，分发 `.py` 以保持 Python 和平台兼容性。
 
-本地打包使用根目录 README 中的构建命令。发布前运行
+本地打包使用根目录 README 中的构建命令。先运行 `python -m pip install -r requirements-dev.txt`
+安装仅供开发使用的契约测试依赖。发布前运行
 `python -m unittest discover -s tests -p 'test_*.py'` 和 `python tests/test_smoke.py`。
 打包测试会解压 ZIP，在独立 Python 进程中执行后端冒烟测试。
 
 安装了兼容宿主时，`tests/test_webui_host.py` 还会验证真实 AstrBot 请求上下文和插件生命周期。
 独立 CI 跳过这些宿主专用测试；存储、scope、修订和任务测试无需 AstrBot。
-测试不会启动消息适配器或调用付费模型。修改 API 后，需同步
-`dashboard/src/features/control/model.ts`、桥接适配器及契约测试。当前插件没有生成式 OpenAPI 客户端。
+测试不会启动消息适配器或调用付费模型。修改 API 时先更新 `openapi.yaml`，运行
+`cd dashboard && pnpm generate:api`，再同步 Zod 校验、桥接适配器和实现测试。
+`pnpm check` 检查生成类型是否过期，随后执行 TS 7、lint、Mock 契约和格式检查。
+真实响应的跨语言验证在插件根目录执行：
+
+```bash
+python tests/test_api_contract.py --export dashboard/node_modules/.tmp/backend-contract.json
+pnpm --dir dashboard test:contract
+```
+
+该步骤执行真实路由、数据库、修订、诊断与任务代码，仅替代宿主传输对象；缺少导出的响应会使前端检查失败。
+已安装 AstrBot 时，宿主集成测试还会对实际 `JSONResponse` 执行同一契约校验。
+CI 与发布构建均执行这些检查；契约、生成工具、测试依赖与临时响应不进入安装包。
 
 安装使用 Release 附件。若希望通过自定义插件源自动安装或更新，应将该源的 `download_url`
 指向 Release 附件地址；仅填写仓库地址不会自动选择发布附件。

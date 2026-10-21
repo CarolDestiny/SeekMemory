@@ -1,4 +1,9 @@
 import { z } from "zod"
+import type {
+  ApiRequest,
+  ApiResponse,
+  ApiSchemas,
+} from "../../contracts/api.ts"
 import type { MemoryRecord } from "../memory/model.ts"
 
 export const detailSchema = z.object({
@@ -17,7 +22,7 @@ export const detailSchema = z.object({
   versions: z.array(z.record(z.string(), z.json())),
   sources: z.array(z.record(z.string(), z.json())),
   ledger: z.array(z.record(z.string(), z.json())),
-})
+}) satisfies z.ZodType<ApiResponse<"detail">>
 export const statusSchema = z.object({
   ready: z.boolean(),
   checks: z.array(
@@ -29,7 +34,7 @@ export const statusSchema = z.object({
   ),
   schedulerCount: z.number().int().nonnegative(),
   config: z.record(z.string(), z.json()),
-})
+}) satisfies z.ZodType<ApiResponse<"status">>
 const logSourceSchema = z.object({
   module: z.string(),
   file: z.string(),
@@ -57,17 +62,17 @@ export const eventSchema = z.object({
     .object({ type: z.string(), frames: z.array(logSourceSchema) })
     .nullable()
     .default(null),
-})
+}) satisfies z.ZodType<ApiSchemas["OperationEvent"]>
 export const eventsSchema = z.object({
-  events: z.array(eventSchema),
-  capacity: z.number(),
-})
+  events: z.array(eventSchema).max(500),
+  capacity: z.literal(500),
+}) satisfies z.ZodType<ApiResponse<"events">>
 export const diagnosticSchema = z.object({
   block: z.string(),
   info: z.record(z.string(), z.json()),
   visible: z.array(z.string()),
   excluded: z.array(z.string()),
-})
+}) satisfies z.ZodType<ApiResponse<"diagnose">>
 export const updateSchema = z.strictObject({
   id: z.string().min(1),
   expectedRevision: z.number().int().positive(),
@@ -76,17 +81,13 @@ export const updateSchema = z.strictObject({
   state: z.enum(["active", "forgotten", "merged"]),
   reason: z.string().trim().min(1).max(300),
   confirmed: z.literal(true),
-})
+}) satisfies z.ZodType<ApiRequest<"update">>
 export type ArtifactDetail = z.infer<typeof detailSchema>
 export type RuntimeStatus = z.infer<typeof statusSchema>
 export type OperationEvent = z.infer<typeof eventSchema>
 export type Diagnostic = z.infer<typeof diagnosticSchema>
 export type UpdateCommand = z.infer<typeof updateSchema>
-export interface DiagnosticQuery {
-  query: string
-  umo: string
-  speaker: string
-}
+export type DiagnosticQuery = ApiRequest<"diagnose">
 
 export interface ManagementClient {
   records(): Promise<readonly MemoryRecord[]>

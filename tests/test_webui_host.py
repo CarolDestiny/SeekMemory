@@ -15,6 +15,8 @@ HOST = ROOT.parents[2]
 if (HOST / "astrbot/api/web.py").is_file():
     sys.path.insert(0, str(HOST))
 sys.path.insert(0, str(ROOT.parent))
+sys.path.insert(0, str(ROOT / "tests"))
+from contract_support import validate_contract  # noqa: E402
 
 try:
     from starlette.requests import Request
@@ -93,7 +95,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             receive,
         )
         with bind_request_context(PluginRequest(raw, username=username)):
-            return await self.plugin.web.handle(action)
+            response = await self.plugin.web.handle(action)
+        validate_contract(action, json.loads(response.body), response.status_code)
+        return response
 
     async def test_auth_methods_and_confirmation(self) -> None:
         self.assertEqual(

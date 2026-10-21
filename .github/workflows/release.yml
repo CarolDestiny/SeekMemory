@@ -39,6 +39,11 @@ jobs:
         run: |
           pnpm check
           pnpm build
+      - name: 验证真实后端与前端契约
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python tests/test_api_contract.py --export dashboard/node_modules/.tmp/backend-contract.json
+          pnpm --dir dashboard test:contract
       - name: Test backend and archive contents
         run: |
           python -m unittest discover -s tests -p 'test_*.py'

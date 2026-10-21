@@ -1,0 +1,3 @@
+# 仅契约测试使用，不进入插件安装包。
+jsonschema[format-nongpl]==4.26.0
+PyYAML==6.0.3
