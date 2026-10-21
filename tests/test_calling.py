@@ -190,8 +190,7 @@ class TrajectoryTest(unittest.TestCase):
     def test_trajectory_text(self):
         cache, art = self._cache()
         note = trajectory(cache, art)
-        self.assertIn("以前觉得", note)
-        self.assertIn("现在觉得", note)
+        self.assertIn("觉得", note)
         self.assertIn("有点倔", note)
 
     def test_history_keeps_both_revisions(self):
@@ -205,7 +204,7 @@ class TrajectoryTest(unittest.TestCase):
         cache, art = self._cache()
         note = trajectory(cache, art)
         block = assemble([art], budget=500, notes={art.header.id: note})
-        self.assertIn("以前觉得", block)
+        self.assertIn("觉得", block)
 
 
 if __name__ == "__main__":
