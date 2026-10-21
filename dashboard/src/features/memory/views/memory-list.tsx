@@ -159,12 +159,12 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
                       <h2 className="line-clamp-2 flex-1 text-sm leading-6 font-medium">
                         {record.title}
                       </h2>
-                      {record.state === "forgotten" && (
+                      {record.state !== "active" && (
                         <Badge
                           variant="outline"
                           className="mt-0.5 text-[10px] text-muted-foreground"
                         >
-                          已遗忘
+                          {record.state === "forgotten" ? "已遗忘" : "已合并"}
                         </Badge>
                       )}
                     </div>

@@ -17,9 +17,14 @@ import { MemoryList } from "./memory-list"
 interface MemoryWorkspaceProps {
   source: MemorySource
   onRetry: () => void
+  onInspect?: ((id: string) => void) | undefined
 }
 
-export function MemoryWorkspace({ source, onRetry }: MemoryWorkspaceProps) {
+export function MemoryWorkspace({
+  source,
+  onRetry,
+  onInspect,
+}: MemoryWorkspaceProps) {
   const vm = useMemoryLibrary(source)
   const { selected, orderedRecords, navigateToMemory } = vm
   const status = source.status
@@ -50,7 +55,7 @@ export function MemoryWorkspace({ source, onRetry }: MemoryWorkspaceProps) {
             variant="outline"
             className="font-normal text-muted-foreground"
           >
-            只读预览
+            {onInspect ? "管理员工作空间" : "只读预览"}
           </Badge>
         </header>
         <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-8">
@@ -101,6 +106,7 @@ export function MemoryWorkspace({ source, onRetry }: MemoryWorkspaceProps) {
                   memory={selected}
                   records={orderedRecords}
                   onNavigate={navigateToMemory}
+                  onInspect={onInspect}
                 />
               ) : (
                 <div className="px-6 py-24 text-center text-sm text-muted-foreground">
@@ -129,6 +135,14 @@ export function MemoryWorkspace({ source, onRetry }: MemoryWorkspaceProps) {
             memory={selected}
             records={orderedRecords}
             onNavigate={navigateToMemory}
+            onInspect={
+              onInspect
+                ? (id) => {
+                    setDetailOpen(false)
+                    onInspect(id)
+                  }
+                : undefined
+            }
           />
         )}
       </DetailDrawer>

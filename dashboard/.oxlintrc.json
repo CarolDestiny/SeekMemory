@@ -34,7 +34,7 @@
   "overrides": [
     {
       "files": [
-        "src/features/memory/model.ts",
+        "src/features/*/model.ts",
         "src/features/memory/library-state.ts"
       ],
       "rules": {
@@ -59,7 +59,7 @@
       }
     },
     {
-      "files": ["src/features/memory/use-*.ts"],
+      "files": ["src/features/*/use-*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -82,7 +82,7 @@
       }
     },
     {
-      "files": ["src/features/memory/views/**"],
+      "files": ["src/features/*/views/**"],
       "rules": {
         "no-restricted-imports": [
           "error",

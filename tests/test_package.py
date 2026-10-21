@@ -41,7 +41,7 @@ class PackageTests(unittest.TestCase):
                 target = self.root / source.relative_to(ROOT)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
-        self.view = self.root / "views/memory"
+        self.view = self.root / "pages/memory"
         (self.view / "assets").mkdir(parents=True)
         (self.view / "index.html").write_text(
             '<link href="./assets/app.css"><script src="./assets/app.js"></script>',
@@ -57,7 +57,7 @@ class PackageTests(unittest.TestCase):
         (self.view / "assets/app.css").write_text(
             "body { color: black }", encoding="utf-8"
         )
-        (self.root / ".gitignore").write_text("/views/\n", encoding="utf-8")
+        (self.root / ".gitignore").write_text("/pages/\n", encoding="utf-8")
         for name in (
             ".env",
             "core/private.db",
@@ -82,10 +82,10 @@ class PackageTests(unittest.TestCase):
         with ZipFile(archive) as bundle:
             names = set(bundle.namelist())
             self.assertTrue(
-                {"main.py", "store/schema.sql", "views/memory/index.html"} <= names
+                {"main.py", "store/schema.sql", "pages/memory/index.html"} <= names
             )
             self.assertTrue(
-                {"LICENSE-MIT", "LICENSE-APACHE", "views/memory/LICENSES.md"} <= names
+                {"LICENSE-MIT", "LICENSE-APACHE", "pages/memory/LICENSES.md"} <= names
             )
             self.assertFalse(
                 {

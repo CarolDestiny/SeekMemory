@@ -80,7 +80,9 @@ jobs:
           Install **astrbot_plugin_seekmemory.zip** from the assets below using AstrBot's ZIP installation.
           This package includes the Python runtime and the prebuilt plugin view; Node.js is not needed for installation.
           GitHub's **Source code (zip/tar.gz)** downloads are development sources, not installation packages.
-          The current view is an API-integration placeholder; the interactive mock is development-only.
+          The view includes memory editing, scope and revision inspection, recall diagnostics, maintenance tasks, and lifecycle logs.
+          Use a recent AstrBot version supporting plugin views and the plugin web API (validated with 4.28.1).
+          The standalone mock is development-only and is excluded from this package.
           EOF
           prerelease=()
           if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=(--prerelease); fi

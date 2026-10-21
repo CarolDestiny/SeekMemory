@@ -34,7 +34,7 @@ export default defineConfig({
     },
   ],
   build: {
-    outDir: "../views/memory",
+    outDir: "../pages/memory",
     emptyOutDir: true,
     license: { fileName: "LICENSES.md" },
   },

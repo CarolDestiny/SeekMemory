@@ -64,6 +64,26 @@ export function Skeleton(props: ComponentProps<"div">) {
   return <ShadcnSkeleton {...props} />
 }
 
+export function Textarea(props: ComponentProps<"textarea">) {
+  return (
+    <textarea
+      {...props}
+      className={
+        "w-full rounded-lg border bg-background p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 " +
+        (props.className ?? "")
+      }
+    />
+  )
+}
+
+export function JsonView({ value }: { value: unknown }) {
+  return (
+    <pre className="max-h-96 overflow-auto rounded-lg border bg-muted/40 p-4 text-xs leading-6 wrap-anywhere whitespace-pre-wrap">
+      {JSON.stringify(value, null, 2)}
+    </pre>
+  )
+}
+
 export interface SelectOption<T extends string> {
   readonly value: T
   readonly label: string

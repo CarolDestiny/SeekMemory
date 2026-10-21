@@ -38,7 +38,7 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
     """Build a runtime-only ZIP from an explicit allowlist.
 
     Args:
-        root: Plugin checkout containing a production build in views/memory.
+        root: Plugin checkout containing a production build in pages/memory.
         output: Destination directory for the ZIP and checksum.
         tag: Optional release tag, which must match the metadata version.
 
@@ -81,12 +81,12 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
     if missing := required - files:
         raise ValueError(f"Required runtime files are not tracked: {sorted(missing)}")
 
-    view = root / "views/memory"
+    view = root / "pages/memory"
     files.update(
         {
-            "views/memory/index.html",
-            "views/memory/LICENSES.md",
-            "views/memory/ASSET-LICENSES.txt",
+            "pages/memory/index.html",
+            "pages/memory/LICENSES.md",
+            "pages/memory/ASSET-LICENSES.txt",
         }
     )
     assets = list((view / "assets").rglob("*"))
@@ -111,7 +111,7 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
     html = (view / "index.html").read_text(encoding="utf-8")
     references = re.findall(r'(?:src|href)="([^"#]+)"', html)
     if not references or any(
-        not ref.startswith("./assets/") or f"views/memory/{ref[2:]}" not in files
+        not ref.startswith("./assets/") or f"pages/memory/{ref[2:]}" not in files
         for ref in references
     ):
         raise ValueError(
