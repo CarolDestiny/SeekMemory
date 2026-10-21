@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 使用 `z.looseObject()` 替换弃用的 `.passthrough()`，保持头部扩展字段；新增弃用 API 的 lint 拦截。
+
 - 新增 OpenAPI 3.1 管理契约与生成传输类型，连接 Zod、Mock、真实后端响应及 CI 漂移检查；
   生成器独立使用 TS 5 编译器 API，应用保持 TS 7 严格检查，开发依赖不进入发布包。
 

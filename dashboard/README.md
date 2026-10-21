@@ -39,6 +39,8 @@ Mock 数据只保存在内存中，刷新页面后恢复初始状态。
 包括索引访问检查和精确可选属性。Oxlint 替代 ESLint，通过 `oxlint-tsgolint` 执行类型感知规则。
 显式 `any`、传播而来的 `any` 的不安全使用、不安全类型断言、非空断言和未处理的 Promise 均视为错误。
 警告也会导致检查失败；不对第三方类型声明执行 lint。
+启用类型感知的 `typescript/no-deprecated`，使用依赖声明中标记弃用的 API 会导致检查失败。
+需要保留头部扩展字段时使用 Zod 4 的 `z.looseObject()`。
 
 Oxfmt 使用 `.oxfmtrc.json` 格式化代码，并对 JSX 及 `cn`/`cva` 中的 Tailwind 类名排序。
 保持双引号、无分号和 LF 换行；不再需要 Prettier 及其 Tailwind 插件。
