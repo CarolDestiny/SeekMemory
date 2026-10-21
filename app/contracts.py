@@ -37,6 +37,7 @@ class WriteOutcome:
     skipped: int = 0
     ids: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    model_failed: bool = False
 
 
 @dataclass(frozen=True)

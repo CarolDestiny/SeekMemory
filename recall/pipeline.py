@@ -10,6 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
     from ..core.graph import Graph
     from ..recall.assemble import build as assemble_text
     from ..recall.designated import deliverable, mark_given
@@ -18,13 +19,13 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.gate import pinned
     from ..recall.history import trajectory
     from ..recall.intent import intent_of
+    from ..recall.retriever import GraphRetriever
     from ..recall.scope import visible
     from ..recall.score import select
-    from ..recall.seed import seeds
-    from ..recall.spread import activate
     from ..store.cache import Cache
     from ..store.db import DB
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
+    from core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
     from core.graph import Graph
     from store.cache import Cache
     from store.db import DB
@@ -36,10 +37,9 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from recall.gate import pinned
     from recall.history import trajectory
     from recall.intent import intent_of
+    from recall.retriever import GraphRetriever
     from recall.scope import visible
     from recall.score import select
-    from recall.seed import seeds
-    from recall.spread import activate
 
 Conf = Callable[[str, Any], Any]
 
@@ -87,6 +87,8 @@ def build_block(
     """
     lookup = db.source_umo if db is not None else None
     subject = subject_of(speaker, owner_umo)
+    owner_id = str(owner_umo or "").split(":")[-1] if owner_umo else ""
+    scene = RecallScene(umo, str(speaker or ""), owner_id, (str(speaker or ""),))
     pinned_arts = visible(pinned(cache, subject), umo, owner_umo, lookup)
     pool = [
         a
@@ -94,7 +96,15 @@ def build_block(
         if deliverable(a, text, private)
     ]
     if not pool and not pinned_arts:
-        return "", {"mode": "none", "picked": 0, "pinned": 0, "chars": 0}
+        return "", {
+            "mode": "none",
+            "picked": 0,
+            "pinned": 0,
+            "chars": 0,
+            "picked_ids": (),
+            "pinned_ids": (),
+            "disclosure": {},
+        }
 
     designated = [a for a in pool if a.header.family == "designated"]
     pool = [a for a in pool if a.header.family != "designated"]
@@ -102,9 +112,7 @@ def build_block(
     mode = intent_of(text)
     picked: list = []
     if mode != "none" and pool:
-        seed_ids = seeds(text, pool)
-        activation = activate(seed_ids, graph, cache)
-        candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
+        candidates = GraphRetriever(graph, cache).retrieve(text, pool)
         loose = mode == "loose"
         picked = select(
             candidates,
@@ -124,6 +132,30 @@ def build_block(
             picked = [one]
             log(f"主动想起：{one.header.id}")
 
+    overrides: dict[str, str] = {}
+    disclosure_info: dict[str, str] = {}
+    safe_picked = []
+    for art in picked:
+        try:
+            source_ids = list(art.header.lineage.sources)
+            origins = (
+                tuple(db.source_umos(source_ids).values()) if db is not None else ()
+            )
+            relevance = 1.0 if mode != "none" else 0.5
+            decision = decide(art, scene, relevance, origins)
+            disclosure_info[art.header.id] = decision.level.value
+            if decision.level == DisclosureLevel.SILENCE:
+                continue
+            if decision.level != DisclosureLevel.FULL:
+                safe = safe_text(art, decision.level)
+                if not safe:
+                    continue
+                overrides[art.header.id] = safe
+            safe_picked.append(art)
+        except Exception:
+            continue
+    picked = safe_picked
+
     budget = int(conf("budget_chars", 600))
     notes = {}
     for art in pinned_arts + picked:
@@ -140,6 +172,7 @@ def build_block(
         text=text,
         is_private=private,
         notes=notes,
+        overrides=overrides,
     )
     if not dry_run:
         mark_given(db, cache, designated + picked, block)
@@ -150,6 +183,7 @@ def build_block(
         "chars": len(block),
         "drift": bool(picked) and not designated,
         "picked_ids": tuple(a.header.id for a in picked),
+        "disclosure": disclosure_info,
         "pinned_ids": tuple(a.header.id for a in pinned_arts),
     }
     return block, info

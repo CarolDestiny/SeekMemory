@@ -110,42 +110,44 @@ def distill_persona(
         return None
 
     old = list(cache.active("persona"))
-    if len(old) == 1 and str(old[0].payload.get("text") or "") == text:
-        return old[0]  # 印象没变化，不重复覆盖
+    base = max(old, key=lambda art: art.header.revision) if old else None
+    if base is not None and str(base.payload.get("text") or "") == text:
+        return base
 
     chosen = impressions[:TOP_N]
-    revision = max((art.header.revision for art in old), default=0) + 1
-    persona = make(
-        "persona",
-        {"text": text},
-        revision=revision,
-        scope=_scope(chosen),
-        strength=_strength(chosen),
-        lineage=Lineage(
-            sources=_sources(chosen),
-            derived_from=tuple(art.header.id for art in chosen),
-        ),
-        said_by="inferred",
+    lineage = Lineage(
+        sources=_sources(chosen),
+        derived_from=tuple(art.header.id for art in chosen),
     )
-    db.upsert(persona)
-    cache.put(persona)
-    ids = "、".join(art.header.id for art in chosen)
-    db.ledger_append(
-        "merge",
-        persona.header.id,
-        None,
-        persona.header.id,
-        f"沉淀人格：合并 {len(chosen)} 条 impression（{ids}），旧 persona {len(old)} 条标 merged",
-    )
-
-    for previous in old:
-        db.upsert(revise(previous, state="merged"))
-        cache.remove(previous.header.id)
-        db.ledger_append(
-            "merge",
-            previous.header.id,
-            previous.header.id,
-            persona.header.id,
-            f"人格更新：旧 persona 合并进 {persona.header.id}，来源 {len(chosen)} 条 impression",
+    if base is not None:
+        persona = revise(
+            base,
+            payload={"text": text},
+            scope=_scope(chosen),
+            strength=_strength(chosen),
+            lineage=lineage,
+            said_by="inferred",
         )
+        db.commit(persona, expected_revision=base.header.revision, op="promote",
+                  reason="persona revised", source_ids=_sources(chosen))
+    else:
+        persona = make(
+            "persona",
+            {"text": text},
+            scope=_scope(chosen),
+            strength=_strength(chosen),
+            lineage=lineage,
+            said_by="inferred",
+        )
+        db.commit(persona, expected_revision=0, op="promote",
+                  reason="persona created", source_ids=_sources(chosen))
+    cache.put(persona)
+    for previous in old:
+        if previous.header.id == persona.header.id:
+            continue
+        merged = revise(previous, state="merged")
+        db.commit(merged, expected_revision=previous.header.revision, op="merge",
+                  reason=f"merged into {persona.header.id}",
+                  source_ids=tuple(previous.header.lineage.sources))
+        cache.remove(previous.header.id)
     return persona

@@ -55,10 +55,10 @@ class CheckpointManager:
                                weight=min(MAX_WEIGHT, float(old.weight) + 0.1 * hits))
             new = revise(art, strength=strength)
             try:
-                self.store.append_state_event(event)
                 self.store.commit(new, expected_revision=art.header.revision,
                                   op="reinforce", reason="checkpoint",
-                                  source_ids=tuple(art.header.lineage.sources))
+                                  source_ids=tuple(art.header.lineage.sources),
+                                  state_events=(event,))
                 self.cache.put(new)
                 flushed += 1
             except Exception:

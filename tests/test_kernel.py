@@ -13,11 +13,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.checkpoint import CheckpointManager
 from app.contracts import ChatRequest
+from app.flush_policy import decide_flush
 from core.artifact import make, revise
+from core.retrieval import RetrievalCandidate
 from core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
 from core.source import Source, make_source_id
 from core.versioning import StateEvent, VersionError, assert_next_revision
 from perceive.model import ProviderChatModel
+from recall.score import select
 from store.db import DB
 from store.cache import Cache
 from store.ledger import Ledger
@@ -64,6 +67,10 @@ class CommitTest(unittest.TestCase):
         self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM artifact_evidence").fetchone()[0], 1)
         with self.assertRaises(VersionError):
             db.commit(revise(second, payload={"text": "stale", "level": "fact"}), expected_revision=1, op="revise")
+        bad_event = StateEvent("bad", first.header.id, 2, "reinforce", {}, "t")
+        with self.assertRaises(VersionError):
+            db.commit(second, expected_revision=99, op="reinforce", state_events=(bad_event,))
+        self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM state_events WHERE id = 'bad'").fetchone()[0], 0)
         event = StateEvent("e1", first.header.id, 2, "reinforce", {"hits": 1}, "t")
         db.append_state_event(event)
         self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM state_events").fetchone()[0], 1)
@@ -107,6 +114,24 @@ class FakeProvider:
         return Meta()
 
 
+class RetrievalCandidateTest(unittest.TestCase):
+    def test_lexical_signal_participates_in_selection(self):
+        plain = _memory(text="ordinary")
+        lexical = _memory(text="bm25")
+        got = select([RetrievalCandidate(plain), RetrievalCandidate(lexical, lexical=1.0)],
+                     "unrelated query", 0.0, k=1, explore=0.0, gate=False)
+        self.assertEqual([a.header.id for a in got], [lexical.header.id])
+
+    def test_shared_cross_session_never_returns_raw_text(self):
+        art = _memory(subject="u1", scope="shared", text="top secret phrase")
+        art = make("memory", {**art.payload, "tags": "project"}, subject_id="u1",
+                   scope="shared")
+        scene = RecallScene("s2", "u1", "u1", ("u1",))
+        got = decide(art, scene, 1.0, origin_sessions=("s1",))
+        self.assertEqual(got.level, DisclosureLevel.PARAPHRASE)
+        self.assertNotIn("top secret phrase", safe_text(art, got.level))
+
+
 class StoreBoundaryTest(unittest.TestCase):
     def test_source_batch_and_subject_index(self):
         db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
@@ -144,6 +169,31 @@ class ModelBoundaryTest(unittest.TestCase):
         self.assertEqual(got.text, "ok")
         self.assertEqual(got.usage_in, 10)
         self.assertEqual(got.provider_id, "p1")
+
+
+class FlushPolicyTest(unittest.TestCase):
+    def test_backlog_overrides_worth_now(self):
+        got = decide_flush(pending=30, idle_seconds=31, worth_now=False,
+                           flushes_today=0, idle_flush_seconds=180,
+                           min_pending=8, max_flushes_per_day=2,
+                           backlog_flush_at=30)
+        self.assertTrue(got.should)
+        self.assertEqual(got.reason, "backlog")
+
+    def test_backlog_waits_for_quiet_window(self):
+        got = decide_flush(pending=30, idle_seconds=10, worth_now=False,
+                           flushes_today=0, idle_flush_seconds=180,
+                           min_pending=8, max_flushes_per_day=2,
+                           backlog_flush_at=30)
+        self.assertFalse(got.should)
+
+    def test_daily_cap_blocks(self):
+        got = decide_flush(pending=100, idle_seconds=999, worth_now=True,
+                           flushes_today=2, idle_flush_seconds=180,
+                           min_pending=8, max_flushes_per_day=2,
+                           backlog_flush_at=30)
+        self.assertFalse(got.should)
+        self.assertEqual(got.reason, "daily_cap")
 
 
 class MigrationTest(unittest.TestCase):

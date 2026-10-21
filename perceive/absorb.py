@@ -12,7 +12,7 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..app.contracts import ChatRequest
+    from ..app.contracts import ChatRequest, WriteOutcome
     from ..core.artifact import Lineage, Strength, content_of, make, validate
     from ..core.graph import Graph
     from ..maintain.impression import revise_impression
@@ -25,7 +25,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..store.cache import Cache
     from ..store.db import DB
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from app.contracts import ChatRequest
+    from app.contracts import ChatRequest, WriteOutcome
     from core.artifact import Lineage, Strength, content_of, make, validate
     from core.graph import Graph
     from maintain.impression import revise_impression
@@ -144,7 +144,7 @@ async def absorb(
     stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
         nullcontext()
     ),
-) -> int:
+) -> WriteOutcome:
     """抽取并持久化 Artifact，对单条处理失败保持容错。
 
     Args:
@@ -158,13 +158,13 @@ async def absorb(
         stage: 注入的业务阶段上下文管理器；默认不采集阶段日志。
 
     Returns:
-        持久化的 Artifact 数量；输出为空或全部被拒绝时返回零。
+        上游 WriteOutcome，包含写入数、跳过数、ID 与失败信息。
 
     Raises:
         Exception: 启用 strict 时传播的模型服务异常。
     """
     if not items or db is None or model is None:
-        return 0
+        return WriteOutcome(errors=("invalid extraction input",))
     try:
         with stage("provider.call"):
             if hasattr(model, "complete"):
@@ -181,18 +181,18 @@ async def absorb(
                     system_prompt=build_prompt([]), prompt=dialogue_of(items)
                 )
                 raw = getattr(resp, "completion_text", "") or ""
-    except Exception as exc:  # noqa: BLE001 - 抽取失败不抛给上层
+    except Exception as exc:
         if strict:
             raise
         log(f"模型调用失败： {type(exc).__name__}")
-        return 0
+        return WriteOutcome(errors=(f"model: {exc}",), model_failed=True)
 
     with stage("response.parse"):
         parsed = parse_response(raw)
     with stage("memory.deduplicate"):
         parsed = filter_duplicates(parsed, existing_texts(cache))
     if not parsed:
-        return 0
+        return WriteOutcome(skipped=len(items))
 
     owner = owner_of(items)
     source_ids = tuple(str(row[4]) for row in items if len(row) > 4 and row[4])
@@ -202,28 +202,36 @@ async def absorb(
     if group:
         said_by = next(iter(senders)) if len(senders) == 1 else "group"
     default_subject = next(iter(senders), owner or "")
-    written = 0
+    written_ids: list[str] = []
+    skipped = 0
+    errors: list[str] = []
     for item in parsed[:MAX_ITEMS]:
         try:
             if owner:
                 item = {**item, "owner_umo": owner}
-            # 按人归属：群聊不是隐私边界，群里发生的写 shared；
-            # 私聊写 private，只归那个会话。说话人记录在 said_by / speakers。
-            payload = item
+            payload = dict(item)
             if group and len(senders) > 1:
-                payload = {**item, "speakers": sorted(senders)}
+                payload["speakers"] = sorted(senders)
+            strength = strength_of(item)
+            if not source_ids:
+                payload["legacy_no_source"] = True
+                strength["confidence"] = min(
+                    float(strength.get("confidence", 1.0)), 0.5
+                )
             with stage("artifact.validate"):
                 art = make(
                     "memory",
                     payload,
-                    strength=strength_of(item),
+                    strength=strength,
                     scope="shared" if group or not owner else "private",
                     said_by=said_by,
                     subject_id=str(item.get("subject_id") or default_subject),
                     lineage=Lineage(sources=source_ids),
                 )
                 validate(art)
-        except Exception as exc:  # noqa: BLE001 - 单条坏数据跳过
+        except Exception as exc:
+            skipped += 1
+            errors.append(f"construct: {exc}")
             log(f"记忆校验失败： {type(exc).__name__}")
             continue
         try:
@@ -238,15 +246,22 @@ async def absorb(
                 if cache is not None:
                     cache.put(art)
                 link_new(art, graph, cache)
-            written += 1
-        except Exception as exc:  # noqa: BLE001
+                written_ids.append(art.header.id)
+        except Exception as exc:
+            skipped += 1
+            errors.append(f"commit: {exc}")
             log(f"记忆写入失败： {type(exc).__name__}")
             continue
-        # 印象不是只增不减：新证据到了就改旧印象，而不是再堆一条。
         try:
-            if cache is not None and str(item.get("level") or "") == "impression":
+            if cache is not None and str(payload.get("level") or "") == "impression":
                 with stage("impression.revise"):
                     revise_impression(db, cache, art)
-        except Exception as exc:  # noqa: BLE001 - 修订失败不影响已写入的记忆
+        except Exception as exc:
+            errors.append(f"impression: {exc}")
             log(f"印象修订失败： {type(exc).__name__}")
-    return written
+    return WriteOutcome(
+        written=len(written_ids),
+        skipped=skipped,
+        ids=tuple(written_ids),
+        errors=tuple(errors),
+    )

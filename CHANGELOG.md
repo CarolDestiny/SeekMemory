@@ -1,4 +1,15 @@
 # 变更记录
+## 0.3.0 - 2026-10-21
+
+Backlog hardening and retrieval boundary.
+
+- Backlog flush ignores the worth_now gate after a quiet window.
+- Session-safe draining prevents unprocessed sessions from being dropped.
+- All production writes now use CAS commit with versions and audit.
+- Checkpoint state events commit atomically with their revision.
+- Recall applies subject-aware disclosure before assembly.
+- RetrievalCandidate reserves a lexical signal for future BM25.
+
 ## 0.2.0 - 2026-10-21
 
 Artifact kernel foundation and online cutover.
@@ -10,6 +21,9 @@ Artifact kernel foundation and online cutover.
 
 
 ## 未发布
+
+- 同步上游 v0.3.0：保留积压触发、WriteOutcome、统一提交、原子 checkpoint 与主体披露判定；
+  适配 WebUI 阶段日志和只读诊断，补测无模型配额、会话失败隔离及取消时消息保留。
 
 - WebUI 更新为冷蓝主题：统一浅深色 token、标题区域、统计卡、导航与详情层次；新增语义徽章配色，
   保持 MVVM 和组件适配边界，补充桌面/手机预览，图片继续存放在独立资源分支。
