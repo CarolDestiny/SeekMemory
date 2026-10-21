@@ -1,0 +1,994 @@
+openapi: 3.1.0
+info:
+  title: SeekMemory 管理接口
+  version: 1.0.0
+  description: 描述 Context.register_web_api 注册的插件路由与 JSON 正文。实际 HTTP 前缀、管理员认证及 iframe 通信由 AstrBot 宿主负责；前端通过 AstrBotPluginPage.apiGet/apiPost
+    使用 manage/<action>，不自行拼接 URL。成功响应直接返回数据，失败使用宿主错误结构；宿主代理还可能在进入插件前拒绝请求。本契约版本独立于插件发布版本。
+security:
+- AstrBotAdmin: []
+paths:
+  /astrbot_plugin_seekmemory/manage/records:
+    get:
+      operationId: records
+      summary: 列出全部家族、scope 和状态的记忆
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordsResponse'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /astrbot_plugin_seekmemory/manage/status:
+    get:
+      operationId: status
+      summary: 查看引擎、模型配置与任务状态
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeStatus'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /astrbot_plugin_seekmemory/manage/detail:
+    get:
+      operationId: detail
+      summary: 查看原始正文、版本、来源与账本
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactDetail'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: string
+  /astrbot_plugin_seekmemory/manage/events:
+    get:
+      operationId: events
+      summary: 读取最近的生命周期日志
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsResponse'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 业务类型，精确匹配
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 生命周期状态，精确匹配
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        description: 消息或任务 ID 的子串，不区分大小写
+  /astrbot_plugin_seekmemory/manage/update:
+    post:
+      operationId: update
+      summary: 追加人工修订
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+        '400':
+          description: 输入校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 版本冲突、任务忙碌或目标任务已结束
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 请求体超过 64 KiB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        description: 请求体最多 64 KiB。
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommand'
+  /astrbot_plugin_seekmemory/manage/diagnose:
+    post:
+      operationId: diagnose
+      summary: 只读预演召回
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagnostic'
+        '400':
+          description: 输入校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 版本冲突、任务忙碌或目标任务已结束
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 请求体超过 64 KiB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        description: 请求体最多 64 KiB。
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnosticQuery'
+  /astrbot_plugin_seekmemory/manage/task:
+    post:
+      operationId: task
+      summary: 提交抽取或每周整理任务
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+        '400':
+          description: 输入校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 版本冲突、任务忙碌或目标任务已结束
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 请求体超过 64 KiB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        description: 请求体最多 64 KiB。
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCommand'
+  /astrbot_plugin_seekmemory/manage/cancel:
+    post:
+      operationId: cancel
+      summary: 取消指定的当前任务
+      responses:
+        '200':
+          description: 操作成功，直接返回数据，无额外 envelope。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdResponse'
+        '400':
+          description: 输入校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未登录管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 记忆或操作不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求方法不支持
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 版本冲突、任务忙碌或目标任务已结束
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: 请求体超过 64 KiB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 未预期的内部错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 记忆引擎不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      requestBody:
+        required: true
+        description: 请求体最多 64 KiB。
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelCommand'
+components:
+  securitySchemes:
+    AstrBotAdmin:
+      type: http
+      scheme: bearer
+      description: 宿主验证管理员身份并注入 request.username；插件页面使用宿主桥接，不持有或读取 token。
+  schemas:
+    JsonValue:
+      description: 任意 JSON 值。扩展容器元素在传输类型中为 unknown，由 Zod 递归校验；不使用 any。
+      type:
+      - 'null'
+      - boolean
+      - number
+      - string
+      - array
+      - object
+      items: {}
+      additionalProperties: true
+    JsonObject:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/JsonValue'
+    Scope:
+      type: string
+      enum:
+      - private
+      - shared
+      - shadow
+    MemoryState:
+      type: string
+      enum:
+      - active
+      - forgotten
+      - merged
+    MemoryCategory:
+      type: string
+      enum:
+      - fact
+      - scene
+      - detail
+      - impression
+      - persona
+      - example
+      - media
+      - secret
+      - designated
+    MemoryVersion:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        at:
+          type: string
+          format: date-time
+        text:
+          type: string
+          minLength: 1
+      required:
+      - revision
+      - at
+      - text
+      additionalProperties: false
+    MemoryRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        text:
+          type: string
+          minLength: 1
+        category:
+          $ref: '#/components/schemas/MemoryCategory'
+        state:
+          $ref: '#/components/schemas/MemoryState'
+        scope:
+          $ref: '#/components/schemas/Scope'
+        subject:
+          type: string
+          minLength: 1
+        session:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        hits:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryVersion'
+          minItems: 1
+        relatedIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+      required:
+      - id
+      - title
+      - text
+      - category
+      - state
+      - scope
+      - subject
+      - session
+      - tags
+      - confidence
+      - hits
+      - updatedAt
+      - versions
+      - relatedIds
+      additionalProperties: false
+      description: 统一记忆库投影。版本号唯一且降序，最新版本内容与 text 一致；这些跨字段规则由 Zod 和业务测试补充验证。
+    RecordsResponse:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryRecord'
+      required:
+      - records
+      additionalProperties: false
+    ArtifactHeader:
+      type: object
+      properties:
+        id:
+          type: string
+        family:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        state:
+          $ref: '#/components/schemas/MemoryState'
+        scope:
+          $ref: '#/components/schemas/Scope'
+        subject_id:
+          type: string
+        said_by:
+          type: string
+        time:
+          type: object
+          properties:
+            created:
+              type: string
+            updated:
+              type: string
+            valid_from:
+              type: [string, 'null']
+            valid_to:
+              type: [string, 'null']
+            expires:
+              type: [string, 'null']
+          additionalProperties: true
+      required:
+      - id
+      - family
+      - revision
+      - state
+      - scope
+      additionalProperties: true
+    ArtifactDetail:
+      type: object
+      properties:
+        artifact:
+          type: object
+          properties:
+            header:
+              $ref: '#/components/schemas/ArtifactHeader'
+            payload:
+              $ref: '#/components/schemas/JsonObject'
+          required:
+          - header
+          - payload
+          additionalProperties: false
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/JsonObject'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/JsonObject'
+        ledger:
+          type: array
+          items:
+            $ref: '#/components/schemas/JsonObject'
+      required:
+      - artifact
+      - versions
+      - sources
+      - ledger
+      additionalProperties: false
+      description: 原始快照、来源和账本保持 JSON 扩展字段；不补造历史缺失数据。header 允许既有 lineage、strength、time 等字段。
+    PendingTopic:
+      type: object
+      properties:
+        id:
+          type: string
+        session:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+        oldestAt:
+          type: [string, 'null']
+          format: date-time
+      required: [id, session, count, oldestAt]
+      additionalProperties: false
+      description: 按上游话题分组的待处理消息，仅提供计数和时间，不返回对话正文。
+    RuntimeStatus:
+      type: object
+      properties:
+        ready:
+          type: boolean
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              ok:
+                type: boolean
+              detail:
+                type: string
+            required:
+            - name
+            - ok
+            - detail
+            additionalProperties: false
+        activeTask:
+          anyOf:
+          - type: object
+            properties:
+              id:
+                type: string
+              kind:
+                type: string
+            required:
+            - id
+            - kind
+            additionalProperties: false
+          - type: 'null'
+        pending:
+          type: array
+          items:
+            type: object
+            properties:
+              session:
+                type: string
+              count:
+                type: integer
+                minimum: 0
+            required:
+            - session
+            - count
+            additionalProperties: false
+        pendingTopics:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingTopic'
+        extractionPolicy:
+          type: object
+          properties:
+            backlogThreshold:
+              type: integer
+            topicTtlSeconds:
+              type: number
+            maxTopicsPerBatch:
+              type: integer
+              minimum: 1
+          required: [backlogThreshold, topicTtlSeconds, maxTopicsPerBatch]
+          additionalProperties: false
+        checkpointPending:
+          type: [integer, 'null']
+          minimum: 0
+        schedulerCount:
+          type: integer
+          minimum: 0
+        config:
+          $ref: '#/components/schemas/JsonObject'
+      required:
+      - ready
+      - checks
+      - activeTask
+      - pending
+      - pendingTopics
+      - extractionPolicy
+      - checkpointPending
+      - schedulerCount
+      - config
+      additionalProperties: false
+    LogSource:
+      type: object
+      properties:
+        module:
+          type: string
+        file:
+          type: string
+        function:
+          type: string
+        line:
+          type: integer
+          minimum: 1
+      required:
+      - module
+      - file
+      - function
+      - line
+      additionalProperties: false
+    OperationEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        at:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        taskId:
+          type: string
+        level:
+          type: string
+          enum:
+          - DEBUG
+          - INFO
+          - WARNING
+          - ERROR
+        stage:
+          type: string
+        source:
+          anyOf:
+          - $ref: '#/components/schemas/LogSource'
+          - type: 'null'
+        context:
+          type: object
+          additionalProperties:
+            type:
+            - string
+            - number
+            - boolean
+            - 'null'
+        durationMs:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+        error:
+          anyOf:
+          - type: object
+            properties:
+              type:
+                type: string
+              frames:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogSource'
+            required:
+            - type
+            - frames
+            additionalProperties: false
+          - type: 'null'
+      required:
+      - id
+      - at
+      - kind
+      - status
+      - message
+      - taskId
+      additionalProperties: false
+      description: 兼容旧日志：level、stage、source、context、durationMs、error 可缺省，前端再补默认值，不伪造位置。
+    EventsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationEvent'
+          maxItems: 500
+        capacity:
+          type: integer
+          const: 500
+      required:
+      - events
+      - capacity
+      additionalProperties: false
+    DiagnosticQuery:
+      type: object
+      properties:
+        query:
+          type: string
+          pattern: ^\s*\S(?:[\s\S]{0,3998}\S)?\s*$
+          description: 去除首尾空白后为 1–4000 个字符。
+        umo:
+          type: string
+          pattern: ^\s*\S(?:[\s\S]{0,498}\S)?\s*$
+          description: 去除首尾空白后为 1–500 个字符。
+        speaker:
+          type: string
+          pattern: ^\s*\S(?:[\s\S]{0,198}\S)?\s*$
+          description: 去除首尾空白后为 1–200 个字符。
+      required:
+      - query
+      - umo
+      - speaker
+      additionalProperties: true
+      description: 文本去除首尾空白后校验长度；多余字段由现有接口忽略。诊断不写库，不消耗指定交付。
+    Diagnostic:
+      type: object
+      properties:
+        block:
+          type: string
+        info:
+          $ref: '#/components/schemas/JsonObject'
+        visible:
+          type: array
+          items:
+            type: string
+        excluded:
+          type: array
+          items:
+            type: string
+      required:
+      - block
+      - info
+      - visible
+      - excluded
+      additionalProperties: false
+    UpdateCommand:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+        expectedRevision:
+          type: integer
+          minimum: 1
+        payload:
+          $ref: '#/components/schemas/JsonObject'
+        scope:
+          $ref: '#/components/schemas/Scope'
+        state:
+          $ref: '#/components/schemas/MemoryState'
+        reason:
+          type: string
+          pattern: ^\s*\S(?:[\s\S]{0,298}\S)?\s*$
+          description: 去除首尾空白后为 1–300 个字符。
+        confirmed:
+          type: boolean
+          const: true
+      required:
+      - id
+      - expectedRevision
+      - payload
+      - scope
+      - state
+      - reason
+      - confirmed
+      additionalProperties: false
+      description: reason 去除首尾空白后校验；payload 需通过 family 校验，JSON 序列化长度不得超过 50,000。revision 必须等于当前版本；合并状态转换受业务约束。
+    TaskCommand:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - extract
+          - weekly
+        confirmed:
+          type: boolean
+          const: true
+      required:
+      - kind
+      - confirmed
+      additionalProperties: true
+    CancelCommand:
+      type: object
+      properties:
+        id:
+          type: string
+        confirmed:
+          type: boolean
+          const: true
+      required:
+      - id
+      - confirmed
+      additionalProperties: true
+    IdResponse:
+      type: object
+      properties:
+        id:
+          type: string
+      required:
+      - id
+      additionalProperties: false
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          const: error
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/JsonValue'
+      required:
+      - status
+      - message
+      - data
+      additionalProperties: false

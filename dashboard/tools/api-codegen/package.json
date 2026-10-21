@@ -1,0 +1,14 @@
+{
+  "name": "@seekmemory/api-codegen",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "generate": "openapi-typescript ../../../openapi.yaml -o ../../src/contracts/generated.ts --array-length",
+    "check": "openapi-typescript ../../../openapi.yaml -o ../../src/contracts/generated.ts --array-length --check"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

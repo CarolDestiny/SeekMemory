@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import datetime
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
     from ..core.artifact import Lineage, Strength, TimeSpan, content_of, make, validate
     from ..core.graph import Graph
     from ..maintain.impression import revise_impression
@@ -22,26 +25,34 @@ try:  # 作为 astrbot 插件包的一部分导入
     )
     from ..store.cache import Cache
     from ..store.db import DB
-    from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
+    from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
     from core.artifact import Lineage, Strength, TimeSpan, content_of, make, validate
     from core.graph import Graph
     from maintain.impression import revise_impression
     from maintain.link import link_new
-    from perceive.extract import build_prompt, filter_duplicates, parse_response
     from store.cache import Cache
     from store.db import DB
-    from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
+
+    from perceive.extract import build_prompt, filter_duplicates, parse_response
 
 MAX_ITEMS = 6
 
 # 值得不等晚上的信号：计划与日期、稳定事实、强情绪。命中任一就当场抽。
-_PLAN = re.compile(r"(下周|明天|后天|下个月|周末|计划|打算|准备|约了|要去|出差|搬家|"
-                   r"面试|入职|离职|辞职|生日|纪念日|考试|体检)")
-_FACT = re.compile(r"(我叫|名字|住在|老家|公司|工作|职业|女朋友|男朋友|老婆|老公|对象|"
-                   r"爸|妈|猫|狗|住院|手术|升职|加薪|毕业)")
-_STRONG = re.compile(r"(崩溃|吵架|分手|哭了|想死|撑不住|很难受|被骂|裁员|辞退|生病|发烧)")
-_NOT_WORTH = re.compile(r"^(早|晚安|在吗|在不在|哈哈|嗯|哦|好|好的|收到)[。！？!?~～]*$")
+_PLAN = re.compile(
+    r"(下周|明天|后天|下个月|周末|计划|打算|准备|约了|要去|出差|搬家|"
+    r"面试|入职|离职|辞职|生日|纪念日|考试|体检)"
+)
+_FACT = re.compile(
+    r"(我叫|名字|住在|老家|公司|工作|职业|女朋友|男朋友|老婆|老公|对象|"
+    r"爸|妈|猫|狗|住院|手术|升职|加薪|毕业)"
+)
+_STRONG = re.compile(
+    r"(崩溃|吵架|分手|哭了|想死|撑不住|很难受|被骂|裁员|辞退|生病|发烧)"
+)
+_NOT_WORTH = re.compile(
+    r"^(早|晚安|在吗|在不在|哈哈|嗯|哦|好|好的|收到)[。！？!?~～]*$"
+)
 Log = Callable[[str], None]
 
 
@@ -50,7 +61,9 @@ def _parse_time(value: Any) -> datetime.datetime | None:
         return datetime.datetime.fromisoformat(str(value or "").strip())
     except (TypeError, ValueError):
         try:
-            return datetime.datetime.fromisoformat(str(value or "").strip() + "T00:00:00")
+            return datetime.datetime.fromisoformat(
+                str(value or "").strip() + "T00:00:00"
+            )
         except (TypeError, ValueError):
             return None
 
@@ -164,24 +177,59 @@ async def absorb(
     model: Any,
     log: Log = lambda _msg: None,
     owner_id: str = "",
+    *,
+    strict: bool = False,
+    stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
+        nullcontext()
+    ),
 ) -> WriteOutcome:
+    """抽取并持久化 Artifact，对单条处理失败保持容错。
+
+    Args:
+        items: 缓冲中的对话记录。
+        db: 运行中的 Artifact 数据库。
+        cache: 可选的运行中 Artifact 缓存。
+        graph: 可选的关系图，用于关联新 Artifact。
+        model: 上游 ChatModel 接口或兼容的模型服务。
+        log: 操作警告回调。
+        owner_id: 配置中的主人 ID，用于解析模型的主体归属。
+        strict: 传播模型服务异常，使任务执行器保留待处理输入。
+        stage: 注入的业务阶段上下文管理器；默认不采集阶段日志。
+
+    Returns:
+        上游 WriteOutcome，包含写入数、跳过数、ID 与失败信息。
+
+    Raises:
+        Exception: 启用 strict 时传播的模型服务异常。
+    """
     if not items or db is None or model is None:
         return WriteOutcome(errors=("invalid extraction input",))
     try:
-        if hasattr(model, "complete"):
-            resp = await model.complete(ChatRequest(session_id=str(items[0].session_id or ""),
-                                                    system_prompt=build_prompt([]),
-                                                    prompt=dialogue_of(items)))
-            raw = getattr(resp, "text", "") or ""
-        else:
-            resp = await model.text_chat(system_prompt=build_prompt([]), prompt=dialogue_of(items))
-            raw = getattr(resp, "completion_text", "") or ""
+        with stage("provider.call"):
+            if hasattr(model, "complete"):
+                resp = await model.complete(
+                    ChatRequest(
+                        session_id=str(items[0].session_id or ""),
+                        system_prompt=build_prompt([]),
+                        prompt=dialogue_of(items),
+                    )
+                )
+                raw = getattr(resp, "text", "") or ""
+            else:
+                resp = await model.text_chat(
+                    system_prompt=build_prompt([]), prompt=dialogue_of(items)
+                )
+                raw = getattr(resp, "completion_text", "") or ""
     except Exception as exc:
-        log(f"model extraction failed: {exc}")
+        if strict:
+            raise
+        log(f"模型调用失败： {type(exc).__name__}")
         return WriteOutcome(errors=(f"model: {exc}",), model_failed=True)
 
-    parsed = parse_response(raw)
-    parsed = filter_duplicates(parsed, existing_texts(cache))
+    with stage("response.parse"):
+        parsed = parse_response(raw)
+    with stage("memory.deduplicate"):
+        parsed = filter_duplicates(parsed, existing_texts(cache))
     if not parsed:
         return WriteOutcome(skipped=len(items))
 
@@ -206,39 +254,58 @@ async def absorb(
             strength = strength_of(item)
             if not source_ids:
                 payload["legacy_no_source"] = True
-                strength["confidence"] = min(float(strength.get("confidence", 1.0)), 0.5)
-            event_at = _event_at(item, items)
-            art = make("memory", payload, strength=strength,
-                       scope="shared" if group or not owner else "private",
-                       said_by=said_by,
-                       subject_id=_subject_id(item, owner, default_subject, owner_id),
-                       lineage=Lineage(sources=source_ids),
-                       time=TimeSpan(created=event_at,
-                                     valid_from=_date_or_none(item.get("valid_from")),
-                                     valid_to=_date_or_none(item.get("valid_to"))))
-            validate(art)
+                strength["confidence"] = min(
+                    float(strength.get("confidence", 1.0)), 0.5
+                )
+            with stage("artifact.validate"):
+                art = make(
+                    "memory",
+                    payload,
+                    strength=strength,
+                    scope="shared" if group or not owner else "private",
+                    said_by=said_by,
+                    subject_id=_subject_id(item, owner, default_subject, owner_id),
+                    lineage=Lineage(sources=source_ids),
+                    time=TimeSpan(
+                        created=_event_at(item, items),
+                        valid_from=_date_or_none(item.get("valid_from")),
+                        valid_to=_date_or_none(item.get("valid_to")),
+                    ),
+                )
+                validate(art)
         except Exception as exc:
             skipped += 1
             errors.append(f"construct: {exc}")
-            log(f"artifact construct failed: {exc}")
+            log(f"记忆校验失败： {type(exc).__name__}")
             continue
         try:
-            db.commit(art, expected_revision=0, op="create", reason="extract",
-                      source_ids=source_ids)
-            if cache is not None:
-                cache.put(art)
-            link_new(art, graph, cache)
-            written_ids.append(art.header.id)
+            with stage("artifact.persist"):
+                db.commit(
+                    art,
+                    expected_revision=0,
+                    op="create",
+                    reason="extract",
+                    source_ids=source_ids,
+                )
+                if cache is not None:
+                    cache.put(art)
+                link_new(art, graph, cache)
+                written_ids.append(art.header.id)
         except Exception as exc:
             skipped += 1
             errors.append(f"commit: {exc}")
-            log(f"artifact commit failed: {exc}")
+            log(f"记忆写入失败： {type(exc).__name__}")
             continue
         try:
             if cache is not None and str(payload.get("level") or "") == "impression":
-                revise_impression(db, cache, art)
+                with stage("impression.revise"):
+                    revise_impression(db, cache, art)
         except Exception as exc:
             errors.append(f"impression: {exc}")
-            log(f"impression revision failed: {exc}")
-    return WriteOutcome(written=len(written_ids), skipped=skipped,
-                        ids=tuple(written_ids), errors=tuple(errors))
+            log(f"印象修订失败： {type(exc).__name__}")
+    return WriteOutcome(
+        written=len(written_ids),
+        skipped=skipped,
+        ids=tuple(written_ids),
+        errors=tuple(errors),
+    )
