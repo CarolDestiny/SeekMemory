@@ -22,6 +22,8 @@ from .perceive.buffer import Buffer
 from .perceive.compress import build_compress_prompt, parse_compress
 from .recall.assemble import build as assemble_text
 from .recall.designated import deliverable, is_private, mark_given
+from .recall.drift import best_of as drift_best, should_drift
+from .recall.intent import intent_of
 from .recall.gate import pinned
 from .recall.scope import visible
 from .recall.score import select
@@ -133,22 +135,38 @@ class Main(star.Star):
 
         designated = [a for a in pool if a.header.family == "designated"]
         pool = [a for a in pool if a.header.family != "designated"]
-        seed_ids = seeds(text, pool)
-        activation = activate(seed_ids, self.graph, self.cache)
-        candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
-        picked = select(
-            candidates,
-            text,
-            0.0,
-            k=self._c("recall_k", 8),
-            explore=self._c("explore_rate", 0.1),
-            gate=True,
-            min_ev_abs=self._c("recall_min_ev_abs", 0.5),
-            min_ev_rel=self._c("recall_min_ev_rel", 0.3),
-        )
+
+        # 这一句值不值得翻记忆：寒暄、问时间、让你写代码都不翻。
+        mode = intent_of(text)
+        picked: list = []
+        if mode != "none" and pool:
+            seed_ids = seeds(text, pool)
+            activation = activate(seed_ids, self.graph, self.cache)
+            candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
+            loose = mode == "loose"
+            picked = select(
+                candidates,
+                text,
+                0.0,
+                k=self._c("recall_k", 8) + (2 if loose else 0),
+                explore=self._c("explore_rate", 0.1),
+                gate=True,
+                min_ev_abs=self._c("recall_min_ev_abs", 0.5),
+                min_ev_rel=0.2 if loose else self._c("recall_min_ev_rel", 0.3),
+            )
+
+        # 没有线索的时候，也可能突然想起一件事——这不是检索，是浮现。
+        if not picked and should_drift(text, seed=text):
+            one = drift_best(pool, seed=text)
+            if one is not None:
+                picked = [one]
+                if self._c("debug_log", False):
+                    logger.info(f"[seekmemory] 主动想起：{one.header.id}")
+
+        budget = self._c("budget_chars", 600)
         block = assemble_text(
             pinned_arts + designated + picked,
-            budget=self._c("budget_chars", 600),
+            budget=int(budget * (1.4 if mode == "loose" else 1.0)),
             text=text,
             is_private=private,
         )
