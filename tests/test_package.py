@@ -1,4 +1,4 @@
-"""Verify the installable archive boundary and run its isolated backend."""
+"""验证安装包边界，并独立运行其中的后端。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from scripts.package_plugin import package_plugin  # noqa: E402
 
 class PackageTests(unittest.TestCase):
     def setUp(self) -> None:
-        """Create a checkout with real backend files and minimal built assets."""
+        """创建包含真实后端文件和最小构建资源的源码目录。"""
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "checkout"
@@ -76,7 +76,7 @@ class PackageTests(unittest.TestCase):
         )
 
     def test_runtime_allowlist_and_reproducible_checksum(self) -> None:
-        """Exclude development and local files while preserving runtime resources."""
+        """排除开发及本地文件，保留运行资源。"""
         archive = package_plugin(self.root, self.output)
         first = archive.read_bytes()
         with ZipFile(archive) as bundle:
@@ -105,14 +105,14 @@ class PackageTests(unittest.TestCase):
         )
 
     def test_missing_runtime_resource_fails(self) -> None:
-        """Do not emit a ZIP when the SQL schema is missing."""
+        """SQL 表结构缺失时不生成 ZIP。"""
         (self.root / "store/schema.sql").unlink()
-        with self.assertRaisesRegex(ValueError, "Missing or empty"):
+        with self.assertRaisesRegex(ValueError, "运行文件缺失或为空"):
             package_plugin(self.root, self.output)
         self.assertFalse(self.output.exists())
 
     def test_missing_or_unbuilt_frontend_fails(self) -> None:
-        """Require production assets, license notices, and resolved entry URLs."""
+        """要求包含生产资源、许可证声明及可解析的入口 URL。"""
         for name in (
             "index.html",
             "LICENSES.md",
@@ -130,46 +130,46 @@ class PackageTests(unittest.TestCase):
         (self.view / "index.html").write_text(
             '<script src="/src/main.tsx"></script>', encoding="utf-8"
         )
-        with self.assertRaisesRegex(ValueError, "relative production assets"):
+        with self.assertRaisesRegex(ValueError, "相对路径引用已打包的生产资源"):
             package_plugin(self.root, self.output)
 
     def test_tag_must_match_metadata(self) -> None:
-        """A tag must describe the version actually contained in the package."""
+        """标签必须对应安装包中实际包含的版本。"""
         (self.root / "metadata.yaml").write_text(
             'version: "1.2.3-rc.1"\n', encoding="utf-8"
         )
         package_plugin(self.root, self.output, "v1.2.3-rc.1")
-        with self.assertRaisesRegex(ValueError, "does not match"):
+        with self.assertRaisesRegex(ValueError, "不匹配"):
             package_plugin(self.root, self.output, "v1.2.3")
 
     def test_missing_font_reference_fails(self) -> None:
-        """A valid entry must not hide missing secondary CSS assets."""
+        """入口有效时仍需检查 CSS 引用的次级资源是否缺失。"""
         (self.view / "assets/app.css").write_text(
             '@font-face { src: url("./missing.woff2") }', encoding="utf-8"
         )
-        with self.assertRaisesRegex(ValueError, "CSS references an unpackaged"):
+        with self.assertRaisesRegex(ValueError, "CSS 引用了未打包"):
             package_plugin(self.root, self.output)
 
     def test_source_maps_and_mock_bundles_fail(self) -> None:
-        """Prevent development data and source maps from entering release assets."""
+        """防止开发数据和源码映射进入发布资源。"""
         source_map = self.view / "assets/app.js.map"
         source_map.write_text("{}", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "Unexpected build asset"):
+        with self.assertRaisesRegex(ValueError, "构建资源类型不受支持"):
             package_plugin(self.root, self.output)
         source_map.unlink()
         (self.view / "assets/app.js").write_text(
             'const id = "mock_memory_001"', encoding="utf-8"
         )
-        with self.assertRaisesRegex(ValueError, "Development code"):
+        with self.assertRaisesRegex(ValueError, "开发代码"):
             package_plugin(self.root, self.output)
 
     def test_backend_runs_from_extracted_archive(self) -> None:
-        """Run the smoke test against extracted files without the source checkout."""
+        """脱离源码目录，对解压文件执行冒烟测试。"""
         archive = package_plugin(self.root, self.output)
         installed = Path(self.temp.name) / "installed"
         with ZipFile(archive) as bundle:
             bundle.extractall(installed)
-        # The test harness is external to the shipped ZIP.
+        # 测试框架位于分发 ZIP 之外。
         (installed / "tests").mkdir()
         shutil.copyfile(ROOT / "tests/test_smoke.py", installed / "tests/test_smoke.py")
         result = subprocess.run(

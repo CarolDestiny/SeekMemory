@@ -18,7 +18,7 @@ import {
   TabsTrigger,
 } from "./shadcn/tabs"
 
-// Public contracts use React/DOM types, never component-vendor prop types.
+// 公共契约使用 React/DOM 类型，不暴露组件库属性类型。
 export interface ButtonProps extends ComponentProps<"button"> {
   variant?:
     | "default"

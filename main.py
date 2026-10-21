@@ -87,16 +87,14 @@ class Main(star.Star):
             self.buffer = Buffer(str(self.data_path.parent / "pending.json"))
             self.ready = True
             self.journal.record(
-                "plugin", "ready", f"Loaded {self.cache.size()} active artifacts"
+                "plugin", "ready", f"已加载 {self.cache.size()} 条有效记忆"
             )
             logger.info(
                 f"[seekmemory] 已加载 {self.cache.size()} 条记忆，"
                 f"待抽取 {len(self.buffer.items)} 条"
             )
         except Exception as e:  # noqa: BLE001
-            self.journal.record(
-                "plugin", "failed", "Engine initialization failed", error=e
-            )
+            self.journal.record("plugin", "failed", "记忆引擎初始化失败", error=e)
             logger.error(f"[seekmemory] 初始化失败，记忆功能降级：{e}")
 
     # ---------------- 权限 ----------------
@@ -148,7 +146,7 @@ class Main(star.Star):
             self.journal.record(
                 "recall",
                 "info",
-                "Recall assembled",
+                "召回文本已组装",
                 stage="assemble",
                 context={key: info[key] for key in ("mode", "picked", "chars")},
             )
@@ -157,7 +155,7 @@ class Main(star.Star):
                 if self._c("debug_log", False):
                     logger.info(f"[seekmemory] 注入 {len(block)} 字")
         except Exception as e:  # noqa: BLE001
-            self.journal.record("recall", "failed", "Recall failed", error=e)
+            self.journal.record("recall", "failed", "召回失败", error=e)
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
 
     def _calls_path(self) -> str:
@@ -203,14 +201,14 @@ class Main(star.Star):
             asyncio.create_task(operation())
             for operation in (self._nightly_loop, self._weekly_loop, self._idle_loop)
         ]
-        self.journal.record("scheduler", "running", "Maintenance schedules started")
+        self.journal.record("scheduler", "running", "维护定时任务已启动")
 
     async def initialize(self) -> None:
-        """Start schedules on activation, including plugin reload."""
+        """插件激活时启动定时任务，兼容热重载。"""
         await self.start_jobs()
 
     async def terminate(self) -> None:
-        """Cancel owned tasks, detach routes, and close storage in that order."""
+        """依次取消本实例任务、移除路由并关闭存储。"""
         self.ready = False
         for task in self._schedulers:
             task.cancel()
@@ -223,7 +221,7 @@ class Main(star.Star):
         if self.db is not None:
             self.db.close()
             self.db = None
-        self.journal.record("plugin", "stopped", "Plugin resources released")
+        self.journal.record("plugin", "stopped", "插件资源已释放")
 
     async def _nightly_loop(self) -> None:
         while True:
@@ -234,9 +232,7 @@ class Main(star.Star):
                 self.jobs.submit("nightly", self._nightly)
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 夜间整理失败：{e}")
-                self.journal.record(
-                    "scheduler", "failed", "Schedule submission failed", error=e
-                )
+                self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
 
     async def _weekly_loop(self) -> None:
         while True:
@@ -247,16 +243,14 @@ class Main(star.Star):
                 self.jobs.submit("weekly", self._weekly)
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 每周整理失败：{e}")
-                self.journal.record(
-                    "scheduler", "failed", "Schedule submission failed", error=e
-                )
+                self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
 
     @staticmethod
     def _seconds_until(hhmm: str, weekday: int | None = None) -> float:
         try:
             hh, mm = (int(x) for x in hhmm.split(":"))
             if not 0 <= hh <= 23 or not 0 <= mm <= 59:
-                raise ValueError("Invalid schedule")
+                raise ValueError("定时时间无效")
         except Exception:
             hh, mm = 23, 50
         now = datetime.datetime.now()
@@ -292,12 +286,10 @@ class Main(star.Star):
             await asyncio.sleep(30)
             try:
                 if self._should_flush():
-                    self.jobs.submit("idle", lambda: self._flush("idle"))
+                    self.jobs.submit("idle", lambda: self._flush("空闲"))
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 空闲抽取失败：{e}")
-                self.journal.record(
-                    "scheduler", "failed", "Schedule submission failed", error=e
-                )
+                self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
 
     async def _nightly(self) -> None:
         """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
@@ -326,7 +318,7 @@ class Main(star.Star):
             with self.journal.span("extract", "provider.resolve"):
                 prov = await self.context.get_using_provider_async()
                 if not prov:
-                    raise RuntimeError("No model provider is configured")
+                    raise RuntimeError("尚未配置模型服务")
             items = list(self.buffer.items)
             sessions = self._split_sessions(items)
             self._flush_count += 1
@@ -346,8 +338,8 @@ class Main(star.Star):
                         stage=partial(self.journal.span, "extract"),
                     )
                     metrics["written"] = got
-                # Keep in-flight messages persisted until processing succeeds.
-                # Identity preserves identical messages arriving during the await.
+                # 处理成功前保留正在抽取的消息及其持久化记录。
+                # 按对象身份移除已处理项，保留等待期间新到达的同内容消息。
                 processed = {id(row) for row in part}
                 self.buffer.items = [
                     row for row in self.buffer.items if id(row) not in processed
@@ -365,7 +357,7 @@ class Main(star.Star):
             self.journal.record(
                 "extract",
                 "info",
-                f"sessions={len(sessions)} written={written}",
+                f"已处理 {len(sessions)} 个会话，写入 {written} 条记忆",
                 context={"sessions": len(sessions), "written": written},
                 stage="batch.complete",
             )
@@ -392,7 +384,7 @@ class Main(star.Star):
         self.journal.record(
             "weekly",
             "info",
-            f"forgotten={dropped} merged={merged} persona={bool(persona)}",
+            f"遗忘 {dropped} 条，合并 {merged} 条，人格更新：{bool(persona)}",
             self.jobs.task_id,
         )
         logger.info(

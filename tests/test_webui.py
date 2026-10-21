@@ -1,4 +1,4 @@
-"""Administrative revision, scope, dry-run and lifecycle regression tests."""
+"""管理修订、scope、只读预演与生命周期回归测试。"""
 
 from __future__ import annotations
 
@@ -86,10 +86,10 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(self.db.get(self.art.header.id).header.revision, 3)
 
     def test_merged_record_cannot_be_resurrected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "maintenance"):
+        with self.assertRaisesRegex(ValueError, "维护任务"):
             self.service.update({**self.command, "state": "merged"})
         self.db.upsert(revise(self.art, state="merged"))
-        with self.assertRaisesRegex(ValueError, "Merged"):
+        with self.assertRaisesRegex(ValueError, "已合并"):
             self.service.update({**self.command, "expectedRevision": 2})
 
     def test_catalog_covers_every_family_and_scope(self) -> None:
@@ -179,7 +179,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.jobs.submit("extract", operation)
         await self.jobs.task
         self.assertEqual(self.journal.events[-1]["status"], "failed")
-        self.assertNotIn("PRIVATE MODEL RESPONSE", self.journal.path.read_text())
+        self.assertNotIn(
+            "PRIVATE MODEL RESPONSE", self.journal.path.read_text(encoding="utf-8")
+        )
 
     async def test_restart_recovers_interrupted_tasks_and_tolerates_bad_lines(
         self,
@@ -199,7 +201,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
                 isinstance(row, dict)
                 for row in map(
                     json.loads,
-                    restored.path.read_text().replace("{broken\n", "").splitlines(),
+                    restored.path.read_text(encoding="utf-8")
+                    .replace("{broken\n", "")
+                    .splitlines(),
                 )
             )
         )

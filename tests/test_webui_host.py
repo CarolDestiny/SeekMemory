@@ -1,4 +1,4 @@
-"""Optional integration tests against AstrBot's real request and plugin APIs."""
+"""针对 AstrBot 真实请求与插件 API 的可选集成测试。"""
 
 from __future__ import annotations
 
@@ -63,16 +63,16 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         body: dict | None = None,
         username: str | None = "admin",
     ):
-        """Bind a real host request without starting any messaging adapters.
+        """绑定真实宿主请求，不启动消息适配器。
 
         Args:
-            action: Administrative endpoint.
-            method: HTTP method.
-            body: Optional JSON body.
-            username: Host-authenticated identity, or None for the auth test.
+            action: 管理接口操作。
+            method: HTTP 方法。
+            body: 可选 JSON 请求体。
+            username: 宿主认证身份；认证失败测试使用 None。
 
         Returns:
-            The real JSON response from the plugin handler.
+            插件处理器返回的真实 JSON 响应。
         """
 
         async def receive():

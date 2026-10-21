@@ -1,4 +1,4 @@
-"""AstrBot bridge adapter for authenticated administrative requests."""
+"""将经过认证的管理请求适配到 AstrBot 桥接接口。"""
 
 from __future__ import annotations
 
@@ -12,40 +12,38 @@ if TYPE_CHECKING:
 
 
 class WebRoutes:
-    """Own the routes registered by this plugin instance."""
+    """管理当前插件实例注册的路由。"""
 
     def __init__(self, plugin: Main) -> None:
         self.plugin = plugin
 
     def register(self) -> None:
-        """Register host-native API handlers when the supported web API exists."""
+        """宿主支持插件 Web API 时，注册原生接口处理器。"""
         try:
             import astrbot.api.web  # noqa: F401
         except ImportError:
-            self.plugin.journal.record(
-                "webui", "warning", "Host plugin web API is unavailable"
-            )
+            self.plugin.journal.record("webui", "warning", "宿主不支持插件 Web API")
             return
         self.plugin.context.register_web_api(
             "/astrbot_plugin_seekmemory/manage/<action>",
             self.handle,
             ["GET", "POST"],
-            "SeekMemory administration",
+            "SeekMemory 记忆管理",
         )
 
     def close(self) -> None:
-        """Remove only routes still owned by this instance, preserving replacements."""
+        """仅移除仍由当前实例持有的路由，保留后续实例的替代路由。"""
         routes = self.plugin.context.registered_web_apis
         routes[:] = [route for route in routes if route[1] != self.handle]
 
     async def handle(self, action: str):
-        """Dispatch authenticated administrative operations.
+        """分发经过认证的管理操作。
 
         Args:
-            action: One of the explicitly supported administrative endpoints.
+            action: 明确支持的管理接口操作。
 
         Returns:
-            A host-native JSON response with bounded diagnostics or an error.
+            宿主原生 JSON 响应，包含有界诊断信息或错误。
         """
         from astrbot.api.web import error_response, json_response, request
 
@@ -78,11 +76,11 @@ class WebRoutes:
                 from ..store.ledger import Ledger
 
                 checks = [
-                    {"name": "engine", "ok": plugin.ready, "detail": "Memory engine"},
+                    {"name": "engine", "ok": plugin.ready, "detail": "记忆引擎"},
                     {
                         "name": "journal",
                         "ok": not plugin.journal.persistence_error,
-                        "detail": "Lifecycle persistence",
+                        "detail": "生命周期日志持久化",
                     },
                 ]
                 if plugin.db is not None:
@@ -90,15 +88,15 @@ class WebRoutes:
                         {
                             "name": "ledger",
                             "ok": Ledger(plugin.db).verify(),
-                            "detail": "Ledger hash chain",
+                            "detail": "账本哈希链",
                         }
                     )
                 try:
                     provider = await plugin.context.get_using_provider_async()
-                    provider_detail = "Configured provider; no model request sent"
+                    provider_detail = "检查模型服务配置，未发送模型请求"
                 except Exception as exc:
                     provider = None
-                    provider_detail = f"Provider lookup failed: {type(exc).__name__}"
+                    provider_detail = f"查询模型服务失败： {type(exc).__name__}"
                 checks.append(
                     {
                         "name": "provider",
@@ -173,7 +171,7 @@ class WebRoutes:
                 return error_response("请求内容过大", status_code=413)
             body = await request.json()
             if not isinstance(body, dict):
-                raise ValueError("JSON object required")
+                raise ValueError("请求体必须为 JSON 对象")
             if action == "diagnose":
                 with plugin.journal.span("diagnose", "recall.preview") as metrics:
                     result = service.diagnose(body)
@@ -193,7 +191,7 @@ class WebRoutes:
                     )
                 return json_response({"id": node_id})
             if body.get("confirmed") is not True:
-                raise ValueError("Confirmation required")
+                raise ValueError("请先确认操作")
             if action == "cancel":
                 if (
                     body.get("id") != plugin.jobs.task_id
@@ -205,7 +203,7 @@ class WebRoutes:
                 return json_response({"id": plugin.jobs.task_id})
             kind = body.get("kind")
             if not isinstance(kind, str) or kind not in {"extract", "weekly"}:
-                raise ValueError("Unknown task")
+                raise ValueError("未知任务类型")
             operation = plugin._nightly if kind == "extract" else plugin._weekly
             return json_response({"id": plugin.jobs.submit(kind, operation)})
         except LookupError:
@@ -222,7 +220,7 @@ class WebRoutes:
             plugin.journal.record(
                 "webui",
                 "failed",
-                "Administrative request failed",
+                "管理请求失败",
                 error=exc,
                 context={"action": action},
             )

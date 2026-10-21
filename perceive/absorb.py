@@ -132,23 +132,23 @@ async def absorb(
         nullcontext()
     ),
 ) -> int:
-    """Extract and persist artifacts with per-item fault tolerance.
+    """抽取并持久化 Artifact，对单条处理失败保持容错。
 
     Args:
-        items: Buffered conversation rows.
-        db: Live artifact database.
-        cache: Optional live artifact cache.
-        graph: Optional graph for linking new artifacts.
-        provider: Model provider implementing text_chat.
-        log: Callback for operational warnings.
-        strict: Propagate provider exceptions so task owners retain pending input.
-        stage: Injected business-stage context manager; defaults to no instrumentation.
+        items: 缓冲中的对话记录。
+        db: 运行中的 Artifact 数据库。
+        cache: 可选的运行中 Artifact 缓存。
+        graph: 可选的关系图，用于关联新 Artifact。
+        provider: 实现 text_chat 的模型服务。
+        log: 操作警告回调。
+        strict: 传播模型服务异常，使任务执行器保留待处理输入。
+        stage: 注入的业务阶段上下文管理器；默认不采集阶段日志。
 
     Returns:
-        Number of persisted artifacts; empty or rejected output yields zero.
+        持久化的 Artifact 数量；输出为空或全部被拒绝时返回零。
 
     Raises:
-        Exception: Provider failures when strict is enabled.
+        Exception: 启用 strict 时传播的模型服务异常。
     """
     if not items or db is None or provider is None:
         return 0
@@ -161,7 +161,7 @@ async def absorb(
     except Exception as exc:  # noqa: BLE001 - 抽取失败不抛给上层
         if strict:
             raise
-        log(f"Provider call failed: {type(exc).__name__}")
+        log(f"模型调用失败： {type(exc).__name__}")
         return 0
 
     with stage("response.parse"):
@@ -197,14 +197,14 @@ async def absorb(
                 )
                 validate(art)
         except Exception as exc:  # noqa: BLE001 - 单条坏数据跳过
-            log(f"Artifact validation failed: {type(exc).__name__}")
+            log(f"记忆校验失败： {type(exc).__name__}")
             continue
         try:
             with stage("artifact.persist"):
                 persist(art, db, cache, graph)
             written += 1
         except Exception as exc:  # noqa: BLE001
-            log(f"Artifact persistence failed: {type(exc).__name__}")
+            log(f"记忆写入失败： {type(exc).__name__}")
             continue
         # 印象不是只增不减：新证据到了就改旧印象，而不是再堆一条。
         try:
@@ -212,5 +212,5 @@ async def absorb(
                 with stage("impression.revise"):
                     revise_impression(db, cache, art)
         except Exception as exc:  # noqa: BLE001 - 修订失败不影响已写入的记忆
-            log(f"Impression revision failed: {type(exc).__name__}")
+            log(f"印象修订失败： {type(exc).__name__}")
     return written

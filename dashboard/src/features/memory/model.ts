@@ -22,7 +22,7 @@ const memoryVersionSchema = z
   })
   .readonly()
 
-// The live adapter and mock share this validated library projection.
+// 宿主适配器与 Mock 共用经过校验的记忆库数据结构。
 export const memoryRecordSchema = z
   .strictObject({
     id: z.string().min(1),
@@ -45,7 +45,7 @@ export const memoryRecordSchema = z
       context.addIssue({
         code: "custom",
         path: ["versions", 0, "text"],
-        message: "The latest version must match the current content.",
+        message: "最新版本必须与当前内容一致。",
       })
     }
     for (let index = 1; index < memory.versions.length; index += 1) {
@@ -55,7 +55,7 @@ export const memoryRecordSchema = z
         context.addIssue({
           code: "custom",
           path: ["versions", index],
-          message: "Versions must have unique revisions in descending order.",
+          message: "版本号必须唯一，并按降序排列。",
         })
       }
     }
@@ -71,7 +71,7 @@ export const memoryCollectionSchema = z
         context.addIssue({
           code: "custom",
           path: [index, "id"],
-          message: "Memory IDs must be unique.",
+          message: "记忆 ID 必须唯一。",
         })
       }
       ids.add(record.id)

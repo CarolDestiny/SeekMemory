@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react"
 import { ControlWorkspace } from "@/features/control/views/control-workspace"
 import { astrbotClient } from "@/infrastructure/astrbot-client"
 
-// Vite removes this branch and its fixture import from production builds.
+// Vite 会从生产构建中移除此分支及其示例数据导入。
 const MockApp =
   import.meta.env.DEV && import.meta.env.MODE === "mock"
     ? lazy(() => import("@/dev/MockApp"))
