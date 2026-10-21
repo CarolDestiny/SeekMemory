@@ -1,1 +1,1 @@
-"""Authenticated administration and plugin-local observability."""
+"""管理接口认证与插件内部运行观测。"""

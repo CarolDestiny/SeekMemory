@@ -1,6 +1,6 @@
 import type { MemoryRecord } from "../features/memory/model.ts"
 
-// All people, sessions, and memories below are fictional layout fixtures.
+// 下列人物、会话和记忆均为虚构的排版示例。
 export const mockMemories: readonly MemoryRecord[] = [
   {
     id: "mock_memory_001",

@@ -51,7 +51,7 @@ for (const scenario of scenarios) {
   void test(scenario.name, () => {
     const root = mkdtempSync(join(tmpdir(), "seekmemory-architecture-"))
     try {
-      // Import-boundary fixtures need no type service or installed runtime imports.
+      // 导入边界测试样例无需类型服务或已安装的运行时依赖。
       const config = readFileSync(
         new URL("../.oxlintrc.json", import.meta.url),
         "utf8"

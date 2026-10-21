@@ -13,7 +13,7 @@ import {
 import { mockMemories } from "./mock-data"
 
 const base = mockMemories[0]
-if (!base) throw new Error("Mock fixture requires a base record")
+if (!base) throw new Error("Mock 示例需要至少一条基础记录")
 let records = memoryCollectionSchema.parse([
   ...mockMemories,
   ...[
@@ -130,7 +130,7 @@ let events: OperationEvent[] = [
     at: "2026-10-21T08:00:00Z",
     kind: "plugin",
     status: "ready",
-    message: "Loaded 14 active artifacts",
+    message: "已加载 14 条有效记忆",
     taskId: "",
   },
   {
@@ -138,7 +138,7 @@ let events: OperationEvent[] = [
     at: "2026-10-21T08:02:00Z",
     kind: "extract",
     status: "running",
-    message: "Task started",
+    message: "任务已开始",
     taskId: "demo-extract-01",
   },
   {
@@ -146,7 +146,7 @@ let events: OperationEvent[] = [
     at: "2026-10-21T08:02:03Z",
     kind: "extract",
     status: "succeeded",
-    message: "sessions=2 written=3",
+    message: "已处理 2 个会话，写入 3 条记忆",
     taskId: "demo-extract-01",
   },
   {
@@ -154,7 +154,7 @@ let events: OperationEvent[] = [
     at: "2026-10-21T08:02:02Z",
     kind: "extract",
     status: "succeeded",
-    message: "Stage completed (fictional preview)",
+    message: "阶段已完成 （虚构预览）",
     taskId: "demo-extract-01",
     level: "INFO",
     stage: "session.extract",
@@ -172,7 +172,7 @@ let events: OperationEvent[] = [
     at: "2026-10-21T08:03:00Z",
     kind: "extract",
     status: "warning",
-    message: "Artifact validation failed: ValueError (fictional preview)",
+    message: "记忆校验失败： ValueError （虚构预览）",
     taskId: "demo-extract-02",
     level: "WARNING",
     stage: "artifact.validate",
@@ -189,7 +189,7 @@ let events: OperationEvent[] = [
     at: "2026-10-21T08:03:02Z",
     kind: "extract",
     status: "failed",
-    message: "Stage interrupted (fictional preview)",
+    message: "阶段中断 （虚构预览）",
     taskId: "demo-extract-02",
     level: "ERROR",
     stage: "session.extract",
@@ -233,7 +233,7 @@ export const mockClient: ManagementClient = {
       checks: ["engine", "ledger", "provider", "journal"].map((name) => ({
         name,
         ok: true,
-        detail: "Mock check — no real service connected",
+        detail: "Mock 检测，未连接真实服务",
       })),
       activeTask: null,
       pending: [{ session: "napcat:GroupMessage:10001", count: 8 }],
@@ -335,7 +335,7 @@ export const mockClient: ManagementClient = {
         at: new Date().toISOString(),
         kind,
         status: "succeeded",
-        message: "Mock task completed; no model call or real data change",
+        message: "Mock 任务已完成，未调用模型或修改真实数据",
         taskId: id,
       }),
       ...events,

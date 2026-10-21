@@ -60,7 +60,7 @@ export function libraryReducer(
   }
 }
 
-/** Derive a consistent page and selection without mutating source data. */
+/** 在不修改源数据的前提下，派生一致的分页与选中状态。 */
 export function selectLibrary(
   records: readonly MemoryRecord[],
   state: LibraryState

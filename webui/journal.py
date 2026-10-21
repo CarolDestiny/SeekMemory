@@ -1,4 +1,4 @@
-"""Bounded business events with source locations and task correlation."""
+"""包含源码位置和任务关联信息的有界业务事件。"""
 
 from __future__ import annotations
 
@@ -20,14 +20,14 @@ _ROOT = Path(__file__).resolve().parents[1]
 
 
 def _location(frame: FrameType, line: int) -> dict:
-    """Describe a frame without capturing locals or absolute installation paths.
+    """描述调用帧，不采集局部变量或安装目录的绝对路径。
 
     Args:
-        frame: Caller or exception frame.
-        line: Line at which the event or exception occurred.
+        frame: 调用者或异常的栈帧。
+        line: 事件或异常发生的行号。
 
     Returns:
-        Module, relative filename, function and one-based line number.
+        模块、相对文件名、函数和从 1 开始的行号。
     """
     path = Path(frame.f_code.co_filename).resolve()
     return {
@@ -41,7 +41,7 @@ def _location(frame: FrameType, line: int) -> dict:
 
 
 class Journal:
-    """Persist bounded events and expose reusable business-stage instrumentation."""
+    """持久化有界事件，提供可复用的业务阶段日志封装。"""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -67,7 +67,7 @@ class Journal:
                                         "taskId",
                                     )
                                 ):
-                                    # Old events remain valid; their source location is unknown.
+                                    # 兼容旧事件，其源码位置保持未知。
                                     self.events.append(row)
                             except (ValueError, UnicodeError):
                                 continue
@@ -92,7 +92,7 @@ class Journal:
         for task_id, event in unfinished.items():
             if event["status"] in {"queued", "running"}:
                 self.record(
-                    event["kind"], "interrupted", "Previous process stopped", task_id
+                    event["kind"], "interrupted", "上次进程已停止，任务中断", task_id
                 )
 
     def record(
@@ -108,18 +108,18 @@ class Journal:
         error: BaseException | None = None,
         source: dict | None = None,
     ) -> None:
-        """Append a structured event without exposing exception text or locals.
+        """追加结构化事件，不暴露异常正文或局部变量。
 
         Args:
-            kind: Business operation category.
-            status: Lifecycle state or severity.
-            message: Static operational summary; never pass conversation content.
-            task_id: Explicit correlation ID, otherwise inherited from the task.
-            stage: Stable business-stage name, independent of lifecycle status.
-            context: Explicit scalar IDs and counters, never payloads or credentials.
-            duration_ms: Optional elapsed stage time.
-            error: Exception whose type and frame locations may be recorded.
-            source: Captured call site for a stage wrapper, otherwise the direct caller.
+            kind: 业务操作类型。
+            status: 生命周期状态或日志级别。
+            message: 固定的操作摘要，不传入对话内容。
+            task_id: 显式关联 ID，未指定时从当前任务继承。
+            stage: 稳定的业务阶段名称，与生命周期状态分开记录。
+            context: 显式标量 ID 和计数，不传入正文或凭证。
+            duration_ms: 可选的阶段耗时。
+            error: 异常对象，仅记录其类型与栈帧位置。
+            source: 阶段封装采集的调用位置，未指定时使用直接调用者。
         """
         frame = inspect.currentframe()
         try:
@@ -177,23 +177,23 @@ class Journal:
     def span(
         self, kind: str, stage: str, **context: Scalar
     ) -> Iterator[dict[str, Scalar]]:
-        """Trace a synchronous or awaited business stage and preserve its failures.
+        """跟踪同步或异步业务阶段，原样传播失败。
 
         Args:
-            kind: Business operation category.
-            stage: Stable stage name shown in the log viewer.
-            **context: Explicit safe counters and IDs; yielded context accepts results.
+            kind: 业务操作类型。
+            stage: 日志视图中显示的稳定阶段名称。
+            **context: 显式的安全计数和 ID；返回的上下文可补充结果。
 
         Yields:
-            Mutable scalar context for recording stage outcome counters.
+            可变的标量上下文，用于记录阶段结果计数。
 
         Raises:
-            BaseException: The original operation failure or cancellation, unchanged.
+            BaseException: 原始操作异常或取消异常，原样抛出。
         """
         frame = inspect.currentframe()
         try:
             caller = frame.f_back if frame else None
-            # contextlib enters this generator; report the user's with statement.
+            # contextlib 会进入此生成器；调用位置应指向业务代码的 with 语句。
             while caller and caller.f_globals.get("__name__") == "contextlib":
                 caller = caller.f_back
             source = _location(caller, caller.f_lineno) if caller else None
@@ -203,7 +203,7 @@ class Journal:
         self.record(
             kind,
             "running",
-            "Stage started",
+            "阶段已开始",
             stage=stage,
             context=context,
             source=source,
@@ -215,7 +215,7 @@ class Journal:
             self.record(
                 kind,
                 "cancelled" if isinstance(exc, asyncio.CancelledError) else "failed",
-                "Stage interrupted",
+                "阶段中断",
                 stage=stage,
                 context=context,
                 duration_ms=round((perf_counter() - start) * 1000, 2),
@@ -227,7 +227,7 @@ class Journal:
             self.record(
                 kind,
                 "succeeded",
-                "Stage completed",
+                "阶段已完成",
                 stage=stage,
                 context=context,
                 duration_ms=round((perf_counter() - start) * 1000, 2),

@@ -13,7 +13,7 @@ export default defineConfig({
     {
       name: "asset-license-notices",
       generateBundle() {
-        // Vite's license report covers JS dependencies, not CSS and font assets.
+        // Vite 的许可证报告仅覆盖 JS 依赖，CSS 和字体声明需另行补充。
         const licenses = [
           ["@fontsource-variable/geist", "LICENSE"],
           ["tailwindcss", "LICENSE"],

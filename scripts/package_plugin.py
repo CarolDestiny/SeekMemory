@@ -1,4 +1,4 @@
-"""Package tracked Python runtime files and a prebuilt production dashboard."""
+"""打包 Git 跟踪的 Python 运行文件和已构建的生产界面。"""
 
 from __future__ import annotations
 
@@ -35,20 +35,20 @@ ASSET_EXTENSIONS = {
 
 
 def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
-    """Build a runtime-only ZIP from an explicit allowlist.
+    """按显式白名单构建仅含运行所需文件的 ZIP。
 
     Args:
-        root: Plugin checkout containing a production build in pages/memory.
-        output: Destination directory for the ZIP and checksum.
-        tag: Optional release tag, which must match the metadata version.
+        root: 插件源码目录，pages/memory 中需有生产构建产物。
+        output: ZIP 与校验文件的输出目录。
+        tag: 可选的发布标签，必须与元数据版本一致。
 
     Returns:
-        Path to the installable ZIP, with plugin files at its root.
+        可安装 ZIP 的路径，插件文件直接位于包根目录。
 
     Raises:
-        ValueError: If metadata, build assets, or the release tag are invalid.
-        OSError: If required files cannot be read or the archive cannot be written.
-        subprocess.CalledProcessError: If Git cannot enumerate tracked files.
+        ValueError: 元数据、构建资源或发布标签无效。
+        OSError: 无法读取必要文件或写入安装包。
+        subprocess.CalledProcessError: Git 无法列出跟踪的文件。
     """
     root = root.resolve()
     metadata = (root / "metadata.yaml").read_text(encoding="utf-8")
@@ -58,11 +58,9 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
         re.MULTILINE,
     )
     if version_match is None:
-        raise ValueError("metadata.yaml must contain a simple semantic version scalar")
+        raise ValueError("metadata.yaml 必须包含简单的语义化版本字符串")
     if tag and tag != f"v{version_match[1]}":
-        raise ValueError(
-            f"Tag {tag!r} does not match metadata version {version_match[1]}"
-        )
+        raise ValueError(f"标签 {tag!r} 与元数据版本 {version_match[1]} 不匹配")
 
     tracked = subprocess.check_output(
         ["git", "-C", str(root), "ls-files", "-z"], text=True, encoding="utf-8"
@@ -79,7 +77,7 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
     }
     required = RUNTIME_FILES | {f"{name}/__init__.py" for name in RUNTIME_PACKAGES}
     if missing := required - files:
-        raise ValueError(f"Required runtime files are not tracked: {sorted(missing)}")
+        raise ValueError(f"必要运行文件未被 Git 跟踪： {sorted(missing)}")
 
     view = root / "pages/memory"
     files.update(
@@ -94,29 +92,27 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
         if asset.is_dir():
             continue
         if asset.suffix not in ASSET_EXTENSIONS:
-            raise ValueError(f"Unexpected build asset: {asset.relative_to(root)}")
+            raise ValueError(f"构建资源类型不受支持： {asset.relative_to(root)}")
         files.add(asset.relative_to(root).as_posix())
     if not any(path.suffix == ".js" for path in assets) or not any(
         path.suffix == ".css" for path in assets
     ):
-        raise ValueError("Production JS and CSS are required; run pnpm build first")
+        raise ValueError("缺少生产 JS 或 CSS，请先运行 pnpm build")
 
-    # Check before creating an output, so an incomplete build cannot be published.
+    # 先检查再创建产物，防止发布不完整的构建。
     for name in sorted(files):
         path = root / name
         if path.is_symlink() or not path.resolve().is_relative_to(root):
-            raise ValueError(f"Symlinked runtime files are not supported: {name}")
+            raise ValueError(f"不支持符号链接或指向插件目录外的运行文件： {name}")
         if not path.is_file() or path.stat().st_size == 0 and path.suffix != ".py":
-            raise ValueError(f"Missing or empty runtime file: {name}")
+            raise ValueError(f"运行文件缺失或为空： {name}")
     html = (view / "index.html").read_text(encoding="utf-8")
     references = re.findall(r'(?:src|href)="([^"#]+)"', html)
     if not references or any(
         not ref.startswith("./assets/") or f"pages/memory/{ref[2:]}" not in files
         for ref in references
     ):
-        raise ValueError(
-            "Entry HTML must reference packaged relative production assets"
-        )
+        raise ValueError("入口 HTML 必须通过相对路径引用已打包的生产资源")
     for name in files:
         if name.endswith(".css"):
             for ref in re.findall(
@@ -129,18 +125,18 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
                     not target.is_relative_to(root)
                     or target.relative_to(root).as_posix() not in files
                 ):
-                    raise ValueError(f"CSS references an unpackaged asset: {ref}")
+                    raise ValueError(f"CSS 引用了未打包的资源： {ref}")
         if name.endswith(".js") and any(
             marker in (root / name).read_text(encoding="utf-8")
             for marker in ("mock_memory_", "MockApp", "/@vite/client")
         ):
-            raise ValueError(f"Development code found in production asset: {name}")
+            raise ValueError(f"生产资源中发现开发代码： {name}")
 
     output.mkdir(parents=True, exist_ok=True)
     archive = output / "astrbot_plugin_seekmemory.zip"
     with ZipFile(archive, "w", compression=ZIP_DEFLATED, compresslevel=9) as bundle:
         for name in sorted(files):
-            # Stable timestamps and permissions keep identical inputs reproducible.
+            # 固定时间戳和权限，保证相同输入可重复构建。
             info = ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = ZIP_DEFLATED
             info.create_system = 3

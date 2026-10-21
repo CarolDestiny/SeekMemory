@@ -93,11 +93,11 @@ class DB:
         self.conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
 
     def upsert(self, art: Artifact, *, commit: bool = True) -> None:
-        """Write an artifact and its content-addressed payload snapshot.
+        """写入 Artifact 及按内容寻址的正文快照。
 
         Args:
-            art: Artifact to insert or update.
-            commit: Own the transaction, or join the caller's transaction if false.
+            art: 待插入或更新的 Artifact。
+            commit: 是否独立提交事务；为 false 时加入调用者的事务。
         """
         h, now = art.header, _now()
         content = _dump(art.payload)
@@ -260,15 +260,15 @@ class DB:
         *,
         commit: bool = True,
     ) -> None:
-        """Append an entry linked to the previous ledger hash.
+        """追加账本记录，与上一条记录的哈希关联。
 
         Args:
-            op: Operation name.
-            entity: Affected artifact ID.
-            before: Previous content hash, if any.
-            after: Replacement content hash, if any.
-            reason: Explanation stored with the entry.
-            commit: Own the transaction, or join the caller's transaction if false.
+            op: 操作名称。
+            entity: 受影响的 Artifact ID。
+            before: 修改前的内容哈希，可为空。
+            after: 修改后的内容哈希，可为空。
+            reason: 随账本记录保存的原因。
+            commit: 是否独立提交事务；为 false 时加入调用者的事务。
         """
         at = _now()
         prev = self.ledger_last_hash()
@@ -297,15 +297,15 @@ class DB:
         ).fetchall()
 
     def apply_revision(self, art: Artifact, expected: int, reason: str) -> None:
-        """Persist a revision and its ledger entry in one transaction.
+        """在同一事务中保存修订及其账本记录。
 
         Args:
-            art: Validated replacement with an incremented revision.
-            expected: Revision observed by the editor.
-            reason: Administrator's change reason.
+            art: 已通过校验且版本号递增的替代记录。
+            expected: 编辑器读取到的版本号。
+            reason: 管理员填写的修改原因。
 
         Raises:
-            ValueError: If another writer changed the record or it disappeared.
+            ValueError: 记录被其他写入方修改或已不存在。
         """
         with self.conn:
             self.conn.execute("BEGIN IMMEDIATE")
@@ -325,13 +325,13 @@ class DB:
             )
 
     def inspect_record(self, node_id: str) -> dict:
-        """Return version hashes and evidence for an authenticated administrator.
+        """向已认证管理员返回版本哈希与证据。
 
         Args:
-            node_id: Artifact identity.
+            node_id: Artifact 标识。
 
         Returns:
-            Version snapshots and immutable evidence, including original text.
+            版本快照与不可变证据，包含原始文本。
         """
         versions = self.conn.execute(
             "SELECT v.revision, v.at, v.blob, v.header, b.content FROM versions v "

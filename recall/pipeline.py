@@ -67,23 +67,23 @@ def build_block(
     *,
     dry_run: bool = False,
 ) -> tuple[str, dict]:
-    """Assemble pinned, retrieved and spontaneous memories for a conversation.
+    """按常驻层、检索和偶然浮现组装会话的记忆注入文本。
 
     Args:
-        cache: Live active-artifact cache.
-        graph: Relationship graph for activation spreading.
-        db: Database for ownership lookup and designated delivery.
-        umo: Exact conversation identity.
-        text: Incoming message to recall against.
-        private: Whether this is a private conversation.
-        conf: Typed configuration lookup shared with the plugin.
-        owner_umo: Configured owner conversation.
-        speaker: Actual sender identity.
-        log: Callback for recall summaries.
-        dry_run: Skip delivery writes for administrative previews.
+        cache: 运行中的活跃 Artifact 缓存。
+        graph: 用于激活扩散的关系图。
+        db: 用于归属查询和指定交付的数据库。
+        umo: 完整会话标识。
+        text: 触发召回的输入消息。
+        private: 是否为私聊。
+        conf: 与插件共用的带类型配置查询函数。
+        owner_umo: 配置中的所有者会话。
+        speaker: 实际发送者身份。
+        log: 召回摘要回调。
+        dry_run: 管理预览时跳过交付状态写入。
 
     Returns:
-        Injection text and operational decision counters.
+        注入文本与运行决策计数。
     """
     lookup = db.source_umo if db is not None else None
     subject = subject_of(speaker, owner_umo)

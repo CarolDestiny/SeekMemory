@@ -1,4 +1,4 @@
-"""Framework-independent artifact inspection, revision, and recall diagnostics."""
+"""不依赖宿主框架的 Artifact 检查、修订与召回诊断。"""
 
 from __future__ import annotations
 
@@ -23,13 +23,13 @@ except ImportError:
 
 
 def timestamp(value: str) -> str:
-    """Normalize legacy local timestamps for the frontend.
+    """将旧版本地时间规范化为前端可用的时间戳。
 
     Args:
-        value: ISO date/time stored by the backend.
+        value: 后端存储的 ISO 日期或时间。
 
     Returns:
-        An offset-aware ISO timestamp; the epoch denotes unknown legacy time.
+        带时区偏移的 ISO 时间戳；纪元时间表示未知的历史时间。
     """
     try:
         return datetime.datetime.fromisoformat(value).astimezone().isoformat()
@@ -38,16 +38,16 @@ def timestamp(value: str) -> str:
 
 
 class ManagementService:
-    """Use the existing storage, cache, and scope rules for administrative actions."""
+    """管理操作复用既有存储、缓存和 scope 规则。"""
 
     def __init__(self, db: DB, cache: Cache, graph: Graph, conf: Conf) -> None:
         self.db, self.cache, self.graph, self.conf = db, cache, graph, conf
 
     def catalog(self) -> list[dict]:
-        """Project every artifact family into the shared memory-library contract.
+        """将所有 Artifact 家族转换为统一的记忆库契约。
 
         Returns:
-            Administrative records including all scopes and inactive states.
+            覆盖全部 scope 和非活跃状态的管理记录。
         """
         records = []
         for art in self.db.list():
@@ -83,7 +83,7 @@ class ManagementService:
                     "state": header.state,
                     "scope": header.scope,
                     "subject": str(
-                        payload.get("subject") or header.said_by or "unknown"
+                        payload.get("subject") or header.said_by or "未知对象"
                     ),
                     "session": owner_of(art, self.db.source_umo) or "未标注会话",
                     "tags": [str(tag) for tag in tags if str(tag)]
@@ -105,20 +105,20 @@ class ManagementService:
         return records
 
     def detail(self, node_id: str) -> dict:
-        """Inspect raw payload, headers, evidence, version hashes and ledger.
+        """检查原始正文、头部、证据、版本哈希和账本。
 
         Args:
-            node_id: Artifact to inspect.
+            node_id: 待检查的 Artifact ID。
 
         Returns:
-            Administrative detail with no fabricated missing history.
+            管理详情，缺失的历史数据不补造。
 
         Raises:
-            LookupError: If the artifact no longer exists.
+            LookupError: Artifact 已不存在。
         """
         art = self.db.get(node_id)
         if art is None:
-            raise LookupError("Artifact not found")
+            raise LookupError("记忆不存在")
         return {
             "artifact": dataclasses.asdict(art),
             **self.db.inspect_record(node_id),
@@ -130,17 +130,17 @@ class ManagementService:
         }
 
     def update(self, body: dict) -> str:
-        """Validate and atomically revise an artifact, then refresh its cache.
+        """校验并以原子事务修订 Artifact，随后刷新缓存。
 
         Args:
-            body: Editor command with ID, expected revision, payload, scope, state and reason.
+            body: 编辑命令，包含 ID、预期版本、正文、scope、状态和原因。
 
         Returns:
-            Revised artifact ID.
+            修订后的 Artifact ID。
 
         Raises:
-            ValueError: If input is invalid or the revision is stale.
-            LookupError: If the artifact is missing.
+            ValueError: 输入无效或版本已过期。
+            LookupError: Artifact 不存在。
         """
         if set(body) != {
             "id",
@@ -151,32 +151,32 @@ class ManagementService:
             "reason",
             "confirmed",
         }:
-            raise ValueError("Unexpected editor fields")
+            raise ValueError("编辑字段缺失或包含未支持的字段")
         if body["confirmed"] is not True:
-            raise ValueError("Confirmation required")
+            raise ValueError("请先确认操作")
         if type(body["expectedRevision"]) is not int or not isinstance(body["id"], str):
-            raise ValueError("Invalid revision or ID")
+            raise ValueError("版本号或 ID 无效")
         if body["scope"] not in ("private", "shared", "shadow") or body[
             "state"
         ] not in ("active", "forgotten", "merged"):
-            raise ValueError("Invalid state or scope")
+            raise ValueError("状态或 scope 无效")
         if (
             not isinstance(body["reason"], str)
             or not 1 <= len(body["reason"].strip()) <= 300
         ):
-            raise ValueError("A change reason of 1–300 characters is required")
+            raise ValueError("请填写 1–300 个字符的修改原因")
         if (
             not isinstance(body["payload"], dict)
             or len(json.dumps(body["payload"])) > 50000
         ):
-            raise ValueError("Invalid payload")
+            raise ValueError("记忆内容必须为 JSON 对象，序列化后不超过 50,000 个字符")
         art = self.db.get(body["id"])
         if art is None:
-            raise LookupError("Artifact not found")
+            raise LookupError("记忆不存在")
         if art.header.state == "merged" and body["state"] != "merged":
-            raise ValueError("Merged records cannot be restored independently")
+            raise ValueError("已合并的记忆不能独立恢复")
         if art.header.state != "merged" and body["state"] == "merged":
-            raise ValueError("Use maintenance to merge records and preserve lineage")
+            raise ValueError("请通过维护任务合并记忆，以保留派生关系")
         replacement = revise(
             art, payload=body["payload"], scope=body["scope"], state=body["state"]
         )
@@ -188,23 +188,23 @@ class ManagementService:
         return replacement.header.id
 
     def diagnose(self, body: dict) -> dict:
-        """Preview recall through live rules without consuming designated delivery.
+        """按实际规则预演召回，不消耗指定交付状态。
 
         Args:
-            body: Query, exact conversation UMO, and sender identity.
+            body: 查询文本、完整会话 UMO 和发送者身份。
 
         Returns:
-            Injection text, decision counters, and scope candidate/exclusion IDs.
+            注入文本、决策计数，以及 scope 候选和排除 ID。
 
         Raises:
-            ValueError: If a diagnostic input is missing or too large.
+            ValueError: 诊断输入缺失或超出长度限制。
         """
         for key, maximum in (("query", 4000), ("umo", 500), ("speaker", 200)):
             if (
                 not isinstance(body.get(key), str)
                 or not 0 < len(body[key].strip()) <= maximum
             ):
-                raise ValueError(f"Invalid {key}")
+                raise ValueError(f"字段 {key} 无效")
         owner = str(self.conf("owner_umo", ""))
         pool = self.cache.active()
         eligible = visible(pool, body["umo"], owner, self.db.source_umo)

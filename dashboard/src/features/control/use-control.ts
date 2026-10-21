@@ -34,7 +34,7 @@ export function useControl(client: ManagementClient) {
         Promise.resolve().then(() => client.events()),
       ])
         .then(([records, runtime, log]) => {
-          // A post-write refresh supersedes earlier reads, including their errors.
+          // 写入后的刷新取代先前读取，旧请求的错误也应失效。
           if (!mounted.current || version !== requestVersion.current) return
           if (records.status === "fulfilled")
             setSource({ status: "ready", records: records.value })

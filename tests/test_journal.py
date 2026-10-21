@@ -1,4 +1,4 @@
-"""Business logging behavior, correlation and compatibility tests."""
+"""业务日志行为、任务关联和兼容性测试。"""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ class JournalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stage["source"]["function"], "operation")
         self.journal.record("recall", "info", "Unrelated event")
         self.assertEqual(self.journal.events[-1]["taskId"], "")
-        # Completing a stage must not mark an abandoned task complete on restart.
+        # 阶段完成不能使遗留任务在重启时被误判为完成。
         self.journal.record("extract", "running", "Task started", "orphan")
         self.journal.record(
             "extract", "succeeded", "Stage completed", "orphan", stage="parse"
