@@ -6,7 +6,7 @@
 | level | P1 |
 | status | open |
 | date | 2026-10-21 |
-| GitHub | pending gh auth |
+| GitHub | [#4](https://github.com/NeverENG/SeekMemory/issues/4) |
 | branch | feat/issue-0024-bm25 |
 | proposal | docs/BM25-PROPOSAL.md |
 
