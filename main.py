@@ -16,6 +16,7 @@ from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
 from .app.checkpoint import CheckpointManager
+from .app.flush_policy import decide_flush
 from .core.graph import Graph
 from .core.source import Source, make_source_id
 from .core.tree import Tree
@@ -259,20 +260,22 @@ class Main(star.Star):
 
     # ---------------- 抽取：空闲触发 + 夜间兜底 ----------------
     def _should_flush(self) -> bool:
-        """白天要不要抽：安静够久 + 攒够条数 + 有值得记的事 + 没超每天上限。"""
         if self._flushing or self.buffer is None or self.db is None:
-            return False
-        idle = float(self._c("idle_flush_seconds", 0))
-        if idle <= 0:  # 0 = 白天不抽，只等晚上批量
-            return False
-        if not self.buffer.should_flush(idle, int(self._c("min_pending", 8))):
-            return False
-        if not worth_now(self.buffer.items):
             return False
         today = datetime.date.today().isoformat()
         if self._flush_day != today:
             self._flush_day, self._flush_count = today, 0
-        return self._flush_count < int(self._c("max_flushes_per_day", 2))
+        decision = decide_flush(
+            pending=len(self.buffer.items),
+            idle_seconds=self.buffer.idle_seconds(),
+            worth_now=worth_now(self.buffer.items),
+            flushes_today=self._flush_count,
+            idle_flush_seconds=float(self._c("idle_flush_seconds", 0)),
+            min_pending=int(self._c("min_pending", 8)),
+            max_flushes_per_day=int(self._c("max_flushes_per_day", 2)),
+            backlog_flush_at=int(self._c("backlog_flush_at", 30)),
+        )
+        return decision.should
 
     async def _idle_loop(self) -> None:
         """聊完安静一会儿就抽，不用等到半夜。"""
@@ -298,31 +301,36 @@ class Main(star.Star):
         return ordered[:max(1, cap)]
 
     async def _flush(self, reason: str) -> None:
-        """抽一批：调用模型、解析、写库建边；全程 fail-open。"""
         if self._flushing or self.buffer is None or not self.buffer.items or self.db is None:
             return
         self._flushing = True
         try:
-            items = self.buffer.take()
-            self._flush_count += 1
+            items = list(self.buffer.items)
             sessions = self._split_sessions(items)
-            written = 0
+            ready = []
             for umo, part in sessions:
                 prov = await self.context.get_using_provider_async(umo or None)
                 if not prov:
                     logger.warning(f"[seekmemory] no provider for session {umo}")
                     continue
+                ready.append((umo, part, prov))
+            if not ready:
+                return
+            self.buffer.take_sessions({umo for umo, _part, _prov in ready})
+            self._flush_count += 1
+            written = 0
+            for umo, part, prov in ready:
                 model = ProviderChatModel(prov)
                 got = await absorb(
                     part, self.db, self.cache, self.graph, model,
                     log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
                 )
                 written += got
-                logger.info(f"[seekmemory] {reason}抽取 {umo or '未知会话'}："
-                            f"{len(part)} 条对话，写入 {got} 条")
+                logger.info(f"[seekmemory] {reason} extract {umo or 'unknown'}: "
+                            f"{len(part)} messages, wrote {got}")
             logger.info(
-                f"[seekmemory] {reason}抽取：{len(sessions)} 个会话，"
-                f"共写入 {written} 条（今日第 {self._flush_count} 次）"
+                f"[seekmemory] {reason} flush: {len(ready)} sessions, "
+                f"wrote {written} (daily #{self._flush_count})"
             )
         finally:
             self._flushing = False

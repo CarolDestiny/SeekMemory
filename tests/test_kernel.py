@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.checkpoint import CheckpointManager
 from app.contracts import ChatRequest
+from app.flush_policy import decide_flush
 from core.artifact import make, revise
 from core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
 from core.source import Source, make_source_id
@@ -144,6 +145,31 @@ class ModelBoundaryTest(unittest.TestCase):
         self.assertEqual(got.text, "ok")
         self.assertEqual(got.usage_in, 10)
         self.assertEqual(got.provider_id, "p1")
+
+
+class FlushPolicyTest(unittest.TestCase):
+    def test_backlog_overrides_worth_now(self):
+        got = decide_flush(pending=30, idle_seconds=31, worth_now=False,
+                           flushes_today=0, idle_flush_seconds=180,
+                           min_pending=8, max_flushes_per_day=2,
+                           backlog_flush_at=30)
+        self.assertTrue(got.should)
+        self.assertEqual(got.reason, "backlog")
+
+    def test_backlog_waits_for_quiet_window(self):
+        got = decide_flush(pending=30, idle_seconds=10, worth_now=False,
+                           flushes_today=0, idle_flush_seconds=180,
+                           min_pending=8, max_flushes_per_day=2,
+                           backlog_flush_at=30)
+        self.assertFalse(got.should)
+
+    def test_daily_cap_blocks(self):
+        got = decide_flush(pending=100, idle_seconds=999, worth_now=True,
+                           flushes_today=2, idle_flush_seconds=180,
+                           min_pending=8, max_flushes_per_day=2,
+                           backlog_flush_at=30)
+        self.assertFalse(got.should)
+        self.assertEqual(got.reason, "daily_cap")
 
 
 class MigrationTest(unittest.TestCase):

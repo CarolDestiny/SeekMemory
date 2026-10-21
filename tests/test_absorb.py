@@ -73,6 +73,16 @@ class BufferTest(unittest.TestCase):
         self.assertEqual(len(again.items), 1)
         self.assertEqual(again.items[0][3], "重启别丢")
 
+    def test_take_sessions_preserves_other_sessions(self):
+        buf = Buffer()
+        buf.add("a", "one")
+        buf.add("b", "two")
+        taken = buf.take_sessions({"a"})
+        self.assertEqual([row[3] for row in taken], ["one"])
+        self.assertEqual([row[3] for row in buf.items], ["two"])
+        buf.restore(taken)
+        self.assertEqual(len(buf.items), 2)
+
     def test_should_flush_needs_idle_and_count(self):
         buf = Buffer()
         buf.add("umo:a", "一")
