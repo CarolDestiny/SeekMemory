@@ -178,7 +178,7 @@ class Main(star.Star):
             source = Source(source_id, turn_id, umo, sender, "user", text, now)
             if self.db is not None:
                 self.db.append_sources([source])
-            self.buffer.add(umo, text, sender, source_id)
+            self.buffer.add(umo, text, sender, source_id, now)
             event.set_extra("_seekmemory_turn_id", turn_id)
             event.set_extra("_seekmemory_source_id", source_id)
         except Exception:
@@ -274,6 +274,8 @@ class Main(star.Star):
             min_pending=int(self._c("min_pending", 8)),
             max_flushes_per_day=int(self._c("max_flushes_per_day", 2)),
             backlog_flush_at=int(self._c("backlog_flush_at", 30)),
+            topic_age_seconds=self.buffer.oldest_topic_age(),
+            topic_ttl_seconds=float(self._c("topic_ttl_seconds", 86400)),
         )
         return decision.should
 
@@ -291,57 +293,57 @@ class Main(star.Star):
         """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
         await self._flush("夜间")
 
-    def _split_sessions(self, items: list) -> list[tuple[str, list]]:
-        """按会话切开，每个会话单独抽一次；单个夜晚最多处理 N 个会话。"""
-        buckets: dict[str, list] = {}
-        for row in items:
-            buckets.setdefault(str(row[0] or ""), []).append(row)
+    def _split_topics(self, items: list) -> list[tuple[str, str, list]]:
+        buckets: dict[tuple[str, str], list] = {}
+        for turn in items:
+            key = (str(turn.session_id or ""), str(turn.topic_id or ""))
+            buckets.setdefault(key, []).append(turn)
         cap = int(self._c("max_sessions_per_flush", 6))
         ordered = sorted(buckets.items(), key=lambda kv: len(kv[1]), reverse=True)
-        return ordered[:max(1, cap)]
+        return [(session, topic, rows) for (session, topic), rows in ordered[:max(1, cap)]]
 
     async def _flush(self, reason: str) -> None:
         if self._flushing or self.buffer is None or not self.buffer.items or self.db is None:
             return
         self._flushing = True
         try:
-            items = list(self.buffer.items)
-            sessions = self._split_sessions(items)
+            topics = self._split_topics(list(self.buffer.items))
             ready = []
-            for umo, part in sessions:
-                prov = await self.context.get_using_provider_async(umo or None)
+            for session, topic_id, part in topics:
+                prov = await self.context.get_using_provider_async(session or None)
                 if not prov:
-                    logger.warning(f"[seekmemory] no provider for session {umo}")
+                    logger.warning(f"[seekmemory] no provider for session {session}")
                     continue
-                ready.append((umo, part, prov))
+                ready.append((session, topic_id, part, prov))
             if not ready:
                 return
-            self.buffer.take_sessions({umo for umo, _part, _prov in ready})
+            self.buffer.take_topics({topic_id for _s, topic_id, _p, _r in ready})
             self._flush_count += 1
             written = 0
-            for umo, part, prov in ready:
+            for session, topic_id, part, prov in ready:
                 model = ProviderChatModel(prov)
                 try:
                     outcome = await absorb(
                         part, self.db, self.cache, self.graph, model,
                         log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
+                        owner_id=self.owner_umo.split(":")[-1] if self.owner_umo else "",
                     )
                 except Exception as exc:
                     self.buffer.restore(part)
-                    logger.warning(f"[seekmemory] extract failed for {umo}: {exc}; restored")
+                    logger.warning(f"[seekmemory] extract failed for {topic_id}: {exc}; restored")
                     continue
                 if outcome.model_failed:
                     self.buffer.restore(part)
-                    logger.warning(f"[seekmemory] model failed for {umo}; restored")
+                    logger.warning(f"[seekmemory] model failed for {topic_id}; restored")
                     continue
                 written += outcome.written
                 logger.info(
-                    f"[seekmemory] {reason} extract {umo or 'unknown'}: "
-                    f"{len(part)} messages, wrote {outcome.written}, "
-                    f"skipped {outcome.skipped}"
+                    f"[seekmemory] {reason} extract {session or unknown} "
+                    f"topic={topic_id}: {len(part)} messages, "
+                    f"wrote {outcome.written}, skipped {outcome.skipped}"
                 )
             logger.info(
-                f"[seekmemory] {reason} flush: {len(ready)} sessions, "
+                f"[seekmemory] {reason} flush: {len(ready)} topics, "
                 f"wrote {written} (daily #{self._flush_count})"
             )
         finally:
