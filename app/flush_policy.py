@@ -14,7 +14,11 @@ class FlushDecision:
 def decide_flush(*, pending: int, idle_seconds: float, worth_now: bool,
                  flushes_today: int, idle_flush_seconds: float,
                  min_pending: int, max_flushes_per_day: int,
-                 backlog_flush_at: int) -> FlushDecision:
+                 backlog_flush_at: int,
+                 topic_age_seconds: float = 0.0,
+                 topic_ttl_seconds: float = 86400.0) -> FlushDecision:
+    if topic_ttl_seconds > 0 and topic_age_seconds >= topic_ttl_seconds:
+        return FlushDecision(True, "topic_expired")
     if flushes_today >= max(1, int(max_flushes_per_day)):
         return FlushDecision(False, "daily_cap")
     if backlog_flush_at > 0 and pending >= int(backlog_flush_at):

@@ -1,61 +1,123 @@
-"""待抽取缓冲：把当天的话攒起来，落盘保存，攒够了再交给抽取。
-
-只负责"攒"和"存"，不调模型、不碰数据库。重启后从文件恢复，
-这样白天说的话不会因为容器重启就丢掉。
-"""
+"""Pending dialogue buffer with lightweight topic segmentation and TTL signals."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
+from dataclasses import asdict
+from datetime import datetime
+
+try:
+    from ..app.contracts import DialogueTurn
+except ImportError:
+    from app.contracts import DialogueTurn
 
 KEEP = 200
+TOPIC_GAP_SECONDS = 5400
+TOPIC_SIMILARITY = 0.12
+TOPIC_TTL_SECONDS = 86400
+
+
+def _parse_at(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value or ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _bigrams(text: str) -> set[str]:
+    clean = "".join(ch.lower() for ch in str(text or "") if ch.isalnum())
+    return {clean[i:i + 2] for i in range(max(0, len(clean) - 1))}
+
+
+def _dice(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return 2.0 * len(a & b) / (len(a) + len(b))
+
+
+def _new_topic_id(turn: DialogueTurn) -> str:
+    raw = f"{turn.session_id}|{turn.at}|{turn.text}"
+    return "tp_" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
 
 
 class Buffer:
     def __init__(self, path: str = "") -> None:
         self.path = str(path or "")
-        self.items: list[tuple[str, str, str, str, str]] = []  # (umo, sender, role, text, source_id)
+        self.items: list[DialogueTurn] = []
         self.last_ts = 0.0
         self.load()
 
-    def add(self, umo: str, text: str, sender: str = "", source_id: str = "") -> None:
-        """收一条用户消息，立刻落盘。sender 用于区分群里是谁说的。"""
+    def _last_for_session(self, session_id: str) -> DialogueTurn | None:
+        for turn in reversed(self.items):
+            if turn.session_id == session_id:
+                return turn
+        return None
+
+    def add(self, umo: str, text: str, sender: str = "", source_id: str = "",
+            at: str = "") -> DialogueTurn | None:
         text = str(text or "").strip()
         if not text:
-            return
-        self.items.append((str(umo or ""), str(sender or ""), "user", text, str(source_id or "")))
+            return None
+        turn = DialogueTurn(str(umo or ""), str(sender or ""), "user", text,
+                            str(at or ""), str(source_id or ""))
+        previous = self._last_for_session(turn.session_id)
+        turn = DialogueTurn(turn.session_id, turn.speaker_id, turn.role, turn.text,
+                            turn.at, turn.source_id, self._topic_for(turn, previous))
+        self.items.append(turn)
         self.items = self.items[-KEEP:]
         self.last_ts = time.time()
         self.save()
+        return turn
+
+    def _topic_for(self, turn: DialogueTurn, previous: DialogueTurn | None) -> str:
+        if previous is None or not previous.topic_id:
+            return _new_topic_id(turn)
+        current_at, previous_at = _parse_at(turn.at), _parse_at(previous.at)
+        if current_at is not None and previous_at is not None:
+            if (current_at - previous_at).total_seconds() > TOPIC_GAP_SECONDS:
+                return _new_topic_id(turn)
+        if _dice(_bigrams(turn.text), _bigrams(previous.text)) < TOPIC_SIMILARITY:
+            return _new_topic_id(turn)
+        return previous.topic_id
+
+    def topics(self) -> list[tuple[str, str, list[DialogueTurn]]]:
+        groups: dict[tuple[str, str], list[DialogueTurn]] = {}
+        for turn in self.items:
+            groups.setdefault((turn.session_id, turn.topic_id), []).append(turn)
+        return [(session, topic, rows) for (session, topic), rows in groups.items()]
 
     def idle_seconds(self) -> float:
         return max(0.0, time.time() - self.last_ts)
 
+    def oldest_topic_age(self) -> float:
+        stamps = [_parse_at(turn.at) for turn in self.items]
+        valid = [stamp for stamp in stamps if stamp is not None]
+        if not valid:
+            return 0.0
+        return max(0.0, (datetime.now() - min(valid)).total_seconds())
+
     def should_flush(self, idle_seconds: float, min_items: int) -> bool:
-        """攒够条数、且安静够久，才值得花一次模型调用。"""
         if not self.items:
             return False
-        return len(self.items) >= max(1, min_items) and (
-            time.time() - self.last_ts >= idle_seconds
-        )
+        return len(self.items) >= max(1, min_items) and self.idle_seconds() >= idle_seconds
 
-    def take(self) -> list[tuple[str, str, str, str, str]]:
-        """取走全部待抽取内容并清空（已落盘）。"""
+    def take(self) -> list[DialogueTurn]:
         items = self.items
         self.items = []
         self.save()
         return items
 
-    def take_sessions(self, session_ids: set[str]) -> list[tuple[str, str, str, str, str]]:
-        wanted = {str(x) for x in session_ids}
-        taken = [row for row in self.items if str(row[0]) in wanted]
-        self.items = [row for row in self.items if str(row[0]) not in wanted]
+    def take_topics(self, topic_ids: set[str]) -> list[DialogueTurn]:
+        wanted = {str(x) for x in topic_ids}
+        taken = [turn for turn in self.items if turn.topic_id in wanted]
+        self.items = [turn for turn in self.items if turn.topic_id not in wanted]
         self.save()
         return taken
 
-    def restore(self, rows: list[tuple[str, str, str, str, str]]) -> None:
+    def restore(self, rows: list[DialogueTurn]) -> None:
         if not rows:
             return
         existing = set(self.items)
@@ -64,42 +126,64 @@ class Buffer:
         self.save()
 
     def save(self) -> None:
-        """写存档；失败只丢持久化，不影响聊天。"""
         if not self.path:
             return
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             with open(self.path, "w", encoding="utf-8") as f:
-                json.dump({"last": self.last_ts, "items": self.items},
+                json.dump({"last": self.last_ts, "items": [asdict(t) for t in self.items]},
                           f, ensure_ascii=False)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def load(self) -> None:
-        """从存档恢复；没有或坏了就当空的。"""
         if not self.path:
             return
         try:
             with open(self.path, encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         if not isinstance(data, dict):
             return
-        raw = data.get("items")
-        if isinstance(raw, list):
-            kept = []
-            for row in raw:
-                if not isinstance(row, (list, tuple)):
-                    continue
-                if len(row) == 5:
-                    kept.append((str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4])))
-                elif len(row) == 4:
-                    kept.append((str(row[0]), str(row[1]), str(row[2]), str(row[3]), ""))
-                elif len(row) == 3:  # 兼容旧存档
-                    kept.append((str(row[0]), "", str(row[1]), str(row[2]), ""))
-            self.items = kept[-KEEP:]
+        kept: list[DialogueTurn] = []
+        for row in data.get("items") or []:
+            turn = self._from_row(row)
+            if turn is not None:
+                kept.append(turn)
+        self.items = kept[-KEEP:]
         try:
             self.last_ts = float(data.get("last") or 0.0)
         except (TypeError, ValueError):
             self.last_ts = 0.0
+
+    @staticmethod
+    def _from_row(row) -> DialogueTurn | None:
+        if isinstance(row, dict):
+            try:
+                turn = DialogueTurn(str(row.get("session_id") or ""),
+                                    str(row.get("speaker_id") or ""),
+                                    str(row.get("role") or "user"),
+                                    str(row.get("text") or ""),
+                                    str(row.get("at") or ""),
+                                    str(row.get("source_id") or ""),
+                                    str(row.get("topic_id") or ""))
+            except Exception:
+                return None
+        elif isinstance(row, (list, tuple)):
+            if len(row) >= 5:
+                turn = DialogueTurn(str(row[0]), str(row[1]), str(row[2]), str(row[3]),
+                                    "", str(row[4]), "")
+            elif len(row) == 4:
+                turn = DialogueTurn(str(row[0]), str(row[1]), str(row[2]), str(row[3]))
+            elif len(row) == 3:
+                turn = DialogueTurn(str(row[0]), "", str(row[1]), str(row[2]))
+            else:
+                return None
+        else:
+            return None
+        if not turn.text.strip():
+            return None
+        return turn if turn.topic_id else DialogueTurn(
+            turn.session_id, turn.speaker_id, turn.role, turn.text,
+            turn.at, turn.source_id, _new_topic_id(turn))
