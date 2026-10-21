@@ -44,8 +44,8 @@ Recall reads from in-memory indexes. Disclosure is one universal score:
 
 exposure = audience_overlap * subject_fit * topic_fit * (1 - sensitivity)
 
-Levels: full >= 0.50, paraphrase >= 0.18, hint >= 0.03, otherwise silence.
-Paraphrase uses tags, never raw content. Cross-session text is never injected as a direct quote.
+Levels: full >= 0.55, paraphrase >= 0.18, hint >= 0.03, otherwise silence.
+Paraphrase uses a generic safe sentence, never raw content or extractor tags. Cross-session text is never injected as a direct quote.
 
 ## I/O targets
 
@@ -73,3 +73,14 @@ Buffer entries are typed `DialogueTurn` objects. Topics split on a 90-minute gap
 character-bigram similarity; `topic_ttl_seconds` forces aged topics to extraction.
 The extractor returns `subject_kind`, `subject_id`, `event_at` and validity dates.
 `TimeSpan.created` uses event time, not extraction time.
+
+## Current implementation status (v0.3.1)
+
+- Source is persisted for both user and assistant messages, including group sessions.
+- Production writes use CAS DB.commit with versions, evidence and ledger.
+- Topic-aware DialogueTurn buffer with 24h TTL extraction trigger.
+- subject_kind/subject_id and event_at are part of extraction; Artifact created time is event time.
+- Recall applies disclosure before assembly; cross-session text is never injected raw.
+- Live validation: group sources and group Artifacts are being produced. A matching query selected
+  two live Artifacts and applied paraphrase/silence disclosure.
+- Not implemented yet: BM25, reflection wiring, RBAC, capacity governance and persona source policy.
