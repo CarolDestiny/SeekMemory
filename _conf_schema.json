@@ -46,6 +46,16 @@
     "type": "float",
     "default": 0.3
   },
+  "idle_flush_seconds": {
+    "description": "聊完安静多少秒后自动抽取记忆（不用等到夜间）",
+    "type": "int",
+    "default": 180
+  },
+  "min_pending": {
+    "description": "待抽取消息攒够多少条才触发一次抽取",
+    "type": "int",
+    "default": 4
+  },
   "summary_time": {
     "description": "每晚抽取记忆的时间 HH:MM",
     "type": "string",

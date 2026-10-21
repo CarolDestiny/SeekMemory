@@ -10,22 +10,16 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import json
 import os
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
-from .core.artifact import Strength, make, validate
 from .core.graph import Graph
 from .core.tree import Tree
-from .maintain.link import persist
+from .perceive.absorb import absorb
+from .perceive.buffer import Buffer
 from .perceive.compress import build_compress_prompt, parse_compress
-from .perceive.extract import (
-    build_prompt,
-    filter_duplicates,
-    parse_response,
-)
 from .recall.assemble import build as assemble_text
 from .recall.designated import deliverable, is_private, mark_given
 from .recall.gate import pinned
@@ -37,34 +31,6 @@ from .store.cache import Cache
 from .store.db import DB
 
 
-def _clamp(value: object, default: float, low: float, high: float) -> float:
-    """把模型给的数值收敛到区间；缺失、NaN 或非法值回落到默认值。"""
-    try:
-        number = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return default
-    if number != number:  # NaN
-        return default
-    return max(low, min(high, number))
-
-
-def _strength_of(item: dict) -> dict:
-    """从抽取结果取情绪与命中字段，缺省回落到 Strength 的默认值。"""
-    base = Strength()
-    strength = {
-        "arousal": _clamp(item.get("arousal"), base.arousal, 0.0, 1.0),
-        "valence": _clamp(item.get("valence"), base.valence, -1.0, 1.0),
-        "funny": _clamp(item.get("funny"), base.funny, 0.0, 1.0),
-    }
-    hits = item.get("hits")
-    if hits is not None:
-        try:
-            strength["hits"] = max(0, int(hits))
-        except (TypeError, ValueError):
-            pass
-    return strength
-
-
 class Main(star.Star):
     def __init__(self, context: star.Context, config: dict | None = None) -> None:
         super().__init__(context, config)
@@ -74,7 +40,8 @@ class Main(star.Star):
         self.cache: Cache | None = None
         self.tree: Tree | None = None
         self.graph: Graph | None = None
-        self._pending: list[tuple[str, str, str]] = []  # (umo, role, text)
+        self.buffer: Buffer | None = None
+        self._flushing = False
         self._init_engine()
 
     # ---------------- 配置 ----------------
@@ -109,7 +76,11 @@ class Main(star.Star):
             self.tree = Tree(self.db, self.cache)
             self.graph = Graph(self.db, self.cache)
             self.ready = True
-            logger.info(f"[seekmemory] 已加载 {self.cache.size()} 条记忆")
+            self.buffer = Buffer(os.path.join(os.path.dirname(path), "pending.json"))
+            logger.info(
+                f"[seekmemory] 已加载 {self.cache.size()} 条记忆，"
+                f"待抽取 {len(self.buffer.items)} 条"
+            )
         except Exception as e:  # noqa: BLE001
             logger.error(f"[seekmemory] 初始化失败，记忆功能降级：{e}")
 
@@ -191,10 +162,9 @@ class Main(star.Star):
             if not self._may_remember(event):
                 return
             text = (event.message_str or "").strip()
-            if text:
+            if text and self.buffer is not None:
                 umo = str(getattr(event, "unified_msg_origin", "") or "")
-                self._pending.append((umo, "user", text))
-                self._pending = self._pending[-200:]
+                self.buffer.add(umo, text)
         except Exception:  # noqa: BLE001
             pass
 
@@ -203,6 +173,7 @@ class Main(star.Star):
     async def start_jobs(self) -> None:
         asyncio.create_task(self._nightly_loop())
         asyncio.create_task(self._weekly_loop())
+        asyncio.create_task(self._idle_loop())
 
     async def _nightly_loop(self) -> None:
         while True:
@@ -235,53 +206,47 @@ class Main(star.Star):
                 target += datetime.timedelta(days=1)
         return max((target - now).total_seconds(), 60)
 
-    async def _nightly(self) -> None:
-        if not self._pending or self.db is None:
-            return
-        prov = await self.context.get_using_provider_async()
-        if not prov:
-            return
-
-        dialogue = "\n".join(f"{r}: {t}" for _u, r, t in self._pending[-120:])
-        resp = await prov.text_chat(
-            system_prompt=build_prompt([]), prompt=dialogue
+    # ---------------- 抽取：空闲触发 + 夜间兜底 ----------------
+    def _should_flush(self) -> bool:
+        """攒够条数、且安静够久，就值得抽一次。"""
+        if self._flushing or self.buffer is None or self.db is None:
+            return False
+        return self.buffer.should_flush(
+            float(self._c("idle_flush_seconds", 180)),
+            int(self._c("min_pending", 4)),
         )
-        items = parse_response(getattr(resp, "completion_text", "") or "")
-        items = filter_duplicates(items, [a for a in self._existing_texts()])
-        if not items:
-            self._pending = []
+
+    async def _idle_loop(self) -> None:
+        """聊完安静一会儿就抽，不用等到半夜。"""
+        while True:
+            await asyncio.sleep(30)
+            try:
+                if self._should_flush():
+                    await self._flush("空闲")
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[seekmemory] 空闲抽取失败：{e}")
+
+    async def _nightly(self) -> None:
+        """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
+        await self._flush("夜间")
+
+    async def _flush(self, reason: str) -> None:
+        """抽一批：调用模型、解析、写库建边；全程 fail-open。"""
+        if self._flushing or self.buffer is None or not self.buffer.items or self.db is None:
             return
-
-        umos = {u for u, _r, _t in self._pending if u}
-        owner = next(iter(umos)) if len(umos) == 1 else ""
-
-        written = 0
-        for it in items[:3]:
-            try:
-                if owner:
-                    it = {**it, "owner_umo": owner}
-                art = make("memory", it, strength=_strength_of(it))
-                validate(art)
-            except ValueError as e:
-                logger.warning(f"[seekmemory] 抽取结果校验失败，已跳过：{e}")
-                continue
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 构造记忆失败，已跳过：{e}")
-                continue
-            try:
-                persist(art, self.db, self.cache, self.graph)
-                written += 1
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 写入失败：{e}")
-        self._pending = []
-        logger.info(f"[seekmemory] 夜间写入 {written} 条")
-
-    def _existing_texts(self) -> list[str]:
-        if not self.cache:
-            return []
-        from .core.artifact import content_of
-
-        return [content_of(a) for a in self.cache.active("memory")]
+        self._flushing = True
+        try:
+            prov = await self.context.get_using_provider_async()
+            if not prov:
+                return
+            items = self.buffer.take()
+            written = await absorb(
+                items, self.db, self.cache, self.graph, prov,
+                log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
+            )
+            logger.info(f"[seekmemory] {reason}抽取：{len(items)} 条对话，写入 {written} 条")
+        finally:
+            self._flushing = False
 
     async def _weekly(self) -> None:
         from .maintain.decay import decay_all
