@@ -1,4 +1,4 @@
-import { Button, Input, JsonView, Textarea } from "@/ui"
+import { Badge, Button, Input, JsonView, Textarea } from "@/ui"
 import type { ManagementClient } from "../model"
 import { useDiagnostics } from "../use-diagnostics"
 
@@ -16,7 +16,7 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
     diagnose,
   } = useDiagnostics(client)
   return (
-    <section className="mx-auto max-w-5xl space-y-6 p-5 sm:p-8">
+    <section className="mx-auto w-full max-w-5xl space-y-6 p-5 sm:p-8">
       <div>
         <h1 className="text-2xl font-semibold">召回诊断</h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -70,6 +70,30 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
       )}
       {result && (
         <div className="space-y-5">
+          {result.info["mock"] === true && (
+            <Badge variant="outline">
+              Mock 文本匹配示意 · 不代表真实召回质量
+            </Badge>
+          )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(
+              [
+                ["召回模式", result.info["mode"] ?? "—"],
+                ["检索选中", result.info["picked"] ?? "—"],
+                ["常驻条目", result.info["pinned"] ?? "—"],
+                ["注入字符", result.info["chars"] ?? result.block.length],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label} className="rounded-xl border bg-card p-4">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-2 text-xl font-semibold">
+                  {typeof value === "string" || typeof value === "number"
+                    ? value
+                    : "—"}
+                </p>
+              </div>
+            ))}
+          </div>
           <h2 className="text-lg font-semibold">预计注入内容</h2>
           <p className="rounded-xl border bg-primary/5 p-6 text-sm leading-7 whitespace-pre-wrap">
             {result.block || "本次不会注入记忆"}
@@ -86,6 +110,10 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
               <JsonView value={result.excluded} />
             </section>
           </div>
+          <p className="text-xs text-muted-foreground">
+            scope
+            候选仅表示通过范围过滤，不代表最终被选中或注入；已遗忘与已合并记录不进入此候选池。
+          </p>
         </div>
       )}
     </section>

@@ -1,6 +1,6 @@
-import { useState } from "react"
-import { Badge, Input, Select } from "@/ui"
+import { Badge, Input, JsonView, Select } from "@/ui"
 import type { OperationEvent } from "../model"
+import { useLogs } from "../use-logs"
 
 const labels: Record<string, string> = {
   queued: "排队",
@@ -11,51 +11,45 @@ const labels: Record<string, string> = {
   interrupted: "异常中断",
   ready: "就绪",
   stopped: "停止",
+  debug: "调试",
   info: "信息",
   warning: "警告",
 }
 
 export function LogView({ events }: { events: readonly OperationEvent[] }) {
-  const [kind, setKind] = useState("all")
-  const [state, setState] = useState("all")
-  const [query, setQuery] = useState("")
-  const filtered = events.filter(
-    (event) =>
-      (kind === "all" || event.kind === kind) &&
-      (state === "all" || event.status === state) &&
-      (event.message + event.taskId).toLowerCase().includes(query.toLowerCase())
-  )
+  const vm = useLogs(events)
   return (
-    <section className="mx-auto max-w-6xl space-y-6 p-5 sm:p-8">
+    <section className="mx-auto w-full max-w-7xl space-y-6 p-5 sm:p-8">
       <div>
         <h1 className="text-2xl font-semibold">生命周期与日志</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          最近 500 条结构化记录 · 按任务 ID 追踪 · 不写入对话正文或模型响应
+          最近 500 条业务记录 · 模块 / 函数 / 行号 · 阶段耗时与任务关联
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          仅显式记录的业务事件；异常展示类型与调用位置，不记录对话正文、模型响应或局部变量。
         </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <Input
           aria-label="搜索日志"
           className="max-w-md"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索消息或任务 ID"
+          value={vm.query}
+          onChange={(event) => vm.setQuery(event.target.value)}
+          placeholder="搜索模块、函数、阶段、任务 ID 或业务字段"
         />
         <Select
           label="日志类型"
-          value={kind}
-          onValueChange={setKind}
+          value={vm.kind}
+          onValueChange={vm.setKind}
           options={[
             { value: "all", label: "全部类型" },
-            ...Array.from(new Set(events.map((event) => event.kind))).map(
-              (value) => ({ value, label: value })
-            ),
+            ...vm.kinds.map((value) => ({ value, label: value })),
           ]}
         />
         <Select
           label="日志状态"
-          value={state}
-          onValueChange={setState}
+          value={vm.state}
+          onValueChange={vm.setState}
           options={[
             { value: "all", label: "全部状态" },
             ...Object.entries(labels).map(([value, label]) => ({
@@ -64,31 +58,103 @@ export function LogView({ events }: { events: readonly OperationEvent[] }) {
             })),
           ]}
         />
+        <Select
+          label="日志级别"
+          value={vm.level}
+          onValueChange={vm.setLevel}
+          options={[
+            { value: "all", label: "全部级别" },
+            ...["DEBUG", "INFO", "WARNING", "ERROR"].map((value) => ({
+              value,
+              label: value,
+            })),
+          ]}
+        />
+        <Select
+          label="日志模块"
+          value={vm.module}
+          onValueChange={vm.setModule}
+          options={[
+            { value: "all", label: "全部模块" },
+            ...vm.modules.map((value) => ({ value, label: value })),
+          ]}
+        />
       </div>
+      <p className="text-xs text-muted-foreground">
+        匹配 {vm.filtered.length} / {events.length} 条
+      </p>
       <div className="divide-y overflow-hidden rounded-xl border bg-card">
-        {filtered.length === 0 && (
+        {vm.filtered.length === 0 && (
           <p className="p-10 text-center text-muted-foreground">暂无匹配日志</p>
         )}
-        {filtered.map((event) => (
-          <article key={event.id} className="space-y-2 p-4 sm:px-6">
+        {vm.filtered.map((event) => (
+          <article key={event.id} className="space-y-3 p-4 sm:px-6">
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <time className="text-muted-foreground">{event.at}</time>
-              <Badge variant="secondary">{event.kind}</Badge>
               <Badge
                 variant="outline"
-                className={event.status === "failed" ? "text-destructive" : ""}
+                className={event.level === "ERROR" ? "text-destructive" : ""}
               >
+                {event.level}
+              </Badge>
+              <Badge variant="secondary">{event.kind}</Badge>
+              <Badge variant="outline">
                 {labels[event.status] ?? event.status}
               </Badge>
+              {event.stage && (
+                <code className="wrap-anywhere">{event.stage}</code>
+              )}
+              {event.durationMs !== null && (
+                <span>{event.durationMs.toLocaleString()} ms</span>
+              )}
             </div>
+            {event.source ? (
+              <p className="font-mono text-xs wrap-anywhere text-muted-foreground">
+                {event.source.module} · {event.source.file}:{event.source.line}{" "}
+                · {event.source.function}()
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                旧记录未采集源码位置
+              </p>
+            )}
             <p className="text-sm wrap-anywhere">{event.message}</p>
             {event.taskId && (
               <button
-                className="text-xs text-primary underline"
-                onClick={() => setQuery(event.taskId)}
+                className="text-xs wrap-anywhere text-primary underline"
+                onClick={() => vm.setQuery(event.taskId)}
               >
                 任务 {event.taskId}
               </button>
+            )}
+            {(Object.keys(event.context).length > 0 || event.error) && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-primary">
+                  业务字段与异常位置
+                  {event.error ? ` · ${event.error.type}` : ""}
+                </summary>
+                <div className="mt-3 space-y-3">
+                  {Object.keys(event.context).length > 0 && (
+                    <JsonView value={event.context} />
+                  )}
+                  {event.error && (
+                    <div className="space-y-2 rounded-lg border border-destructive/20 p-4">
+                      <p className="font-semibold text-destructive">
+                        {event.error.type}
+                      </p>
+                      {event.error.frames.map((frame, index) => (
+                        <p
+                          key={`${frame.file}:${frame.line}:${index}`}
+                          className="font-mono wrap-anywhere"
+                        >
+                          {frame.module} · {frame.file}:{frame.line} ·{" "}
+                          {frame.function}()
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </details>
             )}
           </article>
         ))}

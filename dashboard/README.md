@@ -83,7 +83,8 @@ No host cookies, local storage, or direct parent-window access is required.
 Tests run with Node's built-in TypeScript support and test runner. They cover
 schema failures, immutable inputs, combined filters, page resets, empty and
 shrinking datasets, cross-page navigation, deterministic ordering, administrative
-commands, runtime/detail schemas and the host bridge boundary. React hook tests
+commands, runtime/detail schemas, legacy/structured logs, all nine category filters
+and the host bridge boundary. React hook tests
 use Happy DOM with an injected client, without rendering component-library code.
 They verify workspace filters, post-write refresh races, confirmed task identity,
 duplicate-submit prevention, and invalidation of reads from a replaced client.
@@ -102,6 +103,7 @@ src/features/control/
   use-control.ts                 Scope/session filters, task commands and refresh lifecycle
   use-editor.ts                  Drafts, revisions, confirmation and conflict errors
   use-diagnostics.ts             Read-only diagnostic action state
+  use-logs.ts                     Combined log filters and searchable business metadata
   views/                         Workspace, runtime, editor, diagnostics and logs
 src/features/memory/
   model.ts                       Zod schemas, inferred types, loading state
@@ -173,3 +175,22 @@ application-owned contracts through `src/ui/index.tsx`; feature views import onl
 `@/ui`. Keep vendor-specific selectors and styling in the adapter.
 See the [AstrBot plugin view guide](https://docs.astrbot.app/dev/star/guides/plugin-pages.html)
 and [shadcn/ui documentation](https://ui.shadcn.com/docs/installation/vite).
+
+## Business logging integration
+
+Backend `Journal.record()` captures the real caller's module, relative file,
+function and line. `Journal.span()` wraps business stages, measures duration and
+records exception frame locations without exception messages or local variables.
+The task runner supplies a ContextVar correlation ID; individual stage success
+cannot mark a whole task complete during restart recovery. Extraction receives a
+context-manager callback, keeping the domain independent of the log transport.
+
+```python
+with journal.span("weekly", "merge", threshold=0.6) as metrics:
+    metrics["merged"] = merge_similar(db, cache, threshold=0.6)
+```
+
+Only pass explicit safe IDs and counters in context. This is not automatic tracing
+of every function or a capture of all AstrBot logs. The viewer separates severity,
+lifecycle status, business stage, call site, context and exception frames; filtering
+belongs to `use-logs.ts`. Old events remain readable without fabricated call sites.
