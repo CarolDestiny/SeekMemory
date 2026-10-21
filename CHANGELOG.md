@@ -1,4 +1,14 @@
 # 变更记录
+## 0.3.1 - 2026-10-21
+
+Topic buffer and attribution hardening.
+
+- Group chat sources continue to be captured and extracted as shared memories.
+- Typed DialogueTurn buffer with topic segmentation and 24h TTL trigger.
+- Extractor now records subject_kind/subject_id and event_at.
+- Artifact created time uses event time with Source timestamp fallback.
+- Added validity date normalization and owner-id resolution.
+
 ## 0.3.0 - 2026-10-21
 
 Backlog hardening and retrieval boundary.
