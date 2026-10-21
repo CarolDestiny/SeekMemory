@@ -105,5 +105,10 @@
     "description": "force one extraction batch when pending reaches this count",
     "type": "int",
     "default": 30
+  },
+  "topic_ttl_seconds": {
+    "description": "force extraction when oldest topic reaches this age",
+    "type": "int",
+    "default": 86400
   }
 }

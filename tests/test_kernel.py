@@ -187,6 +187,15 @@ class FlushPolicyTest(unittest.TestCase):
                            backlog_flush_at=30)
         self.assertFalse(got.should)
 
+    def test_expired_topic_overrides_daily_cap(self):
+        got = decide_flush(pending=2, idle_seconds=10, worth_now=False,
+                           flushes_today=2, idle_flush_seconds=180,
+                           min_pending=8, max_flushes_per_day=2,
+                           backlog_flush_at=30, topic_age_seconds=86400,
+                           topic_ttl_seconds=86400)
+        self.assertTrue(got.should)
+        self.assertEqual(got.reason, "topic_expired")
+
     def test_daily_cap_blocks(self):
         got = decide_flush(pending=100, idle_seconds=999, worth_now=True,
                            flushes_today=2, idle_flush_seconds=180,
