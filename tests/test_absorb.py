@@ -107,7 +107,7 @@ class AbsorbTest(unittest.TestCase):
             [("umo:a", "10001", "user", "我下周三去杭州出差")], db, cache, graph,
             FakeProvider(GOOD),
         ))
-        self.assertEqual(n, 2)
+        self.assertEqual(n.written, 2)
         texts = [content_of(a) for a in cache.active("memory")]
         self.assertTrue(any("杭州" in t for t in texts))
         arts = cache.active("memory")
@@ -120,7 +120,8 @@ class AbsorbTest(unittest.TestCase):
             [("umo:a", "10001", "user", "随便说说")], db, cache, graph,
             FakeProvider("", boom=True),
         ))
-        self.assertEqual(n, 0)
+        self.assertEqual(n.written, 0)
+        self.assertTrue(n.model_failed)
         self.assertEqual(cache.active("memory"), [])
 
     def test_bad_items_skipped(self):
@@ -129,7 +130,7 @@ class AbsorbTest(unittest.TestCase):
             [("umo:a", "10001", "user", "说点什么")], db, cache, graph,
             FakeProvider('[{"level": "fact"}, {"level": "fact", "text": "他喜欢猫"}]'),
         ))
-        self.assertEqual(n, 1)  # 缺字段的被跳过
+        self.assertEqual(n.written, 1)  # 缺字段的被跳过
 
     def test_dialogue_and_owner(self):
         items = [("umo:a", "10001", "user", "一"), ("umo:a", "10002", "user", "二")]

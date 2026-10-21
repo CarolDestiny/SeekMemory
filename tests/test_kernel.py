@@ -67,6 +67,10 @@ class CommitTest(unittest.TestCase):
         self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM artifact_evidence").fetchone()[0], 1)
         with self.assertRaises(VersionError):
             db.commit(revise(second, payload={"text": "stale", "level": "fact"}), expected_revision=1, op="revise")
+        bad_event = StateEvent("bad", first.header.id, 2, "reinforce", {}, "t")
+        with self.assertRaises(VersionError):
+            db.commit(second, expected_revision=99, op="reinforce", state_events=(bad_event,))
+        self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM state_events WHERE id = 'bad'").fetchone()[0], 0)
         event = StateEvent("e1", first.header.id, 2, "reinforce", {"hits": 1}, "t")
         db.append_state_event(event)
         self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM state_events").fetchone()[0], 1)
