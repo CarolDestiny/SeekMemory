@@ -10,7 +10,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.checkpoint import CheckpointManager
-from app.contracts import ChatResponse
+from app.contracts import ChatResponse, DialogueTurn
 from core.artifact import content_of
 from core.disclosure import DisclosureLevel, RecallScene, decide
 from core.graph import Graph
@@ -40,7 +40,7 @@ class KernelEndToEndTest(unittest.TestCase):
         user = Source("s_user", "turn1", "umo1", "u1", "user", "I have an interview", "t1")
         bot = Source("s_bot", "turn1", "umo1", "bot", "assistant", "good luck", "t2", reply_to="s_user")
         self.assertEqual(db.append_sources([user, bot]), 2)
-        written = asyncio.run(absorb([("umo1", "u1", "user", "I have an interview", "s_user")],
+        written = asyncio.run(absorb([DialogueTurn("umo1", "u1", "user", "I have an interview", "", "s_user")],
                                       db, cache, graph, FakeChatModel()))
         self.assertEqual(written.written, 1)
         arts = cache.active("memory")

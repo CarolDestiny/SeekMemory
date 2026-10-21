@@ -6,14 +6,15 @@
 
 from __future__ import annotations
 
+import datetime
 import re
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..app.contracts import ChatRequest, WriteOutcome
-    from ..core.artifact import Lineage, Strength, content_of, make, validate
+    from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
+    from ..core.artifact import Lineage, Strength, TimeSpan, content_of, make, validate
     from ..core.graph import Graph
     from ..maintain.impression import revise_impression
     from ..maintain.link import link_new
@@ -25,8 +26,8 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..store.cache import Cache
     from ..store.db import DB
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from app.contracts import ChatRequest, WriteOutcome
-    from core.artifact import Lineage, Strength, content_of, make, validate
+    from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
+    from core.artifact import Lineage, Strength, TimeSpan, content_of, make, validate
     from core.graph import Graph
     from maintain.impression import revise_impression
     from maintain.link import link_new
@@ -55,13 +56,53 @@ _NOT_WORTH = re.compile(
 Log = Callable[[str], None]
 
 
-def _parts(row: tuple) -> tuple[str, str, str, str]:
-    return (
-        str(row[0]),
-        str(row[1]) if len(row) > 1 else "",
-        str(row[2]) if len(row) > 2 else "",
-        str(row[3]) if len(row) > 3 else "",
-    )
+def _parse_time(value: Any) -> datetime.datetime | None:
+    try:
+        return datetime.datetime.fromisoformat(str(value or "").strip())
+    except (TypeError, ValueError):
+        try:
+            return datetime.datetime.fromisoformat(
+                str(value or "").strip() + "T00:00:00"
+            )
+        except (TypeError, ValueError):
+            return None
+
+
+def _date_or_none(value: Any) -> str | None:
+    parsed = _parse_time(value)
+    return parsed.date().isoformat() if parsed is not None else None
+
+
+def _event_at(item: dict, turns: list[DialogueTurn]) -> str:
+    parsed = _parse_time(item.get("event_at"))
+    if parsed is not None:
+        return parsed.isoformat(timespec="seconds")
+    wanted = item.get("event_date") or item.get("valid_from")
+    parsed = _parse_time(wanted)
+    if parsed is not None:
+        return parsed.isoformat(timespec="seconds")
+    stamps = [_parse_time(turn.at) for turn in turns]
+    valid = [stamp for stamp in stamps if stamp is not None]
+    if valid:
+        return min(valid).isoformat(timespec="seconds")
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def _subject_id(item: dict, owner: str, default: str, owner_id: str = "") -> str:
+    kind = str(item.get("subject_kind") or "").strip()
+    raw = str(item.get("subject_id") or "").strip()
+    if raw and raw not in ("owner", "speaker", "self", "world", "relation"):
+        return raw
+    if not owner_id and owner:
+        owner_id = str(owner).split(":")[-1]
+    if kind == "owner":
+        return owner_id or default
+    if kind == "speaker":
+        return default
+    if kind in ("world", "relation", "self"):
+        return kind
+    name = str(item.get("subject_name") or "").strip()
+    return "third:" + name if name else default
 
 
 def _num(value: Any, default: float, low: float, high: float) -> float:
@@ -92,13 +133,11 @@ def strength_of(item: dict) -> dict:
     return out
 
 
-def worth_now(items: list[tuple]) -> bool:
-    """这批对话里有没有值得当场记住的事（计划/事实/强情绪）。"""
-    for row in items[-30:]:
-        _umo, _sender, role, text = _parts(row)
-        if str(role) != "user":
+def worth_now(items: list[DialogueTurn]) -> bool:
+    for turn in items[-30:]:
+        if turn.role != "user":
             continue
-        line = str(text or "").strip()
+        line = str(turn.text or "").strip()
         if not line or _NOT_WORTH.match(line):
             continue
         if _PLAN.search(line) or _FACT.search(line) or _STRONG.search(line):
@@ -106,13 +145,12 @@ def worth_now(items: list[tuple]) -> bool:
     return False
 
 
-def dialogue_of(items: list[tuple]) -> str:
-    """把 (umo, sender, role, text) 拼成给模型看的对话文本；群里带是谁说的。"""
+def dialogue_of(items: list[DialogueTurn]) -> str:
     lines = []
-    for row in items[-120:]:
-        _umo, sender, role, text = _parts(row)
-        who = f"{role}({sender})" if sender else role
-        lines.append(f"{who}: {text}")
+    for turn in items[-120:]:
+        who = f"{turn.role}({turn.speaker_id})" if turn.speaker_id else turn.role
+        prefix = f"[{turn.at}] " if turn.at else ""
+        lines.append(f"{prefix}{who}: {turn.text}")
     return "\n".join(lines)
 
 
@@ -126,19 +164,19 @@ def existing_texts(cache: Cache | None) -> list[str]:
         return []
 
 
-def owner_of(items: list[tuple]) -> str:
-    """只有整批来自同一个会话时才记归属，混会话就不写归属。"""
-    umos = {item[0] for item in items if item[0]}
-    return next(iter(umos)) if len(umos) == 1 else ""
+def owner_of(items: list[DialogueTurn]) -> str:
+    sessions = {turn.session_id for turn in items if turn.session_id}
+    return next(iter(sessions)) if len(sessions) == 1 else ""
 
 
 async def absorb(
-    items: list[tuple],
+    items: list[DialogueTurn],
     db: DB,
     cache: Cache | None,
     graph: Graph | None,
     model: Any,
     log: Log = lambda _msg: None,
+    owner_id: str = "",
     *,
     strict: bool = False,
     stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
@@ -154,6 +192,7 @@ async def absorb(
         graph: 可选的关系图，用于关联新 Artifact。
         model: 上游 ChatModel 接口或兼容的模型服务。
         log: 操作警告回调。
+        owner_id: 配置中的主人 ID，用于解析模型的主体归属。
         strict: 传播模型服务异常，使任务执行器保留待处理输入。
         stage: 注入的业务阶段上下文管理器；默认不采集阶段日志。
 
@@ -170,7 +209,7 @@ async def absorb(
             if hasattr(model, "complete"):
                 resp = await model.complete(
                     ChatRequest(
-                        session_id=str(items[0][0] or ""),
+                        session_id=str(items[0].session_id or ""),
                         system_prompt=build_prompt([]),
                         prompt=dialogue_of(items),
                     )
@@ -195,9 +234,9 @@ async def absorb(
         return WriteOutcome(skipped=len(items))
 
     owner = owner_of(items)
-    source_ids = tuple(str(row[4]) for row in items if len(row) > 4 and row[4])
+    source_ids = tuple(turn.source_id for turn in items if turn.source_id)
     group = ":GroupMessage:" in owner
-    senders = {item[1] for item in items if item[1]}
+    senders = {turn.speaker_id for turn in items if turn.speaker_id}
     said_by = "owner"
     if group:
         said_by = next(iter(senders)) if len(senders) == 1 else "group"
@@ -225,8 +264,13 @@ async def absorb(
                     strength=strength,
                     scope="shared" if group or not owner else "private",
                     said_by=said_by,
-                    subject_id=str(item.get("subject_id") or default_subject),
+                    subject_id=_subject_id(item, owner, default_subject, owner_id),
                     lineage=Lineage(sources=source_ids),
+                    time=TimeSpan(
+                        created=_event_at(item, items),
+                        valid_from=_date_or_none(item.get("valid_from")),
+                        valid_to=_date_or_none(item.get("valid_to")),
+                    ),
                 )
                 validate(art)
         except Exception as exc:

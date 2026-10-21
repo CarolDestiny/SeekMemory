@@ -38,9 +38,22 @@ _PROMPT = """你是她的记忆整理者。请从这段对话里提炼 0~6 条�
 - funny: 0.0~1.0，有趣程度
 - first: true/false，这是不是第一次出现
 
+Additional required fields for every item:
+- subject_kind: owner | speaker | third_party | relation | world | self
+- subject_id: stable person id if known; owner maps to the owner QQ id; world maps to world
+- subject_name: optional human-readable name
+- event_at: ISO datetime when the remembered event happened
+- valid_from / valid_to: ISO date or null for plans and time-bound facts
+
+Dialogue lines may start with [ISO timestamp]. Resolve relative dates against that timestamp,
+never against extraction time. If the exact event time is unclear, use the earliest dialogue time.
+
 正例：
 [{"level": "fact", "text": "他下周三要去杭州出差", "tags": "杭州 出差 下周 行程", "about": "world", "arousal": 0.3, "valence": 0.0, "funny": 0.0, "first": true},
  {"level": "impression", "text": "他有点倔，嘴上不饶人，但真有事会帮", "tags": "性格 倔 嘴硬心软", "about": "other", "arousal": 0.4, "valence": 0.3, "funny": 0.2, "first": false}]
+
+Example with the additional fields:
+[{"level": "fact", "text": "owner is preparing a job interview", "tags": "job interview plan", "about": "other", "arousal": 0.3, "valence": 0.0, "funny": 0.0, "first": true, "subject_kind": "owner", "subject_id": "12345", "subject_name": "", "event_at": "2026-10-20T23:14:00", "valid_from": "2026-10-21", "valid_to": null}]
 
 只输出 JSON 数组，不要解释，不要 Markdown 代码块。"""
 

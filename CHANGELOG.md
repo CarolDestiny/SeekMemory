@@ -1,4 +1,14 @@
 # 变更记录
+## 0.3.1 - 2026-10-21
+
+Topic buffer and attribution hardening.
+
+- Group chat sources continue to be captured and extracted as shared memories.
+- Typed DialogueTurn buffer with topic segmentation and 24h TTL trigger.
+- Extractor now records subject_kind/subject_id and event_at.
+- Artifact created time uses event time with Source timestamp fallback.
+- Added validity date normalization and owner-id resolution.
+
 ## 0.3.0 - 2026-10-21
 
 Backlog hardening and retrieval boundary.
@@ -21,6 +31,8 @@ Artifact kernel foundation and online cutover.
 
 
 ## 未发布
+
+- 同步上游 v0.3.1 的话题缓冲、主体归属和事件时间，适配运行页计数及话题抽取日志，保留取消时缓冲。
 
 - 同步上游 v0.3.0：保留积压触发、WriteOutcome、统一提交、原子 checkpoint 与主体披露判定；
   适配 WebUI 阶段日志和只读诊断，补测无模型配额、会话失败隔离及取消时消息保留。

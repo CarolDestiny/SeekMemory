@@ -34,7 +34,10 @@ Sessions without a provider retain their messages; a batch without any usable pr
 does not consume the daily count. A failed session does not block other ready sessions,
 but the batch still ends as failed. Backlog triggering follows the upstream threshold
 and quiet-window policy; runtime configuration includes backlog_flush_at.
-Extraction resolves the model per session. Four scheduler loops cover nightly extraction,
+Extraction resolves the model per session and batches turns by topic. Upstream v0.3.1
+provides topic segmentation/TTL, subject attribution and event-time parsing. The existing
+max_sessions_per_flush option now limits topics; pending counts remain grouped by session.
+Extraction logs include both session and topic identifiers. Four scheduler loops cover nightly extraction,
 weekly maintenance, idle extraction and checkpoints. Shutdown awaits tasks, saves pending
 messages and flushes recall reinforcement checkpoints before closing the database.
 
