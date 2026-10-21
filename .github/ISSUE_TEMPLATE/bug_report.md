@@ -1,45 +1,45 @@
 ---
 name: Bug report
-about: Report a reproducible defect
+about: 报告可重现的缺陷
 title: "[Bug] "
 labels: bug
 assignees: ""
 ---
 
-## Summary
+## Summary / 概括
 
-## Environment
+## Environment / 环境
 
-- Version or tag:
-- Deployment: local / staging / production
-- Python / AstrBot version:
-- Relevant config keys:
+- 版本或标签：
+- 部署：本地/暂存/生产
+- Python / AstrBot 版本：
+- 相关配置键：
 
-## Steps to reproduce
+## Steps to reproduce / 重现步骤
 
 1.
 2.
 3.
 
-## Expected behavior
+## Expected behavior / 预期行为
 
-## Actual behavior
+## Actual behavior / 实际行为
 
-## Logs or evidence
+## Logs or evidence / 日志或证据
 
-Do not paste secrets, API keys, raw private messages or user identifiers.
+请勿粘贴机密、API 密钥、原始私人消息或用户标识符。
 
-## Impact
+## Impact / 影响
 
-- [ ] data loss
-- [ ] privacy or permission issue
-- [ ] crash
-- [ ] wrong recall or attribution
-- [ ] performance
-- [ ] docs only
+- [ ] 数据丢失
+- [ ] 隐私或权限问题
+- [ ] 崩溃
+- [ ] 召回或归属错误
+- [ ] 性能
+- [ ] 仅文档
 
-## Possible fix
+## Possible fix / 可能的修复
 
-## Regression test
+## Regression test / 回归测试
 
-What test should fail before the fix and pass after it?
+哪些测试应该在修复之前失败并在修复之后通过？

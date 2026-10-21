@@ -1,40 +1,40 @@
-## Summary
+## Summary / 概括
 
-## Related issue
+## Related issue / 相关问题
 
 Closes #
 
-## Changes
+## Changes / 变更
 
 -
 
-## What was intentionally not changed
+## What was intentionally not changed / 明确未改动的内容
 
-## Verification
+## Verification / 验证
 
-- [ ] syntax check
-- [ ] unit tests
-- [ ] benchmark / ablation
-- [ ] real AstrBot staging probe
-- [ ] live probe (Lead-approved only)
+- [ ] 语法检查
+- [ ] 单元测试
+- [ ] 基准/消融
+- [ ] 真实的 AstrBot 阶段验证
+- [ ] 线上探测（仅限 Lead 批准）
 
-Commands and results:
+命令和结果：
 
-## Data and privacy impact
+## Data and privacy impact / 数据和隐私影响
 
-- Source evidence:
-- Artifact field/version changes:
-- DB migration:
-- Cross-session disclosure:
-- Logging impact:
+- Source 证据：
+- Artifact 字段/版本更改：
+- 数据库迁移：
+- Cross-session 披露：
+- 日志输出影响：
 
-## Risk and rollback
+## Risk and rollback / 风险与回滚
 
-## Agent checklist
+## Agent checklist / Agent 检查清单
 
-- [ ] I read AGENTS.md and docs/ARCHITECTURE.md.
-- [ ] Production writes use DB.commit().
-- [ ] No SQL outside store/db.py.
-- [ ] No secrets or message bodies in logs.
-- [ ] New behavior has a regression test.
-- [ ] The Lead has reviewed deployment steps.
+- [ ] 我阅读了 AGENTS.md 和 docs/ARCHITECTURE.md。
+- [ ] 生产写入使用 DB.commit()。
+- [ ] store/db.py 之外没有 SQL。
+- [ ] 日志中没有秘密或消息正文。
+- [ ] 新行为有回归测试。
+- [ ] Lead 已审查部署步骤。
