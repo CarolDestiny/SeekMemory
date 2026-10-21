@@ -4,7 +4,7 @@
 |---|---|
 | id | ISSUE-0020 |
 | level | P1 |
-| status | in_progress |
+| status | closed |
 | date | 2026-10-21 |
 | branch | refactor/issue-0020-artifact-kernel |
 
