@@ -15,10 +15,12 @@ from app.checkpoint import CheckpointManager
 from app.contracts import ChatRequest
 from app.flush_policy import decide_flush
 from core.artifact import make, revise
+from core.retrieval import RetrievalCandidate
 from core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
 from core.source import Source, make_source_id
 from core.versioning import StateEvent, VersionError, assert_next_revision
 from perceive.model import ProviderChatModel
+from recall.score import select
 from store.db import DB
 from store.cache import Cache
 from store.ledger import Ledger
@@ -106,6 +108,24 @@ class FakeProvider:
             id = "p1"
             model = "m1"
         return Meta()
+
+
+class RetrievalCandidateTest(unittest.TestCase):
+    def test_lexical_signal_participates_in_selection(self):
+        plain = _memory(text="ordinary")
+        lexical = _memory(text="bm25")
+        got = select([RetrievalCandidate(plain), RetrievalCandidate(lexical, lexical=1.0)],
+                     "unrelated query", 0.0, k=1, explore=0.0, gate=False)
+        self.assertEqual([a.header.id for a in got], [lexical.header.id])
+
+    def test_shared_cross_session_never_returns_raw_text(self):
+        art = _memory(subject="u1", scope="shared", text="top secret phrase")
+        art = make("memory", {**art.payload, "tags": "project"}, subject_id="u1",
+                   scope="shared")
+        scene = RecallScene("s2", "u1", "u1", ("u1",))
+        got = decide(art, scene, 1.0, origin_sessions=("s1",))
+        self.assertEqual(got.level, DisclosureLevel.PARAPHRASE)
+        self.assertNotIn("top secret phrase", safe_text(art, got.level))
 
 
 class StoreBoundaryTest(unittest.TestCase):

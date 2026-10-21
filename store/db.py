@@ -174,6 +174,15 @@ class DB:
             "SELECT umo FROM sources WHERE id = ?", (source_id,)).fetchone()
         return str(row["umo"]) if row is not None else ""
 
+    def source_umos(self, source_ids: list[str]) -> dict[str, str]:
+        ids = [str(x) for x in source_ids if x]
+        if not ids:
+            return {}
+        marks = ",".join("?" for _ in ids)
+        rows = self.conn.execute(
+            f"SELECT id, umo FROM sources WHERE id IN ({marks})", ids).fetchall()
+        return {str(row["id"]): str(row["umo"]) for row in rows}
+
     def set_parent(self, node_id: str, parent_id: str | None) -> None:
         """单独调整抽象树父子关系（CONTRACT 未列出，供 core/tree 使用）。"""
         with self.conn:

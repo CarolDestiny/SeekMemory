@@ -11,12 +11,12 @@ import re
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..core.artifact import Artifact, content_of
+    from ..core.artifact import Artifact, content_of, revise
     from ..core.graph import Graph
     from ..store.cache import Cache
     from ..store.db import DB
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from core.artifact import Artifact, content_of
+    from core.artifact import Artifact, content_of, revise
     from core.graph import Graph
     from store.cache import Cache
     from store.db import DB
@@ -166,8 +166,28 @@ def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
 
 
 def persist(art: Artifact, db: DB, cache: Cache | None, graph: Graph | None) -> int:
-    """写入一条记忆并就地建边；写入异常照常上抛，建边异常由 link_new 吞掉。"""
-    db.upsert(art)
+    # Compatibility writer: route every write through the CAS commit path.
+    existing = db.get(art.header.id)
+    if existing is None:
+        op = "create"
+        expected = 0
+    else:
+        op = "revise"
+        expected = existing.header.revision
+        if art.header.revision <= existing.header.revision:
+            art = revise(
+                existing,
+                payload=art.payload,
+                state=art.header.state,
+                scope=art.header.scope,
+                strength=art.header.strength,
+                lineage=art.header.lineage,
+                said_by=art.header.said_by,
+                shareable=art.header.shareable,
+                subject_id=art.header.subject_id,
+            )
+    db.commit(art, expected_revision=expected, op=op, reason="persist",
+              source_ids=tuple(art.header.lineage.sources))
     if cache is not None:
         cache.put(art)
     return link_new(art, graph, cache)
