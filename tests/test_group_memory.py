@@ -54,7 +54,7 @@ class GroupWriteTest(unittest.TestCase):
         n = asyncio.run(absorb(
             [(GROUP_A, "10086", "user", "周末有人去爬山吗")], db, cache, graph,
             FakeProvider()))
-        self.assertEqual(n, 1)
+        self.assertEqual(n.written, 1)
         art = cache.active("memory")[0]
         # 群聊不是隐私边界：写 shared，归属记说话人
         self.assertEqual(art.header.scope, "shared")

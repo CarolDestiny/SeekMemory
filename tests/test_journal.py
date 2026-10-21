@@ -48,7 +48,7 @@ class JournalTests(unittest.IsolatedAsyncioTestCase):
             stage=partial(self.journal.span, "extract"),
             strict=True,
         )
-        self.assertEqual(written, 1)
+        self.assertEqual(written.written, 1)
         stages = {e["stage"] for e in self.journal.events}
         self.assertTrue(
             {

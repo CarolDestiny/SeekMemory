@@ -35,32 +35,27 @@ def _anchor(art: Artifact) -> datetime.date | None:
 
 
 def decay_all(db: DB, cache: Cache, today: str) -> int:
-    """遍历 active 记忆，留存率 < 0.3 的标 forgotten、写库、移出缓存并记日志。"""
     base = _day(today)
     if base is None:
         return 0
     forgotten = 0
     for art in list(cache.active()):
         if art.header.family != "memory":
-            continue  # 只有 memory 家族参与衰减；persona/media/example 等没有 level
+            continue
         anchor = _anchor(art)
         if anchor is None:
             continue
         days = max((base - anchor).days, 0)
         level = str(art.payload.get("level") or "")
         if level == "fact":
-            continue  # 事实永久豁免；印象由 shape=pattern 自身极慢衰减
+            continue
         shape = str(art.payload.get("shape") or "point")
         if retention(art.header.strength, shape, float(days)) >= FORGET_BELOW:
             continue
-        db.upsert(revise(art, state="forgotten"))
+        updated = revise(art, state="forgotten")
+        db.commit(updated, expected_revision=art.header.revision, op="forget",
+                  reason=f"retention<{FORGET_BELOW} days={days} shape={shape}",
+                  source_ids=tuple(art.header.lineage.sources))
         cache.remove(art.header.id)
-        db.ledger_append(
-            "forget",
-            art.header.id,
-            None,
-            None,
-            f"retention<{FORGET_BELOW} (days={days}, shape={shape})",
-        )
         forgotten += 1
     return forgotten

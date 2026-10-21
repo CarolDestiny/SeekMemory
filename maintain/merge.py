@@ -179,24 +179,15 @@ def merge_similar(
             time=TimeSpan(created=now, updated=now),
             said_by="inferred",
         )
-        db.upsert(art)
+        db.commit(art, expected_revision=0, op="merge",
+                  reason=f"merge {count} memories into impression",
+                  source_ids=sources)
         cache.put(art)
-        db.ledger_append(
-            "merge",
-            art.header.id,
-            None,
-            art.header.id,
-            f"合并 {count} 条相似记忆为新印象：{payload['text']}",
-        )
         for member in members:
-            db.upsert(revise(member, state="merged"))
+            updated = revise(member, state="merged")
+            db.commit(updated, expected_revision=member.header.revision, op="merge",
+                      reason=f"merged into {art.header.id}",
+                      source_ids=tuple(member.header.lineage.sources))
             cache.remove(member.header.id)
-            db.ledger_append(
-                "merge",
-                member.header.id,
-                member.header.id,
-                art.header.id,
-                f"与另外 {count - 1} 条相似记忆合并进 {art.header.id}",
-            )
         made += 1
     return made

@@ -18,6 +18,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 from .app.checkpoint import CheckpointManager
+from .app.flush_policy import decide_flush
 from .core.graph import Graph
 from .core.source import Source, make_source_id
 from .core.tree import Tree
@@ -354,20 +355,22 @@ class Main(star.Star):
 
     # ---------------- 抽取：空闲触发 + 夜间兜底 ----------------
     def _should_flush(self) -> bool:
-        """白天要不要抽：安静够久 + 攒够条数 + 有值得记的事 + 没超每天上限。"""
         if self._flushing or self.buffer is None or self.db is None:
-            return False
-        idle = float(self._c("idle_flush_seconds", 0))
-        if idle <= 0:  # 0 = 白天不抽，只等晚上批量
-            return False
-        if not self.buffer.should_flush(idle, int(self._c("min_pending", 8))):
-            return False
-        if not worth_now(self.buffer.items):
             return False
         today = datetime.date.today().isoformat()
         if self._flush_day != today:
             self._flush_day, self._flush_count = today, 0
-        return self._flush_count < int(self._c("max_flushes_per_day", 2))
+        decision = decide_flush(
+            pending=len(self.buffer.items),
+            idle_seconds=self.buffer.idle_seconds(),
+            worth_now=worth_now(self.buffer.items),
+            flushes_today=self._flush_count,
+            idle_flush_seconds=float(self._c("idle_flush_seconds", 0)),
+            min_pending=int(self._c("min_pending", 8)),
+            max_flushes_per_day=int(self._c("max_flushes_per_day", 2)),
+            backlog_flush_at=int(self._c("backlog_flush_at", 30)),
+        )
+        return decision.should
 
     async def _idle_loop(self) -> None:
         """聊完安静一会儿就抽，不用等到半夜。"""
@@ -394,7 +397,14 @@ class Main(star.Star):
         return ordered[: max(1, cap)]
 
     async def _flush(self, reason: str) -> None:
-        """抽一批：调用模型、解析、写库建边；全程 fail-open。"""
+        """按上游会话与结果契约抽取，处理成功前保留缓冲。
+
+        Args:
+            reason: 触发本次抽取的业务原因。
+
+        Raises:
+            Exception: 批次结束后传播首个会话失败，供任务执行器记录失败状态。
+        """
         if (
             self._flushing
             or self.buffer is None
@@ -404,53 +414,74 @@ class Main(star.Star):
             return
         self._flushing = True
         try:
-            items = list(self.buffer.items)
-            sessions = self._split_sessions(items)
+            sessions = self._split_sessions(list(self.buffer.items))
+            ready = []
+            failure: Exception | None = None
+            for umo, part in sessions:
+                try:
+                    with self.journal.span("extract", "provider.resolve", session=umo):
+                        prov = await self.context.get_using_provider_async(umo or None)
+                except Exception as exc:
+                    failure = failure or exc
+                    continue
+                if not prov:
+                    self.journal.record(
+                        "extract",
+                        "warning",
+                        "该会话尚未配置模型服务，保留待抽取消息",
+                        stage="provider.resolve",
+                        context={"session": umo},
+                    )
+                    continue
+                ready.append((umo, part, prov))
+            if not ready:
+                if failure is not None:
+                    raise failure
+                return
             self._flush_count += 1
             written = 0
-            for umo, part in sessions:
-                with self.journal.span("extract", "provider.resolve", session=umo):
-                    prov = await self.context.get_using_provider_async(umo or None)
-                    if not prov:
-                        raise RuntimeError("该会话尚未配置模型服务")
-                    model = ProviderChatModel(prov)
-                with self.journal.span(
-                    "extract", "session.extract", session=umo, messages=len(part)
-                ) as metrics:
-                    got = await absorb(
-                        part,
-                        self.db,
-                        self.cache,
-                        self.graph,
-                        model,
-                        log=partial(self.journal.record, "extract", "warning"),
-                        strict=True,
-                        stage=partial(self.journal.span, "extract"),
-                    )
-                    metrics["written"] = got
-                # 处理成功前保留正在抽取的消息及其持久化记录。
-                # 按对象身份移除已处理项，保留等待期间新到达的同内容消息。
+            for umo, part, prov in ready:
+                try:
+                    with self.journal.span(
+                        "extract", "session.extract", session=umo, messages=len(part)
+                    ) as metrics:
+                        outcome = await absorb(
+                            part,
+                            self.db,
+                            self.cache,
+                            self.graph,
+                            ProviderChatModel(prov),
+                            log=partial(self.journal.record, "extract", "warning"),
+                            strict=True,
+                            stage=partial(self.journal.span, "extract"),
+                        )
+                        metrics["written"] = outcome.written
+                        metrics["skipped"] = outcome.skipped
+                        if outcome.model_failed:
+                            raise RuntimeError("模型抽取失败，保留待处理消息")
+                except Exception as exc:
+                    failure = failure or exc
+                    continue
+                # 成功后才移除快照中的项；取消或模型失败不丢消息，等待期间的新消息保留。
                 processed = {id(row) for row in part}
                 self.buffer.items = [
                     row for row in self.buffer.items if id(row) not in processed
                 ]
                 self.buffer.save()
-                written += got
+                written += outcome.written
                 logger.info(
                     f"[seekmemory] {reason}抽取 {umo or '未知会话'}："
-                    f"{len(part)} 条对话，写入 {got} 条"
+                    f"{len(part)} 条对话，写入 {outcome.written} 条，跳过 {outcome.skipped} 条"
                 )
-            logger.info(
-                f"[seekmemory] {reason}抽取：{len(sessions)} 个会话，"
-                f"共写入 {written} 条（今日第 {self._flush_count} 次）"
-            )
             self.journal.record(
                 "extract",
                 "info",
-                f"已处理 {len(sessions)} 个会话，写入 {written} 条记忆",
-                context={"sessions": len(sessions), "written": written},
+                f"已尝试 {len(ready)} 个会话，写入 {written} 条记忆",
+                context={"sessions": len(ready), "written": written},
                 stage="batch.complete",
             )
+            if failure is not None:
+                raise failure
         finally:
             self._flushing = False
 

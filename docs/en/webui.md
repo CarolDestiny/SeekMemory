@@ -18,6 +18,9 @@ Merged records cannot be independently restored. Editing does not rebuild graph 
 Administrators can inspect every scope. `private` uses conversation ownership;
 `shared` is visible across conversations; `shadow` enters the same candidate pool
 but assembly hides its content. The source-session filter does not change access.
+Upstream v0.3.0 also evaluates subject-aware disclosure for retrieved selections:
+full text, paraphrase, hint or silence. Scope visibility does not guarantee full-text
+injection; per-record decisions appear in the diagnostic disclosure data.
 Read-only recall diagnostics accept a UMO, sender ID and query, reuse live rules,
 and do not consume designated delivery. Exploration can produce varying results.
 
@@ -26,7 +29,11 @@ checks do not send model requests. Manual extraction, weekly maintenance and
 cancellation share the scheduled-task runner. Editing is blocked during maintenance.
 Cancellation preserves unfinished messages but never undoes completed writes;
 synchronous weekly work may finish before cancellation is processed. Existing
-per-item extraction warnings still require inspection even when a task succeeds.
+per-item extraction warnings and written/skipped counts still require inspection even when a task succeeds.
+Sessions without a provider retain their messages; a batch without any usable provider
+does not consume the daily count. A failed session does not block other ready sessions,
+but the batch still ends as failed. Backlog triggering follows the upstream threshold
+and quiet-window policy; runtime configuration includes backlog_flush_at.
 Extraction resolves the model per session. Four scheduler loops cover nightly extraction,
 weekly maintenance, idle extraction and checkpoints. Shutdown awaits tasks, saves pending
 messages and flushes recall reinforcement checkpoints before closing the database.

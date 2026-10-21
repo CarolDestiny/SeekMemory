@@ -145,6 +145,7 @@ class WebRoutes:
                                 "recall_min_ev_abs",
                                 "recall_min_ev_rel",
                                 "min_pending",
+                                "backlog_flush_at",
                                 "max_flushes_per_day",
                                 "enable_reflect",
                                 "max_episodes",

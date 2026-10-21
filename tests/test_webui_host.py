@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import sys
@@ -172,6 +173,49 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.plugin.buffer.items), 1)
         persisted = json.loads((Path(self.temp.name) / "pending.json").read_text())
         self.assertEqual(len(persisted["items"]), 1)
+
+    async def test_missing_provider_preserves_daily_quota_and_messages(self) -> None:
+        self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
+        await self.plugin._nightly()
+        self.assertEqual(self.plugin._flush_count, 0)
+        self.assertEqual(len(self.plugin.buffer.items), 1)
+
+    async def test_failed_session_does_not_block_other_ready_sessions(self) -> None:
+        class Provider:
+            async def text_chat(self, **kwargs):
+                if "Plan A" in kwargs["prompt"]:
+                    raise ValueError("private model failure")
+                return SimpleNamespace(completion_text="[]")
+
+        self.context.provider = Provider()
+        self.plugin.cfg["max_sessions_per_flush"] = 2
+        self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
+        self.plugin.buffer.add("bot:FriendMessage:bob", "Plan B", "bob")
+        with self.assertRaises(ValueError):
+            await self.plugin._nightly()
+        self.assertEqual([row[3] for row in self.plugin.buffer.items], ["Plan A"])
+        self.assertEqual(self.plugin._flush_count, 1)
+
+    async def test_cancellation_preserves_inflight_and_new_messages(self) -> None:
+        started = asyncio.Event()
+        plugin = self.plugin
+
+        class Provider:
+            async def text_chat(self, **_kwargs):
+                plugin.buffer.add("bot:FriendMessage:alice", "New plan", "alice")
+                started.set()
+                await asyncio.Event().wait()
+
+        self.context.provider = Provider()
+        plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
+        task = asyncio.create_task(plugin._nightly())
+        await started.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        persisted = json.loads((Path(self.temp.name) / "pending.json").read_text())
+        self.assertEqual([row[3] for row in persisted["items"]], ["Plan A", "New plan"])
+        self.assertFalse(plugin._flushing)
 
     async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
