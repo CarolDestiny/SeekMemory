@@ -55,7 +55,11 @@
 它只预演记忆模块，不模拟完整聊天链路；探索采样可能导致多次结果不同。
 
 生命周期日志记录启动、停止、召回摘要、人工编辑、诊断及任务的 queued/running/succeeded/failed/
-cancelled/interrupted 状态，可按类型、状态、任务 ID 和文本筛选。
+cancelled/interrupted 状态，可按类型、状态、级别、模块、任务 ID 和文本组合筛选。
+新日志显示模块、相对文件、函数与行号，展开可看显式业务字段和异常调用位置。
+抽取细分模型调用、解析、去重、校验、写入、印象修订；每周整理细分衰减、合并、人格提炼，
+各阶段记录耗时并自动关联任务。旧日志没有源码位置时会明确标注，不伪造历史。
+异常仅记录类型与调用位置，不采集局部变量、源码正文或异常消息。
 内存/API 最多 500 条，`lifecycle.jsonl` 超过 1 MiB 轮转，保留一个备份；重启恢复范围限于保留的日志。
 只记录计数、操作 ID 和错误类型，不记录对话/模型正文。来源证据在管理员详情页单独显示。
 任务运行时每 2 秒刷新；空闲时手动刷新。这不是全量 AstrBot 控制台日志，也不是永久审计存档。
@@ -67,9 +71,15 @@ Mock 诊断是简化的文本匹配，不能用于验证真实召回质量。源
 完整工程说明见 [dashboard/README](../../dashboard/README.md)。
 
 下图均为虚构 Mock 数据，布局与生产页共用组件。
+截图独立存放在 [webui-previews 资源分支](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews)，代码 PR 与安装包不包含 PNG。
+[完整 25 张预览](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews#readme) 覆盖九种类型、版本关联、来源账本、任务确认、诊断和日志筛选。
+九种类型为四个 memory level 加五个独立 family，均复用统一列表和详情，不是九套专用编辑器。
 
-![记忆库](../images/webui-memory.png)
-![手动修订](../images/webui-editor.png)
-![运行检测和任务](../images/webui-runtime.png)
-![生命周期日志](../images/webui-logs.png)
-![手机深色布局](../images/webui-mobile.png)
+![记忆库](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-memory.png)
+![手动修订](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-editor.png)
+![运行检测和任务](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-runtime.png)
+![生命周期日志](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-logs.png)
+![手机深色布局](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-mobile.png)
+
+![召回诊断命中与 scope](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-result.png)
+![无命中诊断](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-empty.png)
