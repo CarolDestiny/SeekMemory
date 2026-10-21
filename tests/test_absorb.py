@@ -73,6 +73,16 @@ class BufferTest(unittest.TestCase):
         self.assertEqual(len(again.items), 1)
         self.assertEqual(again.items[0][3], "重启别丢")
 
+    def test_take_sessions_preserves_other_sessions(self):
+        buf = Buffer()
+        buf.add("a", "one")
+        buf.add("b", "two")
+        taken = buf.take_sessions({"a"})
+        self.assertEqual([row[3] for row in taken], ["one"])
+        self.assertEqual([row[3] for row in buf.items], ["two"])
+        buf.restore(taken)
+        self.assertEqual(len(buf.items), 2)
+
     def test_should_flush_needs_idle_and_count(self):
         buf = Buffer()
         buf.add("umo:a", "一")
@@ -97,11 +107,12 @@ class AbsorbTest(unittest.TestCase):
             [("umo:a", "10001", "user", "我下周三去杭州出差")], db, cache, graph,
             FakeProvider(GOOD),
         ))
-        self.assertEqual(n, 2)
+        self.assertEqual(n.written, 2)
         texts = [content_of(a) for a in cache.active("memory")]
         self.assertTrue(any("杭州" in t for t in texts))
         arts = cache.active("memory")
         self.assertTrue(all(a.payload.get("tags") for a in arts))
+        self.assertTrue(all(a.header.strength.confidence == 0.5 for a in arts))
 
     def test_provider_failure_returns_zero(self):
         db, cache, graph = make_db()
@@ -109,7 +120,8 @@ class AbsorbTest(unittest.TestCase):
             [("umo:a", "10001", "user", "随便说说")], db, cache, graph,
             FakeProvider("", boom=True),
         ))
-        self.assertEqual(n, 0)
+        self.assertEqual(n.written, 0)
+        self.assertTrue(n.model_failed)
         self.assertEqual(cache.active("memory"), [])
 
     def test_bad_items_skipped(self):
@@ -118,7 +130,7 @@ class AbsorbTest(unittest.TestCase):
             [("umo:a", "10001", "user", "说点什么")], db, cache, graph,
             FakeProvider('[{"level": "fact"}, {"level": "fact", "text": "他喜欢猫"}]'),
         ))
-        self.assertEqual(n, 1)  # 缺字段的被跳过
+        self.assertEqual(n.written, 1)  # 缺字段的被跳过
 
     def test_dialogue_and_owner(self):
         items = [("umo:a", "10001", "user", "一"), ("umo:a", "10002", "user", "二")]

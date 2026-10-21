@@ -57,3 +57,12 @@ Paraphrase uses tags, never raw content. Cross-session text is never injected as
 ## Agent runtime boundary
 
 AstrBot keeps generic chat history and tool-loop context. SeekMemory injects a protected system memory block through on_llm_request and captures assistant replies through on_llm_response. Extraction uses its own ChatModel port and does not reuse chat context.
+
+## Retrieval extension
+
+Retrieval is behind a candidate-based boundary. `core.retrieval.RetrievalCandidate` carries
+activation and lexical signals; `recall.retriever.GraphRetriever` is the current seed/spread
+implementation. A BM25 retriever can fill `lexical` without changing the scoring or assembly API.
+
+All production writes now use `DB.commit()` with expected revision, version snapshots, evidence
+links and ledger entries. `DB.upsert()` remains only as a legacy compatibility primitive.

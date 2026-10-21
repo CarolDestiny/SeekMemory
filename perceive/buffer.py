@@ -30,6 +30,9 @@ class Buffer:
         self.last_ts = time.time()
         self.save()
 
+    def idle_seconds(self) -> float:
+        return max(0.0, time.time() - self.last_ts)
+
     def should_flush(self, idle_seconds: float, min_items: int) -> bool:
         """攒够条数、且安静够久，才值得花一次模型调用。"""
         if not self.items:
@@ -44,6 +47,21 @@ class Buffer:
         self.items = []
         self.save()
         return items
+
+    def take_sessions(self, session_ids: set[str]) -> list[tuple[str, str, str, str, str]]:
+        wanted = {str(x) for x in session_ids}
+        taken = [row for row in self.items if str(row[0]) in wanted]
+        self.items = [row for row in self.items if str(row[0]) not in wanted]
+        self.save()
+        return taken
+
+    def restore(self, rows: list[tuple[str, str, str, str, str]]) -> None:
+        if not rows:
+            return
+        existing = set(self.items)
+        restored = [row for row in rows if row not in existing]
+        self.items = (restored + self.items)[-KEEP:]
+        self.save()
 
     def save(self) -> None:
         """写存档；失败只丢持久化，不影响聊天。"""

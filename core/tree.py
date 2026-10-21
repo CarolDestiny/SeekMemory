@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .artifact import Artifact
+from .artifact import Artifact, revise
 
 EDGE_PREFIX = "tree_child:"
 LEVELS = ("impression", "scene", "detail")
@@ -31,7 +31,29 @@ class Tree:
         return self.db.get(node_id) if self.db is not None else None
 
     def _persist(self, art: Artifact) -> None:
-        self.db.upsert(art)
+        if self.db is None:
+            return
+        existing = self.db.get(art.header.id)
+        if existing is None:
+            expected = 0
+            op = "create"
+        else:
+            expected = existing.header.revision
+            op = "revise"
+            if art.header.revision <= existing.header.revision:
+                art = revise(
+                    existing,
+                    payload=art.payload,
+                    state=art.header.state,
+                    scope=art.header.scope,
+                    strength=art.header.strength,
+                    lineage=art.header.lineage,
+                    said_by=art.header.said_by,
+                    shareable=art.header.shareable,
+                    subject_id=art.header.subject_id,
+                )
+        self.db.commit(art, expected_revision=expected, op=op, reason="tree",
+                       source_ids=tuple(art.header.lineage.sources))
         if self.cache is not None:
             self.cache.put(art)
 
