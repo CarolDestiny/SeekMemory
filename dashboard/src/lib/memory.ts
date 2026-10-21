@@ -1,12 +1,20 @@
+export const memoryCategories = [
+  "fact",
+  "scene",
+  "detail",
+  "impression",
+  "persona",
+] as const
+export type MemoryCategory = (typeof memoryCategories)[number]
+
 export const categoryLabels = {
   fact: "事实",
   scene: "场景",
   detail: "细节",
   impression: "印象",
   persona: "人格",
-} as const
+} as const satisfies Record<MemoryCategory, string>
 
-export type MemoryCategory = keyof typeof categoryLabels
 export type PreviewState = "ready" | "loading" | "empty" | "error"
 
 export interface MemoryVersion {

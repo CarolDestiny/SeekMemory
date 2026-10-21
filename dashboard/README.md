@@ -37,6 +37,13 @@ Even `vite build --mode mock` does not enable demo data.
 
 ## Validation and packaging
 
+Type checking uses TypeScript 7.0.2. Both app and build configuration inherit
+strict settings from `tsconfig.base.json`, including unchecked indexed access
+and exact optional properties. Oxlint replaces ESLint and runs type-aware rules
+through `oxlint-tsgolint`. Explicit `any`, unsafe use of propagated `any`, unsafe
+type assertions, non-null assertions, and unhandled promises are errors.
+Warnings also fail the lint command. Third-party declarations are not linted.
+
 ```bash
 pnpm typecheck
 pnpm lint
