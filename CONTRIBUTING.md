@@ -134,48 +134,37 @@ gh pr create --base main --head fix/issue-0001-paraphrase-recall \
 - 同步后，GitHub 的 review/CI 结论回写到 PR 文件的「评审记录」。
 - 在 gh 登录前，不要为了"先占号"去创建空 issue；本地文件就是正式记录。
 
-## Release packaging
+<a id="release-packaging"></a>
 
-`.github/workflows/release.yml` builds and tests an installable distribution on
-pull requests and manual runs. These runs upload a seven-day Actions artifact
-containing the plugin ZIP and checksum; they do not create a Release.
+## 发布打包
 
-To publish after review and merge:
+`.github/workflows/release.yml` 在 PR 和手动触发时构建、测试可安装的分发包，
+上传包含插件 ZIP 和校验文件的 Actions 构件，保留七天；这两种触发方式不创建 Release。
 
-1. Prepare `metadata.yaml` and `CHANGELOG.md` on a short-lived `release/X.Y.Z`
-   branch, review it, and merge it before tagging.
-2. Push a `vX.Y.Z` tag on the reviewed commit. The tag must exactly match the
-   metadata version; prerelease versions such as `1.2.3-rc.1` are supported.
-3. CI installs locked frontend dependencies, runs strict frontend checks and
-   Python tests, builds production assets, and packages the runtime allowlist.
-4. A separate job publishes `astrbot_plugin_seekmemory.zip` and `SHA256SUMS`
-   using the existing tag. Prerelease tags create prereleases. Existing Releases
-   are not overwritten; a rerun against an existing Release fails for review.
+评审合并后的发布步骤：
 
-The archive contains tracked `.py` files from `core`, `store`, `recall`,
-`perceive`, `maintain`, and `webui`, plus `main.py`, metadata, config schema,
-`store/schema.sql`, licenses, and the production `pages/memory` assets.
-When adding runtime resources or packages, update `scripts/package_plugin.py`
-and its archive tests. Do not add compiled assets to Git or alter source archives
-to masquerade as installation packages. The backend needs no compilation;
-shipping `.py` preserves Python/platform compatibility.
+1. 在短期分支 `release/X.Y.Z` 更新 `metadata.yaml` 和 `CHANGELOG.md`，评审并合并后再打标签。
+2. 在已评审的提交上推送 `vX.Y.Z` 标签。标签必须与 metadata 版本完全一致，支持 `1.2.3-rc.1` 等预发布版本。
+3. CI 按锁文件安装前端依赖，执行严格前端检查和 Python 测试，构建生产资源，按运行文件白名单打包。
+4. 独立任务使用已有标签发布 `astrbot_plugin_seekmemory.zip` 和 `SHA256SUMS`。
+   预发布标签对应预发布版本；已有 Release 不会被覆盖，重复发布会失败，需检查原因。
 
-For a local package, follow the root README's build commands. Run
-`python -m unittest discover -s tests -p 'test_*.py'` and
-`python tests/test_smoke.py` before publishing. The archive test extracts the
-ZIP and runs the backend smoke test in an isolated Python process.
+安装包包含 Git 跟踪的 `core`、`store`、`recall`、`perceive`、`maintain`、`webui` 下的 `.py`，
+以及 `main.py`、元数据、配置定义、`store/schema.sql`、许可证和 `pages/memory` 生产资源。
+新增运行资源或包时，应同步修改 `scripts/package_plugin.py` 和打包测试。
+构建产物不提交到 Git，源码归档保持源码形态。后端无需编译，分发 `.py` 以保持 Python 和平台兼容性。
 
-`tests/test_webui_host.py` also exercises the real AstrBot request context and
-plugin lifecycle when a compatible host is installed. Standalone CI skips these
-host-only tests; storage, scope, revision and task tests run without AstrBot.
-No test starts messaging adapters or calls a paid model. After API changes,
-update `dashboard/src/features/control/model.ts`, the bridge adapter, and their
-contract tests together. This plugin has no generated OpenAPI client.
+本地打包使用根目录 README 中的构建命令。发布前运行
+`python -m unittest discover -s tests -p 'test_*.py'` 和 `python tests/test_smoke.py`。
+打包测试会解压 ZIP，在独立 Python 进程中执行后端冒烟测试。
 
-Installation uses the Release attachment, not the automatically generated
-GitHub source archives. Configure a custom plugin source's `download_url` to
-the Release asset URL when automatic installation/update through that source
-is desired; a repository URL alone does not select release assets.
+安装了兼容宿主时，`tests/test_webui_host.py` 还会验证真实 AstrBot 请求上下文和插件生命周期。
+独立 CI 跳过这些宿主专用测试；存储、scope、修订和任务测试无需 AstrBot。
+测试不会启动消息适配器或调用付费模型。修改 API 后，需同步
+`dashboard/src/features/control/model.ts`、桥接适配器及契约测试。当前插件没有生成式 OpenAPI 客户端。
+
+安装使用 Release 附件。若希望通过自定义插件源自动安装或更新，应将该源的 `download_url`
+指向 Release 附件地址；仅填写仓库地址不会自动选择发布附件。
 
 ## 参考
 
