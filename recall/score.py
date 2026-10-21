@@ -14,10 +14,12 @@ from datetime import date
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact
+    from ..core.retrieval import RetrievalCandidate
     from . import gate as gate_mod
     from .seed import bigrams, dice, signals_of
 except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
     from core.artifact import Artifact
+    from core.retrieval import RetrievalCandidate
     from recall import gate as gate_mod
     from recall.seed import bigrams, dice, signals_of
 
@@ -181,7 +183,7 @@ def score(art: Artifact, text: str, activation: float, now_days: float) -> float
 
 
 def select(
-    candidates: list[Artifact] | list[tuple[Artifact, float]],
+    candidates: list[Artifact] | list[tuple[Artifact, float]] | list[RetrievalCandidate],
     text: str,
     now_days: float,
     k: int = 8,
@@ -208,7 +210,14 @@ def select(
         return []
     if gate and gate_mod.is_clock_query(text):
         return []
-    pairs = [item if isinstance(item, tuple) else (item, 0.0) for item in candidates]
+    pairs = []
+    for item in candidates:
+        if isinstance(item, RetrievalCandidate):
+            pairs.append((item.artifact, item.activation, item.lexical))
+        elif isinstance(item, tuple):
+            pairs.append((item[0], item[1] if len(item) > 1 else 0.0, 0.0))
+        else:
+            pairs.append((item, 0.0, 0.0))
     text_grams, total, low, pos, neg, smile = _text_stats(text)
     plain = not pos and not neg
     polarity = 0 if plain else (1 if pos > neg else -1 if neg > pos else 0)
@@ -216,7 +225,7 @@ def select(
     scored: list[tuple[float, str, int, Artifact, float]] = []
     append = scored.append
     cache = _STATIC_CACHE
-    for order, (art, act) in enumerate(pairs):
+    for order, (art, act, lexical) in enumerate(pairs):
         entry = cache.get(id(art))
         if entry is None:
             entry = _static(art)
@@ -232,6 +241,10 @@ def select(
                 literal = 3.0 * (2.0 * inter / (total + len(grams)))
                 value += literal
                 evidence += literal
+        if lexical > 0:
+            lexical_score = 2.0 * max(0.0, min(1.0, float(lexical)))
+            value += lexical_score
+            evidence += lexical_score
         if tags:
             tag_hit = 2.0 * _tag_match(low, text_grams, total, tags)
             value += tag_hit

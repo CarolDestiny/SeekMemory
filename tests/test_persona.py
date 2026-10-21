@@ -227,17 +227,19 @@ class DistillTest(_PersonaCase):
         second = distill_persona(self.db, self.cache, TODAY)
         self.assertIsNotNone(second)
         assert second is not None
-        self.assertNotEqual(second.header.id, first.header.id)
+        self.assertEqual(second.header.id, first.header.id)
         self.assertEqual(second.header.revision, 2)
 
-        old = self.db.get(first.header.id)
-        self.assertIsNotNone(old)
-        assert old is not None
-        self.assertEqual(old.header.state, "merged")
-        self.assertEqual(old.header.revision, 2)
-        self.assertIsNone(self.cache.get(first.header.id))
+        current = self.db.get(first.header.id)
+        self.assertIsNotNone(current)
+        assert current is not None
+        self.assertEqual(current.header.state, "active")
+        self.assertEqual(current.header.revision, 2)
+        self.assertIs(self.cache.get(first.header.id), second)
         self.assertEqual([art.header.id for art in self.cache.active("persona")],
                          [second.header.id])
+        history = self.db.history(first.header.id)
+        self.assertEqual([row["revision"] for row in history], [1, 2])
 
     def test_no_candidate_keeps_old_persona(self) -> None:
         """没有候选时返回 None，旧 persona 保持 active，账本不新增。"""
@@ -253,8 +255,7 @@ class DistillTest(_PersonaCase):
         self.assertIsNotNone(self.cache.get(old.header.id))
         self.assertEqual(len(self.db.ledger_entries()), before)
 
-    def test_ledger_records_merge_and_chain_verifies(self) -> None:
-        """沉淀写 op=merge 的账本条目，哈希链可校验。"""
+    def test_ledger_records_promote_and_chain_verifies(self) -> None:
         self._seed_three()
         persona = distill_persona(self.db, self.cache, TODAY)
         self.assertIsNotNone(persona)
@@ -263,11 +264,10 @@ class DistillTest(_PersonaCase):
         entries = self.db.ledger_entries()
         self.assertEqual(len(entries), 1)
         entry = entries[0]
-        self.assertEqual(entry["op"], "merge")
+        self.assertEqual(entry["op"], "promote")
         self.assertEqual(entry["entity"], persona.header.id)
         self.assertIsNone(entry["before_hash"])
-        self.assertEqual(entry["after_hash"], persona.header.id)
-        self.assertIn("沉淀人格", str(entry["reason"]))
+        self.assertEqual(entry["after_hash"], "1")
         self.assertTrue(self.ledger.verify())
 
     def test_scope_shared_only_when_all_sources_shared(self) -> None:

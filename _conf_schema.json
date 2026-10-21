@@ -100,5 +100,10 @@
     "description": "cognitive checkpoint interval in seconds",
     "type": "int",
     "default": 1800
+  },
+  "backlog_flush_at": {
+    "description": "force one extraction batch when pending reaches this count",
+    "type": "int",
+    "default": 30
   }
 }

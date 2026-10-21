@@ -42,7 +42,7 @@ class KernelEndToEndTest(unittest.TestCase):
         self.assertEqual(db.append_sources([user, bot]), 2)
         written = asyncio.run(absorb([("umo1", "u1", "user", "I have an interview", "s_user")],
                                       db, cache, graph, FakeChatModel()))
-        self.assertEqual(written, 1)
+        self.assertEqual(written.written, 1)
         arts = cache.active("memory")
         self.assertEqual(len(arts), 1)
         art = arts[0]
