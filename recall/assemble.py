@@ -218,9 +218,8 @@ def build(arts: list[Artifact], budget: int = 2000,
     """
     组装叙述式注入文本（DESIGN 5.3 / 6.1）。
 
-    头部：persona、impression、传入顺序最相关 3 条；中部：其余场景 /
-    细节 / 例子；尾部留给调用方。超 budget 时从后往前砍，先 example
-    再 detail，最后砍其余中部。
+    层级顺序：人格 > 印象 > 场景 > 细节 > 事实 > 例子。同层内保持传入顺序
+    （调用方按相关性排）。超 budget 时先砍例子，再砍事实、细节、场景。
 
     text / is_private 是当前会话上下文：传了才允许 designated 交付正文，
     不传时维持旧的“只给托付提示”；scope=shadow 始终只输出影子句。
@@ -235,19 +234,19 @@ def build(arts: list[Artifact], budget: int = 2000,
             entries.append((layer, sentence))
     if not entries:
         return ""
+    # 层级顺序：人格 > 印象 > 场景 > 细节 > 事实。同一层里保持传入顺序（相关性）。
+    order = {"persona": 0, "impression": 1, "scene": 2, "detail": 3, "fact": 4,
+             "example": 5}
+    ranked = sorted(enumerate(entries), key=lambda ie: (order.get(ie[1][0], 6), ie[0]))
     header = [i for i, (layer, _) in enumerate(entries) if layer == "persona"]
-    header += [i for i, (layer, _) in enumerate(entries) if layer == "impression"][:1]
-    header += [
-        i
-        for i, (layer, _) in enumerate(entries)
-        if i not in header and layer != "impression"
-    ][:3]
-    middle = [i for i in range(len(entries)) if i not in header]
-    items = [entries[i] for i in header + middle]
-    for layer in ("example", "detail"):
+    header += [i for i, (layer, _) in enumerate(entries) if layer == "impression"][:2]
+    sequence = [i for i, _ in ranked if i not in header]
+    items = [entries[i] for i in header + sequence]
+    # 超预算时从最不重要的层开始砍：例子 → 事实 → 细节 → 场景
+    for layer in ("example", "fact", "detail", "scene"):
         while len(_render(items)) > budget and _drop(items, (layer,)):
             pass
-    rest = ("media", "secret", "designated", "shadow", "fact", "scene", "memory")
+    rest = ("media", "secret", "designated", "shadow", "memory", "impression")
     while len(_render(items)) > budget and _drop(items, rest):
         pass
     text = _render(items)

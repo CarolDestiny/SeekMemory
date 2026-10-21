@@ -44,26 +44,28 @@ def _weight(art) -> float:
         return 0.0
 
 
-def pinned(cache) -> list:
-    """常驻层：active 的 persona 全部 + 印象层按 weight 取前 N 条。
+def pinned(cache, subject: str = "") -> list:
+    """常驻层：人格全部 + 关于「当前说话的人」的印象前 N 条。
 
-    这一层是人格底色与「我怎么看你」的固定上下文，不是检索结果，
-    所以不经过 select 的证据闸门；重复条目交给 assemble 的 _dedupe。
-
-    只放关于主人的印象（said_by=owner）：群里别人的印象属于"按人归属"，
-    不能进她的常驻画像，否则会把群里某人的性格当成对人的总印象。
+    层级顺序是 人格 > 印象 > 记忆 > 事实。人格是全局底色；印象分人：
+    跟谁说话就调出对那个人的印象，不把某人的性格当成对人的总印象。
+    这一层不经过证据闸门（它不是检索结果），重复交给 assemble 去重。
     """
     try:
         active = list(cache.active())
     except Exception:  # noqa: BLE001 - 常驻层取不到时不注入，不影响主流程
         return []
+    who = str(subject or "")
+    allowed = set(OWNER_SAID_BY) if who in ("", "owner") else {who}
+    if who:
+        allowed.add(who)
     personas, impressions = [], []
     for art in active:
         try:
             if art.header.family == "persona":
                 personas.append(art)
             elif (str(art.payload.get("level") or "") == "impression"
-                  and str(art.header.said_by or "") in OWNER_SAID_BY):
+                  and str(art.header.said_by or "") in allowed):
                 impressions.append(art)
         except Exception:  # noqa: BLE001 - 单条坏数据跳过
             continue

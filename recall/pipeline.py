@@ -38,12 +38,23 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
 Conf = Callable[[str, Any], Any]
 
 
+def subject_of(speaker: str, owner_umo: str) -> str:
+    """这条消息的说话人是谁：主人还是某个 QQ。印象按这个人来调。"""
+    owner_id = str(owner_umo or "").split(":")[-1] if owner_umo else ""
+    talker = str(speaker or "")
+    if not talker:
+        return "owner"
+    return "owner" if owner_id and talker == owner_id else talker
+
+
 def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
                 private: bool, conf: Conf, owner_umo: str,
+                speaker: str = "",
                 log: Callable[[str], None] = lambda _msg: None) -> str:
     """按"常驻层 + 检索 + 偶然浮现"拼出注入文本；不值得翻时只给常驻层。"""
     lookup = db.source_umo if db is not None else None
-    pinned_arts = visible(pinned(cache), umo, owner_umo, lookup)
+    subject = subject_of(speaker, owner_umo)
+    pinned_arts = visible(pinned(cache, subject), umo, owner_umo, lookup)
     pool = [a for a in visible(cache.active(), umo, owner_umo, lookup)
             if deliverable(a, text, private)]
     if not pool and not pinned_arts:
