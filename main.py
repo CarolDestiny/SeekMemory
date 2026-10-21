@@ -123,7 +123,8 @@ class Main(star.Star):
                 return
 
             umo = str(getattr(event, "unified_msg_origin", "") or "")
-            block = self._recall_block(text, umo, is_private(event))
+            block = self._recall_block(text, umo, is_private(event),
+                                       str(event.get_sender_id()))
             if block:
                 req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
                 if self._c("debug_log", False):
@@ -131,10 +132,11 @@ class Main(star.Star):
         except Exception as e:  # noqa: BLE001
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
 
-    def _recall_block(self, text: str, umo: str = "", private: bool = False) -> str:
+    def _recall_block(self, text: str, umo: str = "", private: bool = False,
+                      speaker: str = "") -> str:
         """交给读路径模块：常驻层 + 检索 + 偶然浮现。"""
         return build_block(self.cache, self.graph, self.db, umo, text, private,
-                           self._c, self.owner_umo,
+                           self._c, self.owner_umo, speaker,
                            log=lambda msg: logger.info(f"[seekmemory] {msg}"))
 
     # ---------------- 写路径：缓冲 ----------------

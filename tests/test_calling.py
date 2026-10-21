@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.artifact import Strength, content_of, make  # noqa: E402
 from maintain.impression import revise_impression  # noqa: E402
 from recall.drift import best_of, eligible, should_drift  # noqa: E402
+from recall.assemble import build as assemble  # noqa: E402
+from recall.gate import pinned  # noqa: E402
 from recall.intent import intent_of  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store.db import DB  # noqa: E402
@@ -114,6 +116,60 @@ class ImpressionTest(unittest.TestCase):
     def test_non_impression_ignored(self):
         db, cache = temp_cache()
         self.assertIsNone(revise_impression(db, cache, mem("他面试过了", level="scene")))
+
+
+class LayerOrderTest(unittest.TestCase):
+    """人格 > 印象 > 场景 > 细节 > 事实。"""
+
+    def _arts(self):
+        p = make("persona", {"text": "你是大肥鱼"},
+                 strength=Strength(weight=2.0), said_by="inferred")
+        imp = mem("他有点倔", level="impression", weight=2.0)
+        scene = mem("他面试过了", level="scene", weight=1.8)
+        detail = mem("加班到两点", level="detail", weight=1.5)
+        fact = mem("他在杭州", level="fact", weight=1.2)
+        return p, imp, scene, detail, fact
+
+    def test_order(self):
+        block = assemble(list(self._arts()), budget=2000)
+        idx = [block.find(t) for t in ("大肥鱼", "有点倔", "面试过了", "加班到两点", "杭州")]
+        self.assertTrue(all(i >= 0 for i in idx), block)
+        self.assertEqual(idx, sorted(idx), block)
+
+    def test_facts_dropped_before_scenes(self):
+        block = assemble(list(self._arts()), budget=34)
+        self.assertIn("大肥鱼", block)
+        self.assertNotIn("杭州", block)  # 事实最先被砍
+
+    def test_two_impressions_kept(self):
+        imp2 = mem("他心软", level="impression", weight=1.9)
+        block = assemble([self._arts()[0], self._arts()[1], imp2], budget=2000)
+        self.assertIn("有点倔", block)
+        self.assertIn("心软", block)
+
+
+class PinnedSubjectTest(unittest.TestCase):
+    """印象分人：跟谁说话就调出对谁的印象。"""
+
+    def _cache(self):
+        db, cache = temp_cache()
+        for art in (make("memory", {"text": "他有点倔", "level": "impression"},
+                         strength=Strength(weight=2.0), said_by="owner"),
+                    make("memory", {"text": "12345 爱开玩笑", "level": "impression"},
+                         strength=Strength(weight=2.0), said_by="12345")):
+            db.upsert(art)
+            cache.put(art)
+        return cache
+
+    def test_owner_gets_owner_impression(self):
+        got = [str(a.payload.get("text")) for a in pinned(self._cache(), "owner")]
+        self.assertIn("他有点倔", got)
+        self.assertNotIn("12345 爱开玩笑", got)
+
+    def test_other_person_gets_his_own(self):
+        got = [str(a.payload.get("text")) for a in pinned(self._cache(), "12345")]
+        self.assertIn("12345 爱开玩笑", got)
+        self.assertNotIn("他有点倔", got)
 
 
 if __name__ == "__main__":
