@@ -131,11 +131,13 @@ class DB:
                 (h.id, int(h.revision), "upsert", blob, header, now))
 
     def commit(self, art: Artifact, *, expected_revision: int, op: str,
-               reason: str = "", source_ids: tuple[str, ...] = ()) -> None:
+               reason: str = "", source_ids: tuple[str, ...] = (),
+               state_events: tuple[StateEvent, ...] = ()) -> None:
         if op not in ("create", "revise", "reinforce", "deliver", "merge", "forget", "promote"):
             raise ValueError(f"unknown commit op: {op}")
         self._commit_conn(art, expected_revision=expected_revision, op=op,
-                          reason=reason, source_ids=source_ids)
+                          reason=reason, source_ids=source_ids,
+                          state_events=state_events)
 
     def history(self, node_id: str) -> list[dict]:
         """返回一条记忆的版本链（旧→新）：revision / at / payload。"""
@@ -291,7 +293,8 @@ class DB:
         self.conn.close()
 
     def _commit_conn(self, art: Artifact, *, expected_revision: int, op: str,
-                     reason: str, source_ids: tuple[str, ...] = ()) -> None:
+                     reason: str, source_ids: tuple[str, ...] = (),
+                     state_events: tuple[StateEvent, ...] = ()) -> None:
         h, now = art.header, _now()
         with self.conn:
             row = self.conn.execute(
@@ -332,6 +335,13 @@ class DB:
                 self.conn.execute(
                     "INSERT OR IGNORE INTO artifact_evidence(entity, revision, source) "
                     "VALUES(?, ?, ?)", (h.id, int(h.revision), str(source_id)))
+            for event in state_events:
+                event.validate()
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO state_events(id, entity, revision_seen, op, delta, at) "
+                    "VALUES(?, ?, ?, ?, ?, ?)",
+                    (event.id, event.entity_id, event.revision_seen, event.op,
+                     _dump(event.delta), event.at or now))
             before = str(current) if current else None
             self._ledger_append_conn(op, h.id, before, str(h.revision), reason, now)
     def _ledger_append_conn(self, op: str, entity: str, before: str | None,

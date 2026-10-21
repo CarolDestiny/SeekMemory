@@ -30,7 +30,8 @@ class SourceStore(Protocol):
 
 class ArtifactStore(Protocol):
     def commit(self, art: Artifact, *, expected_revision: int, op: str,
-               reason: str = "", source_ids: tuple[str, ...] = ()) -> None: ...
+               reason: str = "", source_ids: tuple[str, ...] = (),
+               state_events: tuple[StateEvent, ...] = ()) -> None: ...
     def get(self, node_id: str) -> Artifact | None: ...
 
 

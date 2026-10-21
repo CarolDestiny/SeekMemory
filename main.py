@@ -321,13 +321,25 @@ class Main(star.Star):
             written = 0
             for umo, part, prov in ready:
                 model = ProviderChatModel(prov)
-                got = await absorb(
-                    part, self.db, self.cache, self.graph, model,
-                    log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
+                try:
+                    outcome = await absorb(
+                        part, self.db, self.cache, self.graph, model,
+                        log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
+                    )
+                except Exception as exc:
+                    self.buffer.restore(part)
+                    logger.warning(f"[seekmemory] extract failed for {umo}: {exc}; restored")
+                    continue
+                if outcome.model_failed:
+                    self.buffer.restore(part)
+                    logger.warning(f"[seekmemory] model failed for {umo}; restored")
+                    continue
+                written += outcome.written
+                logger.info(
+                    f"[seekmemory] {reason} extract {umo or 'unknown'}: "
+                    f"{len(part)} messages, wrote {outcome.written}, "
+                    f"skipped {outcome.skipped}"
                 )
-                written += got
-                logger.info(f"[seekmemory] {reason} extract {umo or 'unknown'}: "
-                            f"{len(part)} messages, wrote {got}")
             logger.info(
                 f"[seekmemory] {reason} flush: {len(ready)} sessions, "
                 f"wrote {written} (daily #{self._flush_count})"

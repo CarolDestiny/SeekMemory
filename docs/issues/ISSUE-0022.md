@@ -22,3 +22,10 @@ stable candidate boundary for a future BM25 implementation.
 - Add `core.retrieval.RetrievalCandidate` and `recall.retriever.GraphRetriever`.
 - Reserve `lexical` for a future BM25 retriever.
 - Mark source-less legacy extractions with lower confidence instead of inventing evidence.
+
+## Follow-up hardening
+
+- StateEvent rows and the checkpoint revision now commit in one transaction.
+- `absorb()` returns a structured WriteOutcome; model failures restore the session rows.
+- Paraphrase output no longer uses extractor tags and cannot leak named entities.
+- Legacy buffered rows get `legacy_no_source=true` and confidence 0.5 instead of fake evidence.

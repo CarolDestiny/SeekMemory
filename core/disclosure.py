@@ -94,7 +94,4 @@ def safe_text(art: Artifact, level: DisclosureLevel) -> str:
             return content_of(art)
         except Exception:
             return ""
-    tags = str(art.payload.get("tags") or "").replace(",", " ").split()
-    if tags:
-        return "\u4f60\u4e4b\u524d\u63d0\u5230\u8fc7\u548c\u300c" + tags[0] + "\u300d\u6709\u5173\u7684\u4e8b\u3002"
-    return "\u4f60\u4e4b\u524d\u63d0\u5230\u8fc7\u4e00\u4ef6\u76f8\u5173\u7684\u4e8b\u3002"
+    return "\u4f60\u4e4b\u524d\u63d0\u5230\u8fc7\u4e00\u4ef6\u76f8\u5173\u7684\u4e8b\uff0c\u7ec6\u8282\u8fd9\u91cc\u4e0d\u65b9\u4fbf\u5c55\u5f00\u3002"
