@@ -9,6 +9,7 @@ import json
 try:
     from ..core.artifact import Artifact, content_of, revise, validate
     from ..core.graph import Graph
+    from ..core.versioning import VersionError
     from ..recall.pipeline import Conf, build_block
     from ..recall.scope import owner_of, visible
     from ..store.cache import Cache
@@ -16,6 +17,7 @@ try:
 except ImportError:
     from core.artifact import Artifact, content_of, revise, validate
     from core.graph import Graph
+    from core.versioning import VersionError
     from recall.pipeline import Conf, build_block
     from recall.scope import owner_of, visible
     from store.cache import Cache
@@ -83,7 +85,10 @@ class ManagementService:
                     "state": header.state,
                     "scope": header.scope,
                     "subject": str(
-                        payload.get("subject") or header.said_by or "未知对象"
+                        header.subject_id
+                        or payload.get("subject")
+                        or header.said_by
+                        or "未知对象"
                     ),
                     "session": owner_of(art, self.db.source_umo) or "未标注会话",
                     "tags": [str(tag) for tag in tags if str(tag)]
@@ -181,9 +186,16 @@ class ManagementService:
             art, payload=body["payload"], scope=body["scope"], state=body["state"]
         )
         validate(replacement)
-        self.db.apply_revision(
-            replacement, body["expectedRevision"], body["reason"].strip()
-        )
+        try:
+            self.db.commit(
+                replacement,
+                expected_revision=body["expectedRevision"],
+                op="forget" if body["state"] == "forgotten" else "revise",
+                reason=body["reason"].strip(),
+                source_ids=tuple(replacement.header.lineage.sources),
+            )
+        except VersionError as exc:
+            raise ValueError("revision_conflict") from exc
         self.cache.put(replacement)
         return replacement.header.id
 

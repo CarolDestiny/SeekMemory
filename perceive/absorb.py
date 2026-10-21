@@ -12,10 +12,11 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..core.artifact import Strength, content_of, make, validate
+    from ..app.contracts import ChatRequest
+    from ..core.artifact import Lineage, Strength, content_of, make, validate
     from ..core.graph import Graph
     from ..maintain.impression import revise_impression
-    from ..maintain.link import persist
+    from ..maintain.link import link_new
     from ..perceive.extract import (
         build_prompt,
         filter_duplicates,
@@ -24,10 +25,11 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..store.cache import Cache
     from ..store.db import DB
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from core.artifact import Strength, content_of, make, validate
+    from app.contracts import ChatRequest
+    from core.artifact import Lineage, Strength, content_of, make, validate
     from core.graph import Graph
     from maintain.impression import revise_impression
-    from maintain.link import persist
+    from maintain.link import link_new
     from store.cache import Cache
     from store.db import DB
 
@@ -51,6 +53,15 @@ _NOT_WORTH = re.compile(
     r"^(早|晚安|在吗|在不在|哈哈|嗯|哦|好|好的|收到)[。！？!?~～]*$"
 )
 Log = Callable[[str], None]
+
+
+def _parts(row: tuple) -> tuple[str, str, str, str]:
+    return (
+        str(row[0]),
+        str(row[1]) if len(row) > 1 else "",
+        str(row[2]) if len(row) > 2 else "",
+        str(row[3]) if len(row) > 3 else "",
+    )
 
 
 def _num(value: Any, default: float, low: float, high: float) -> float:
@@ -81,9 +92,10 @@ def strength_of(item: dict) -> dict:
     return out
 
 
-def worth_now(items: list[tuple[str, str, str, str]]) -> bool:
+def worth_now(items: list[tuple]) -> bool:
     """这批对话里有没有值得当场记住的事（计划/事实/强情绪）。"""
-    for _umo, _sender, role, text in items[-30:]:
+    for row in items[-30:]:
+        _umo, _sender, role, text = _parts(row)
         if str(role) != "user":
             continue
         line = str(text or "").strip()
@@ -94,10 +106,11 @@ def worth_now(items: list[tuple[str, str, str, str]]) -> bool:
     return False
 
 
-def dialogue_of(items: list[tuple[str, str, str, str]]) -> str:
+def dialogue_of(items: list[tuple]) -> str:
     """把 (umo, sender, role, text) 拼成给模型看的对话文本；群里带是谁说的。"""
     lines = []
-    for _umo, sender, role, text in items[-120:]:
+    for row in items[-120:]:
+        _umo, sender, role, text = _parts(row)
         who = f"{role}({sender})" if sender else role
         lines.append(f"{who}: {text}")
     return "\n".join(lines)
@@ -113,18 +126,18 @@ def existing_texts(cache: Cache | None) -> list[str]:
         return []
 
 
-def owner_of(items: list[tuple[str, str, str, str]]) -> str:
+def owner_of(items: list[tuple]) -> str:
     """只有整批来自同一个会话时才记归属，混会话就不写归属。"""
     umos = {item[0] for item in items if item[0]}
     return next(iter(umos)) if len(umos) == 1 else ""
 
 
 async def absorb(
-    items: list[tuple[str, str, str, str]],
+    items: list[tuple],
     db: DB,
     cache: Cache | None,
     graph: Graph | None,
-    provider: Any,
+    model: Any,
     log: Log = lambda _msg: None,
     *,
     strict: bool = False,
@@ -139,7 +152,7 @@ async def absorb(
         db: 运行中的 Artifact 数据库。
         cache: 可选的运行中 Artifact 缓存。
         graph: 可选的关系图，用于关联新 Artifact。
-        provider: 实现 text_chat 的模型服务。
+        model: 上游 ChatModel 接口或兼容的模型服务。
         log: 操作警告回调。
         strict: 传播模型服务异常，使任务执行器保留待处理输入。
         stage: 注入的业务阶段上下文管理器；默认不采集阶段日志。
@@ -150,14 +163,24 @@ async def absorb(
     Raises:
         Exception: 启用 strict 时传播的模型服务异常。
     """
-    if not items or db is None or provider is None:
+    if not items or db is None or model is None:
         return 0
     try:
         with stage("provider.call"):
-            resp = await provider.text_chat(
-                system_prompt=build_prompt([]), prompt=dialogue_of(items)
-            )
-            raw = getattr(resp, "completion_text", "") or ""
+            if hasattr(model, "complete"):
+                resp = await model.complete(
+                    ChatRequest(
+                        session_id=str(items[0][0] or ""),
+                        system_prompt=build_prompt([]),
+                        prompt=dialogue_of(items),
+                    )
+                )
+                raw = getattr(resp, "text", "") or ""
+            else:
+                resp = await model.text_chat(
+                    system_prompt=build_prompt([]), prompt=dialogue_of(items)
+                )
+                raw = getattr(resp, "completion_text", "") or ""
     except Exception as exc:  # noqa: BLE001 - 抽取失败不抛给上层
         if strict:
             raise
@@ -172,11 +195,13 @@ async def absorb(
         return 0
 
     owner = owner_of(items)
+    source_ids = tuple(str(row[4]) for row in items if len(row) > 4 and row[4])
     group = ":GroupMessage:" in owner
     senders = {item[1] for item in items if item[1]}
     said_by = "owner"
     if group:
         said_by = next(iter(senders)) if len(senders) == 1 else "group"
+    default_subject = next(iter(senders), owner or "")
     written = 0
     for item in parsed[:MAX_ITEMS]:
         try:
@@ -194,6 +219,8 @@ async def absorb(
                     strength=strength_of(item),
                     scope="shared" if group or not owner else "private",
                     said_by=said_by,
+                    subject_id=str(item.get("subject_id") or default_subject),
+                    lineage=Lineage(sources=source_ids),
                 )
                 validate(art)
         except Exception as exc:  # noqa: BLE001 - 单条坏数据跳过
@@ -201,7 +228,16 @@ async def absorb(
             continue
         try:
             with stage("artifact.persist"):
-                persist(art, db, cache, graph)
+                db.commit(
+                    art,
+                    expected_revision=0,
+                    op="create",
+                    reason="extract",
+                    source_ids=source_ids,
+                )
+                if cache is not None:
+                    cache.put(art)
+                link_new(art, graph, cache)
             written += 1
         except Exception as exc:  # noqa: BLE001
             log(f"记忆写入失败： {type(exc).__name__}")

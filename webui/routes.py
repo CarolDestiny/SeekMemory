@@ -136,6 +136,7 @@ class WebRoutes:
                                 "summary_time",
                                 "weekly_day",
                                 "idle_flush_seconds",
+                                "checkpoint_seconds",
                                 "max_sessions_per_flush",
                                 "budget_chars",
                                 "recall_k",

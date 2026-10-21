@@ -1,6 +1,18 @@
 # 变更记录
+## 0.2.0 - 2026-10-21
+
+Artifact kernel foundation and online cutover.
+
+- Source is the immutable truth; user and assistant replies are persisted.
+- Artifact writes use CAS commits, append-only versions and version-level evidence.
+- Added subject_id, state_events, 30-minute checkpoints and universal disclosure.
+- Added the ChatModel boundary and wired extraction through the new commit path.
+
 
 ## 未发布
+
+- 合并上游 v0.2.0 Artifact 内核；WebUI 统一使用上游提交、版本与证据链，保留 subject_id。
+  抽取按会话选择模型，checkpoint 纳入调度与卸载生命周期，Release 补充 `app/` 运行模块。
 
 - 使用 `z.looseObject()` 替换弃用的 `.passthrough()`，保持头部扩展字段；新增弃用 API 的 lint 拦截。
 

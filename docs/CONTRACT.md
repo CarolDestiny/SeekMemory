@@ -252,8 +252,11 @@ def signals(prev_user: str, cur_user: str) -> dict: ...
 | POST cancel | id，confirmed=true | `{id}`；仅取消当前匹配的活动任务 |
 
 update 拒绝多余字段，reason 为 1–300 字符，payload 为对象且序列化长度不超过 50,000，
-使用原有 family 校验器。`DB.apply_revision()` 在 `BEGIN IMMEDIATE` 中核对当前 revision，
-写版本与 admin_revise 账本，失败整体回滚；成功后更新 Cache。
+使用原有 family 校验器，统一调用上游 `DB.commit()`，通过 expected_revision 检测版本冲突。
+版本、版本级证据和账本在同一事务内提交，失败整体回滚；成功后更新 Cache。
+遗忘使用 `forget`，其他人工修订（含恢复）使用 `revise`；账本 before_hash/after_hash
+沿用上游语义，记录修订号字符串。内容哈希从版本的 blob 字段查看。
+detail 从 artifact_versions 读取历史，联合旧 evidence 和新版 artifact_evidence 读取来源。
 detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整目录后由前端分页，不提供大库流式加载。
 
 无认证 401，方法错误 405，记录不存在 404，输入错误 400，版本冲突/任务繁忙 409，

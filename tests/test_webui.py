@@ -12,8 +12,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from core.artifact import make, revise  # noqa: E402
+from core.artifact import Lineage, make, revise  # noqa: E402
 from core.graph import Graph  # noqa: E402
+from core.source import Source  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store.db import DB  # noqa: E402
 from store.ledger import Ledger  # noqa: E402
@@ -66,7 +67,7 @@ class ManagementTests(unittest.TestCase):
 
     def test_ledger_failure_rolls_back_revision_and_cache(self) -> None:
         with patch.object(
-            self.db, "ledger_append", side_effect=RuntimeError("disk failure")
+            self.db, "_ledger_append_conn", side_effect=RuntimeError("disk failure")
         ):
             with self.assertRaises(RuntimeError):
                 self.service.update(self.command)
@@ -74,11 +75,47 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(len(self.db.history(self.art.header.id)), 1)
         self.assertEqual(self.cache.get(self.art.header.id), self.art)
 
+    def test_kernel_revision_preserves_subject_and_version_evidence(self) -> None:
+        source = Source("source-1", "turn-1", "session-1", "alice", "user", "原始事实")
+        self.db.append_sources([source])
+        art = make(
+            "memory",
+            {"text": "原始事实", "level": "fact"},
+            subject_id="alice",
+            lineage=Lineage(sources=(source.id,)),
+        )
+        self.db.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
+        self.cache.put(art)
+        self.service.update({**self.command, "id": art.header.id})
+        detail = self.service.detail(art.header.id)
+        self.assertEqual(detail["artifact"]["header"]["subject_id"], "alice")
+        self.assertEqual(
+            [row["op"] for row in detail["versions"]], ["revise", "create"]
+        )
+        self.assertEqual([row["id"] for row in detail["sources"]], [source.id])
+        self.assertEqual(detail["sources"][0]["text"], source.text)
+        self.assertEqual(detail["ledger"][-1]["before_hash"], "1")
+        self.assertEqual(detail["ledger"][-1]["after_hash"], "2")
+        self.assertEqual(
+            self.db.conn.execute(
+                "SELECT revision FROM artifact_evidence WHERE entity=? ORDER BY revision",
+                (art.header.id,),
+            ).fetchall()[1][0],
+            2,
+        )
+        record = next(
+            row for row in self.service.catalog() if row["id"] == art.header.id
+        )
+        self.assertEqual(record["subject"], "alice")
+
     def test_forget_restore_and_invalid_payload(self) -> None:
         self.service.update({**self.command, "state": "forgotten"})
         self.assertIsNone(self.cache.get(self.art.header.id))
         self.service.update({**self.command, "expectedRevision": 2, "state": "active"})
         self.assertIsNotNone(self.cache.get(self.art.header.id))
+        self.assertEqual(
+            [row["op"] for row in self.db.ledger_entries()], ["forget", "revise"]
+        )
         with self.assertRaises(ValueError):
             self.service.update(
                 {**self.command, "expectedRevision": 3, "payload": {"text": "invalid"}}
