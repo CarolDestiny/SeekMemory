@@ -15,12 +15,14 @@ interface MemoryDetailProps {
   memory: MemoryRecord
   records: readonly MemoryRecord[]
   onNavigate: (id: string) => void
+  onInspect?: ((id: string) => void) | undefined
 }
 
 export function MemoryDetail({
   memory,
   records,
   onNavigate,
+  onInspect,
 }: MemoryDetailProps) {
   const { currentVersion, version, previous, related, setRevision } =
     useMemoryDetail(memory, records)
@@ -54,12 +56,21 @@ export function MemoryDetail({
                   : "size-1.5 rounded-full bg-muted-foreground"
               }
             />
-            {memory.state === "active" ? "有效" : "已遗忘"}
+            {
+              { active: "有效", forgotten: "已遗忘", merged: "已合并" }[
+                memory.state
+              ]
+            }
           </Badge>
         </div>
         <h2 className="text-lg leading-relaxed font-semibold wrap-anywhere">
           {memory.title}
         </h2>
+        {onInspect && (
+          <Button variant="outline" onClick={() => onInspect(memory.id)}>
+            编辑与审计
+          </Button>
+        )}
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Clock3 className="size-3.5" />
           更新于 {memoryDateFormat.format(new Date(memory.updatedAt))}
@@ -120,7 +131,11 @@ export function MemoryDetail({
                     ) : (
                       <Users className="size-3.5" />
                     )}
-                    {memory.scope === "private" ? "私有" : "共享"}
+                    {
+                      { private: "私有", shared: "共享", shadow: "影子" }[
+                        memory.scope
+                      ]
+                    }
                   </dd>
                   <dt className="text-muted-foreground">召回次数</dt>
                   <dd className="text-right tabular-nums">{memory.hits} 次</dd>

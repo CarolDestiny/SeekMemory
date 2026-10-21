@@ -6,9 +6,13 @@ export const memoryCategorySchema = z.enum([
   "detail",
   "impression",
   "persona",
+  "example",
+  "media",
+  "secret",
+  "designated",
 ])
 export const memoryCategories = memoryCategorySchema.options
-export const memoryStateSchema = z.enum(["active", "forgotten"])
+export const memoryStateSchema = z.enum(["active", "forgotten", "merged"])
 
 const memoryVersionSchema = z
   .strictObject({
@@ -18,7 +22,7 @@ const memoryVersionSchema = z
   })
   .readonly()
 
-// This is the validated presentation contract, not a claim about the future wire format.
+// The live adapter and mock share this validated library projection.
 export const memoryRecordSchema = z
   .strictObject({
     id: z.string().min(1),
@@ -26,7 +30,7 @@ export const memoryRecordSchema = z
     text: z.string().min(1),
     category: memoryCategorySchema,
     state: memoryStateSchema,
-    scope: z.enum(["private", "shared"]),
+    scope: z.enum(["private", "shared", "shadow"]),
     subject: z.string().min(1),
     session: z.string().min(1),
     tags: z.array(z.string().min(1)).readonly(),

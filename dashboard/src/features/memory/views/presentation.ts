@@ -9,6 +9,10 @@ export const categoryLabels = {
   detail: "细节",
   impression: "印象",
   persona: "人格",
+  example: "语料",
+  media: "媒体",
+  secret: "秘密影子",
+  designated: "指定交付",
 } satisfies Record<MemoryCategory, string>
 
 export const categoryIcons = {
@@ -17,6 +21,10 @@ export const categoryIcons = {
   detail: Fingerprint,
   impression: Sparkles,
   persona: Users,
+  example: BookOpen,
+  media: CircleDot,
+  secret: Fingerprint,
+  designated: Sparkles,
 }
 
 export const categoryFilterOptions: readonly SelectOption<CategoryFilter>[] = [
@@ -28,6 +36,7 @@ export const stateFilterOptions: readonly SelectOption<StateFilter>[] = [
   { value: "all", label: "全部状态" },
   { value: "active", label: "有效记忆" },
   { value: "forgotten", label: "已遗忘" },
+  { value: "merged", label: "已合并" },
 ]
 
 export const memoryDateFormat = new Intl.DateTimeFormat("zh-CN", {

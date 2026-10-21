@@ -102,6 +102,10 @@ export function selectLibrary(
     detail: 0,
     impression: 0,
     persona: 0,
+    example: 0,
+    media: 0,
+    secret: 0,
+    designated: 0,
   }
   let active = 0
   let versionCount = 0
@@ -123,7 +127,8 @@ export function selectLibrary(
     stats: {
       total: records.length,
       active,
-      forgotten: records.length - active,
+      forgotten: records.filter((record) => record.state === "forgotten")
+        .length,
       versionCount,
     },
   }

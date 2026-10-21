@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { FlaskConical, Moon, Sun } from "lucide-react"
 
 import { MemoryWorkspace } from "@/features/memory/views/memory-workspace"
+import { ControlWorkspace } from "@/features/control/views/control-workspace"
+import { mockClient } from "./mock-client"
 import { Button, Select, type SelectOption } from "@/ui"
 import { mockMemories } from "@/dev/mock-data"
 import {
@@ -87,11 +89,15 @@ export default function MockApp() {
           </Button>
         </div>
       </div>
-      <MemoryWorkspace
-        key={scenario}
-        source={source}
-        onRetry={() => setScenario("ready")}
-      />
+      {scenario === "ready" ? (
+        <ControlWorkspace client={mockClient} />
+      ) : (
+        <MemoryWorkspace
+          key={scenario}
+          source={source}
+          onRetry={() => setScenario("ready")}
+        />
+      )}
     </div>
   )
 }
