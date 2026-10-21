@@ -233,6 +233,37 @@ def signals(prev_user: str, cur_user: str) -> dict: ...
 指定发布标签时必须与 metadata 版本一致。测试、Mock、源码映射、依赖目录和本地数据不得入包。
 源码下载保持原样，安装使用 Release 附件，详见 [发布流程](../CONTRIBUTING.md#release-packaging)。
 
+## WebUI 管理接口
+
+宿主扫描 `pages/memory/index.html`，注入 `window.AstrBotPluginPage`。
+前端调用 `apiGet("manage/records")` 等相对 endpoint；宿主转发至插件注册的
+`/astrbot_plugin_seekmemory/manage/<action>`，并注入管理员请求上下文。
+接口拒绝没有 `request.username` 的调用。POST 请求体上限 64 KiB。
+
+| 方法与 action | 输入 | 输出 / 行为 |
+|---|---|---|
+| GET records | 无 | `{records}`：六个家族、三种状态/scope，完整管理目录 |
+| GET detail | query `id` | `{artifact, versions, sources, ledger}`，包含原始快照和证据 |
+| GET status | 无 | `{ready, checks, activeTask, pending, schedulerCount, config}` |
+| GET events | 可选 kind/status/search | `{events, capacity:500}`，新事件在前 |
+| POST update | id/expectedRevision/payload/scope/state/reason/confirmed | `{id}`，追加修订；禁止更改来源或任意头字段 |
+| POST diagnose | query/umo/speaker | `{block, info, visible, excluded}`；无数据库写入 |
+| POST task | kind=`extract` 或 `weekly`，confirmed=true | `{id}` 任务 ID；忙时 409 |
+| POST cancel | id，confirmed=true | `{id}`；仅取消当前匹配的活动任务 |
+
+update 拒绝多余字段，reason 为 1–300 字符，payload 为对象且序列化长度不超过 50,000，
+使用原有 family 校验器。`DB.apply_revision()` 在 `BEGIN IMMEDIATE` 中核对当前 revision，
+写版本与 admin_revise 账本，失败整体回滚；成功后更新 Cache。
+detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整目录后由前端分页，不提供大库流式加载。
+
+无认证 401，方法错误 405，记录不存在 404，输入错误 400，版本冲突/任务繁忙 409，
+引擎不可用 503，未预期异常 500。诊断调用 `build_block(..., dry_run=True)`，跳过 designated 的 mark_given。
+模型检测失败仍返回其他检测结果；错误只记录类型，不把异常内容泄漏到生命周期日志。
+
+`webui/service.py` 无宿主依赖；`routes.py` 负责宿主适配；`jobs.py` 管理单一活动任务；
+`journal.py` 管理有界持久化日志。前端模型、hooks、views、宿主适配和组件适配的边界由 Oxlint 约束。
+插件未使用 OpenAPI 代码生成；更改接口时需同步 Zod 契约、客户端和契约测试。
+
 ## 全局约束
 
 1. 单文件 ≤ 300 行，尽量 150

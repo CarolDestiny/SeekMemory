@@ -162,7 +162,8 @@ S = BASE_DAYS × salience × (1 + 0.5 × hits) × shape × emotion
 
 可见性由 `scope` 与发送者角色共同决定。印象按 scope 隔离，秘密只留影子。
 
-- **三档 scope**：`private` 只对当事人、全文注入；`shared` 是共同经历、人称"你们"；`shadow` 只注入影子句。
+- **三档 scope**：当前实现中 `private` 按归属会话过滤；`shared` 跨会话进入候选；`shadow` 跨会话进入候选但只注入影子句。
+  群聊抽取默认写 shared，来源群不是访问隔离边界。可在 [插件视图](docs/zh/webui.md) 用 UMO 和实际说话人做只读诊断。
 - **影子记忆**：`secret` family 只存 `ref` 与 `shadow_text`，内容锁死当事人 scope。全局可见的只有"有件事你答应过别人不说"，长期影响沉淀成"别人的事你守得住"。
 - **指定交付**：`designated` family 有三条硬条件——只在私聊、必须命中触发词、命中后归还。群里问就打岔。
 - **RBAC**：`owner / trusted / guest / blocked` 四角色。注入字数 600 / 80 / 0，写入对 owner 与 trusted 开放，改人格仅 owner。
@@ -259,17 +260,19 @@ S = BASE_DAYS × salience × (1 + 0.5 × hits) × shape × emotion
 
 存储是单文件 SQLite，检索在内存完成；不依赖向量库或外部服务。
 
-安装请到 [Releases](https://github.com/SXP-Simon/SeekMemory/releases) 下载附件
+安装请到 [Releases](https://github.com/NeverENG/SeekMemory/releases) 下载附件
 `astrbot_plugin_seekmemory.zip`，通过 AstrBot 插件页的 ZIP 安装入口上传。
-安装包已包含 Python 运行文件和构建好的 `views/memory/`，使用者无需安装 Node.js 或现场构建。
+安装包已包含 Python 运行文件和构建好的 `pages/memory/`，使用者无需安装 Node.js 或现场构建。
 可用同一 Release 的 `SHA256SUMS` 校验下载文件。
 
 GitHub 的 **Source code (zip/tar.gz)**、Code → Download ZIP 和 `git clone`
 都用于源码开发，不包含构建产物，不作为完整插件安装包使用。
-目前 WebUI 的生产视图是 API 接入占位页；交互式记忆库仅在开发 Mock 模式可用。
+WebUI 包含记忆编辑、scope/会话筛选、版本与账本、召回诊断、任务和生命周期日志。
+请使用支持插件视图和插件 Web API 的 AstrBot（已在 4.28.1 验证宿主 API）。
+安装后重载插件，从插件卡片的视图入口打开。详见 [中文使用说明](docs/zh/webui.md)。
 
 自定义插件源若支持 `download_url`，应指定
-`https://github.com/SXP-Simon/SeekMemory/releases/latest/download/astrbot_plugin_seekmemory.zip`；
+`https://github.com/NeverENG/SeekMemory/releases/latest/download/astrbot_plugin_seekmemory.zip`；
 固定版本则使用 `/releases/download/vX.Y.Z/astrbot_plugin_seekmemory.zip`。
 单填仓库地址仍可能走源码下载，Release 工作流不会改变 AstrBot 的下载策略。
 首次发布成功前，这些附件链接尚不可用。
@@ -277,7 +280,7 @@ GitHub 的 **Source code (zip/tar.gz)**、Code → Download ZIP 和 `git clone`
 源码开发与打包：
 
 ```bash
-git clone https://github.com/SXP-Simon/SeekMemory astrbot_plugin_seekmemory
+git clone https://github.com/NeverENG/SeekMemory astrbot_plugin_seekmemory
 cd astrbot_plugin_seekmemory/dashboard
 pnpm install --frozen-lockfile
 pnpm check
