@@ -18,6 +18,100 @@
     "typescript/no-misused-promises": "error",
     "typescript/ban-ts-comment": "error",
     "react/rules-of-hooks": "error",
-    "react/exhaustive-deps": "error"
-  }
+    "react/exhaustive-deps": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "regex": "(^@base-ui/|^@radix-ui/|(^|/)shadcn/|(^|/)components/ui/)",
+            "message": "Use the public @/ui adapter instead of component-vendor imports."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/features/memory/model.ts",
+        "src/features/memory/library-state.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(^react($|/)|^react-dom($|/)|^lucide-react$|^@base-ui/|^@radix-ui/|(^|/)(ui|views|dev|components)(/|$)|(^|/)use-[^/]+$)",
+                "message": "Pure memory models and state must not depend on React, views, component libraries, or development sources."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          "window",
+          "document",
+          "localStorage",
+          "fetch"
+        ]
+      }
+    },
+    {
+      "files": ["src/features/memory/use-*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(^react-dom($|/)|^lucide-react$|^@base-ui/|^@radix-ui/|(^|/)(ui|views|dev|components)(/|$))",
+                "message": "View models may depend on React and the model, not the UI or mock data."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          "window",
+          "document",
+          "localStorage",
+          "fetch"
+        ]
+      }
+    },
+    {
+      "files": ["src/features/memory/views/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(^@base-ui/|^@radix-ui/|(^|/)shadcn/|(^|/)components/ui/|(^|/)dev(/|$))",
+                "message": "Views use @/ui and injected data, never component internals or mock fixtures."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/ui/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(^|/)(features|dev)(/|$)",
+                "message": "The UI adapter must remain independent of application features and mock data."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

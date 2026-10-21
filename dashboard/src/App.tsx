@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/ui"
 
 // Vite removes this branch and its fixture import from production builds.
 const MockApp =

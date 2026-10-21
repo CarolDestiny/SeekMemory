@@ -1,13 +1,26 @@
 import { useEffect, useState } from "react"
 import { FlaskConical, Moon, Sun } from "lucide-react"
 
-import { MemoryLibrary } from "@/components/memory-library"
-import { Button } from "@/components/ui/button"
+import { MemoryWorkspace } from "@/features/memory/views/memory-workspace"
+import { Button, Select, type SelectOption } from "@/ui"
 import { mockMemories } from "@/dev/mock-data"
-import type { PreviewState } from "@/lib/memory"
+import {
+  memoryCollectionSchema,
+  type MemorySource,
+} from "@/features/memory/model"
+
+type PreviewScenario = "ready" | "loading" | "empty" | "error" | "long"
+const scenarioOptions: readonly SelectOption<PreviewScenario>[] = [
+  { value: "ready", label: "正常数据" },
+  { value: "loading", label: "加载中" },
+  { value: "empty", label: "空数据" },
+  { value: "error", label: "加载失败" },
+  { value: "long", label: "长内容" },
+]
+const parsedMock = memoryCollectionSchema.safeParse(mockMemories)
 
 export default function MockApp() {
-  const [scenario, setScenario] = useState<PreviewState | "long">("ready")
+  const [scenario, setScenario] = useState<PreviewScenario>("ready")
   const [dark, setDark] = useState(false)
 
   useEffect(() => {
@@ -17,15 +30,30 @@ export default function MockApp() {
     }
   }, [dark])
 
-  const records =
-    scenario === "empty" || scenario === "error" || scenario === "loading"
-      ? []
-      : scenario === "long"
-        ? mockMemories.filter((record) => record.id === "mock_memory_010")
-        : mockMemories
+  let source: MemorySource
+  if (scenario === "loading") source = { status: "loading" }
+  else if (scenario === "error")
+    source = {
+      status: "error",
+      message: "这是模拟错误，可以重试返回正常预览。",
+    }
+  else if (!parsedMock.success)
+    source = { status: "error", message: "示例数据校验失败，请检查开发数据。" }
+  else
+    source = {
+      status: "ready",
+      records:
+        scenario === "empty"
+          ? []
+          : scenario === "long"
+            ? parsedMock.data.filter(
+                (record) => record.id === "mock_memory_010"
+              )
+            : parsedMock.data,
+    }
 
   return (
-    <>
+    <div className="flex min-h-svh flex-col">
       <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-primary/15 bg-primary/5 px-4 py-2 sm:px-6">
         <div className="flex items-center gap-2.5 text-xs">
           <FlaskConical className="size-3.5 text-primary" />
@@ -41,28 +69,14 @@ export default function MockApp() {
           >
             预览状态
           </label>
-          <select
+          <Select
             id="preview-scenario"
+            label="预览状态"
             className="filter-select h-7 min-w-24 bg-card text-xs"
             value={scenario}
-            onChange={(event) => {
-              const value = event.target.value
-              if (
-                value === "ready" ||
-                value === "loading" ||
-                value === "empty" ||
-                value === "error" ||
-                value === "long"
-              )
-                setScenario(value)
-            }}
-          >
-            <option value="ready">正常数据</option>
-            <option value="loading">加载中</option>
-            <option value="empty">空数据</option>
-            <option value="error">加载失败</option>
-            <option value="long">长内容</option>
-          </select>
+            options={scenarioOptions}
+            onValueChange={setScenario}
+          />
           <Button
             variant="ghost"
             size="icon-sm"
@@ -73,12 +87,11 @@ export default function MockApp() {
           </Button>
         </div>
       </div>
-      <MemoryLibrary
+      <MemoryWorkspace
         key={scenario}
-        records={records}
-        status={scenario === "long" ? "ready" : scenario}
+        source={source}
         onRetry={() => setScenario("ready")}
       />
-    </>
+    </div>
   )
 }
