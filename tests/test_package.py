@@ -36,7 +36,7 @@ class PackageTests(unittest.TestCase):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
-        for directory in ("core", "store", "recall", "perceive", "maintain"):
+        for directory in ("core", "store", "recall", "perceive", "maintain", "webui"):
             for source in (ROOT / directory).rglob("*.py"):
                 target = self.root / source.relative_to(ROOT)
                 target.parent.mkdir(parents=True, exist_ok=True)

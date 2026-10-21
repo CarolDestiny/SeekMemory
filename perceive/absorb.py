@@ -7,8 +7,8 @@
 from __future__ import annotations
 
 import re
-
-from typing import Any, Awaitable, Callable
+from collections.abc import Callable
+from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Strength, content_of, make, validate
@@ -27,19 +27,28 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.graph import Graph
     from maintain.impression import revise_impression
     from maintain.link import persist
-    from perceive.extract import build_prompt, filter_duplicates, parse_response
     from store.cache import Cache
     from store.db import DB
+
+    from perceive.extract import build_prompt, filter_duplicates, parse_response
 
 MAX_ITEMS = 6
 
 # 值得不等晚上的信号：计划与日期、稳定事实、强情绪。命中任一就当场抽。
-_PLAN = re.compile(r"(下周|明天|后天|下个月|周末|计划|打算|准备|约了|要去|出差|搬家|"
-                   r"面试|入职|离职|辞职|生日|纪念日|考试|体检)")
-_FACT = re.compile(r"(我叫|名字|住在|老家|公司|工作|职业|女朋友|男朋友|老婆|老公|对象|"
-                   r"爸|妈|猫|狗|住院|手术|升职|加薪|毕业)")
-_STRONG = re.compile(r"(崩溃|吵架|分手|哭了|想死|撑不住|很难受|被骂|裁员|辞退|生病|发烧)")
-_NOT_WORTH = re.compile(r"^(早|晚安|在吗|在不在|哈哈|嗯|哦|好|好的|收到)[。！？!?~～]*$")
+_PLAN = re.compile(
+    r"(下周|明天|后天|下个月|周末|计划|打算|准备|约了|要去|出差|搬家|"
+    r"面试|入职|离职|辞职|生日|纪念日|考试|体检)"
+)
+_FACT = re.compile(
+    r"(我叫|名字|住在|老家|公司|工作|职业|女朋友|男朋友|老婆|老公|对象|"
+    r"爸|妈|猫|狗|住院|手术|升职|加薪|毕业)"
+)
+_STRONG = re.compile(
+    r"(崩溃|吵架|分手|哭了|想死|撑不住|很难受|被骂|裁员|辞退|生病|发烧)"
+)
+_NOT_WORTH = re.compile(
+    r"^(早|晚安|在吗|在不在|哈哈|嗯|哦|好|好的|收到)[。！？!?~～]*$"
+)
 Log = Callable[[str], None]
 
 
@@ -116,8 +125,26 @@ async def absorb(
     graph: Graph | None,
     provider: Any,
     log: Log = lambda _msg: None,
+    *,
+    strict: bool = False,
 ) -> int:
-    """抽取并写入，返回写入条数；模型或解析失败返回 0。"""
+    """Extract and persist artifacts with per-item fault tolerance.
+
+    Args:
+        items: Buffered conversation rows.
+        db: Live artifact database.
+        cache: Optional live artifact cache.
+        graph: Optional graph for linking new artifacts.
+        provider: Model provider implementing text_chat.
+        log: Callback for operational warnings.
+        strict: Propagate provider exceptions so task owners retain pending input.
+
+    Returns:
+        Number of persisted artifacts; empty or rejected output yields zero.
+
+    Raises:
+        Exception: Provider failures when strict is enabled.
+    """
     if not items or db is None or provider is None:
         return 0
     try:
@@ -126,6 +153,8 @@ async def absorb(
         )
         raw = getattr(resp, "completion_text", "") or ""
     except Exception as exc:  # noqa: BLE001 - 抽取失败不抛给上层
+        if strict:
+            raise
         log(f"抽取调用失败：{exc}")
         return 0
 
@@ -150,9 +179,13 @@ async def absorb(
             payload = item
             if group and len(senders) > 1:
                 payload = {**item, "speakers": sorted(senders)}
-            art = make("memory", payload, strength=strength_of(item),
-                       scope="shared" if group or not owner else "private",
-                       said_by=said_by)
+            art = make(
+                "memory",
+                payload,
+                strength=strength_of(item),
+                scope="shared" if group or not owner else "private",
+                said_by=said_by,
+            )
             validate(art)
         except Exception as exc:  # noqa: BLE001 - 单条坏数据跳过
             log(f"构造记忆失败：{exc}")
