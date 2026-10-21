@@ -98,11 +98,36 @@ class DB:
             h.time.created or now, h.time.updated or now, int(h.revision),
             _dump(h.lineage),
         )
+        header = _dump({
+            "state": h.state, "scope": h.scope, "strength": _dump(h.strength),
+            "time": _dump(h.time), "said_by": h.said_by,
+            "revision": int(h.revision), "lineage": _dump(h.lineage),
+        })
         with self.conn:
             self.conn.execute(
                 "INSERT OR IGNORE INTO blobs(hash, content, at) VALUES(?, ?, ?)",
                 (blob, content, now))
             self.conn.execute(_UPSERT, args)
+            # 版本链：每次写入都留一份，旧 revision 不会被覆盖掉
+            self.conn.execute(
+                "INSERT OR REPLACE INTO versions(entity, revision, blob, header, at) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (h.id, int(h.revision), blob, header, now))
+
+    def history(self, node_id: str) -> list[dict]:
+        """返回一条记忆的版本链（旧→新）：revision / at / payload。"""
+        rows = self.conn.execute(
+            "SELECT v.revision, v.at, b.content FROM versions v "
+            "JOIN blobs b ON v.blob = b.hash WHERE v.entity = ? "
+            "ORDER BY v.revision ASC", (node_id,)).fetchall()
+        out = []
+        for revision, at, content in rows:
+            try:
+                payload = json.loads(content)
+            except Exception:  # noqa: BLE001 - 坏内容跳过，不拖垮整条链
+                continue
+            out.append({"revision": int(revision), "at": str(at), "payload": payload})
+        return out
 
     def get(self, node_id: str) -> Artifact | None:
         """按 id 取一条完整记忆；不存在或数据损坏时返回 None。"""

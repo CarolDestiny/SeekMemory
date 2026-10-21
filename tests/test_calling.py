@@ -14,6 +14,7 @@ from maintain.impression import revise_impression  # noqa: E402
 from recall.drift import best_of, eligible, should_drift  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
 from recall.gate import pinned  # noqa: E402
+from recall.history import trajectory  # noqa: E402
 from recall.intent import intent_of  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store.db import DB  # noqa: E402
@@ -170,6 +171,41 @@ class PinnedSubjectTest(unittest.TestCase):
         got = [str(a.payload.get("text")) for a in pinned(self._cache(), "12345")]
         self.assertIn("12345 爱开玩笑", got)
         self.assertNotIn("他有点倔", got)
+
+
+class TrajectoryTest(unittest.TestCase):
+    """版本链：同一印象改过之后，能说清以前怎么想、现在怎么想。"""
+
+    def _cache(self):
+        db, cache = temp_cache()
+        old = mem("他有点倔", level="impression", weight=1.6)
+        db.upsert(old)
+        cache.put(old)
+        self.assertEqual(trajectory(cache, old), "")  # 只有一版没有轨迹
+        new = mem("他有点倔，但真有事会帮", level="impression", weight=1.8)
+        got = revise_impression(db, cache, new)
+        self.assertIsNotNone(got)
+        return cache, got
+
+    def test_trajectory_text(self):
+        cache, art = self._cache()
+        note = trajectory(cache, art)
+        self.assertIn("以前觉得", note)
+        self.assertIn("现在觉得", note)
+        self.assertIn("有点倔", note)
+
+    def test_history_keeps_both_revisions(self):
+        cache, art = self._cache()
+        rows = cache.db.history(art.header.id)
+        self.assertEqual([r["revision"] for r in rows], [1, 2])
+        self.assertIn("有点倔", rows[0]["payload"]["text"])
+        self.assertIn("真有事", rows[1]["payload"]["text"])
+
+    def test_note_rendered_after_impression(self):
+        cache, art = self._cache()
+        note = trajectory(cache, art)
+        block = assemble([art], budget=500, notes={art.header.id: note})
+        self.assertIn("以前觉得", block)
 
 
 if __name__ == "__main__":

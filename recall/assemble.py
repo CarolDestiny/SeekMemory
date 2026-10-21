@@ -214,7 +214,8 @@ def _dedupe(arts: list[Artifact]) -> list[Artifact]:
 
 
 def build(arts: list[Artifact], budget: int = 2000,
-          *, text: str | None = None, is_private: bool | None = None) -> str:
+          *, text: str | None = None, is_private: bool | None = None,
+          notes: dict[str, str] | None = None) -> str:
     """
     组装叙述式注入文本（DESIGN 5.3 / 6.1）。
 
@@ -230,8 +231,14 @@ def build(arts: list[Artifact], budget: int = 2000,
     entries: list[tuple[str, str]] = []
     for art in arts:
         layer, sentence = _sentence(art, text, is_private)
-        if sentence:
-            entries.append((layer, sentence))
+        if not sentence:
+            continue
+        # 印象轨迹：这条印象变过，就把「以前…现在…」跟在后面。
+        if notes:
+            extra = notes.get(art.header.id)
+            if extra:
+                sentence = sentence.rstrip("。") + extra + "。"
+        entries.append((layer, sentence))
     if not entries:
         return ""
     # 层级顺序：人格 > 印象 > 场景 > 细节 > 事实。同一层里保持传入顺序（相关性）。
