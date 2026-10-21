@@ -259,10 +259,37 @@ S = BASE_DAYS × salience × (1 + 0.5 × hits) × shape × emotion
 
 存储是单文件 SQLite，检索在内存完成；不依赖向量库或外部服务。
 
+安装请到 [Releases](https://github.com/SXP-Simon/SeekMemory/releases) 下载附件
+`astrbot_plugin_seekmemory.zip`，通过 AstrBot 插件页的 ZIP 安装入口上传。
+安装包已包含 Python 运行文件和构建好的 `views/memory/`，使用者无需安装 Node.js 或现场构建。
+可用同一 Release 的 `SHA256SUMS` 校验下载文件。
+
+GitHub 的 **Source code (zip/tar.gz)**、Code → Download ZIP 和 `git clone`
+都用于源码开发，不包含构建产物，不作为完整插件安装包使用。
+目前 WebUI 的生产视图是 API 接入占位页；交互式记忆库仅在开发 Mock 模式可用。
+
+自定义插件源若支持 `download_url`，应指定
+`https://github.com/SXP-Simon/SeekMemory/releases/latest/download/astrbot_plugin_seekmemory.zip`；
+固定版本则使用 `/releases/download/vX.Y.Z/astrbot_plugin_seekmemory.zip`。
+单填仓库地址仍可能走源码下载，Release 工作流不会改变 AstrBot 的下载策略。
+首次发布成功前，这些附件链接尚不可用。
+
+源码开发与打包：
+
 ```bash
-cd <AstrBot>/data/plugins
-git clone https://github.com/<you>/SeekMemory astrbot_plugin_seekmemory
+git clone https://github.com/SXP-Simon/SeekMemory astrbot_plugin_seekmemory
+cd astrbot_plugin_seekmemory/dashboard
+pnpm install --frozen-lockfile
+pnpm check
+pnpm build
+cd ..
+python scripts/package_plugin.py
 ```
+
+产物是 `dist/astrbot_plugin_seekmemory.zip` 和 `dist/SHA256SUMS`。
+后端保留必要的 `.py` 和 SQL 资源，不分发平台相关的 `.pyc` 或虚拟环境。
+前端源码、Mock、测试、基准数据、开发文档、依赖目录和本地数据均不进入安装包。
+纯排版开发直接运行 `pnpm dev`，详见 [dashboard 开发说明](dashboard/README.md)。
 
 重启 AstrBot，在 WebUI → 插件 → SeekMemory 中配置：
 

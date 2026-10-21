@@ -226,6 +226,13 @@ def signals(prev_user: str, cur_user: str) -> dict: ...
 
 ---
 
+## 发布契约
+
+发布边界：`scripts/package_plugin.py` 仅接收已构建的生产视图和 Git 跟踪的后端运行文件，
+输出根目录可安装的 ZIP 与 SHA-256 校验文件。缺失 SQL、入口、JS/CSS 或许可证即失败；
+指定发布标签时必须与 metadata 版本一致。测试、Mock、源码映射、依赖目录和本地数据不得入包。
+源码下载保持原样，安装使用 Release 附件，详见 [发布流程](../CONTRIBUTING.md#release-packaging)。
+
 ## 全局约束
 
 1. 单文件 ≤ 300 行，尽量 150

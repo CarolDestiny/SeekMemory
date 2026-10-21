@@ -1,5 +1,13 @@
 # 变更记录
 
+## Unreleased
+
+- 新增独立 WebUI Mock 开发环境；生产视图目前为 API 接入占位页。
+- 前端采用 TypeScript 7 严格检查、Oxlint、Oxfmt 与 Zod，隔离业务状态和 UI 适配层。
+- 新增 Release 打包：发布时构建前端，只分发后端运行文件、静态产物及许可证。
+- 安装入口从源码克隆调整为 Release 的 `astrbot_plugin_seekmemory.zip` 附件；
+  源码 ZIP/tar.gz 和 Git 克隆保留开发源码，不含前端产物。详见 README 的安装说明。
+
 ## 0.1.9 — 2026-10-21
 
 说话方式与调用可见性。

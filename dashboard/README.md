@@ -62,6 +62,14 @@ The build replaces `../views/memory/` with generated assets. AstrBot discovers
 `views/memory/index.html` after the plugin is reloaded. Release packages must
 include these generated files; users should not need Node.js to use the plugin.
 
+From the plugin root, `python scripts/package_plugin.py` packages the prebuilt
+view and tracked backend runtime into `dist/astrbot_plugin_seekmemory.zip` with
+`dist/SHA256SUMS`. The build emits JavaScript dependency licenses as `LICENSES.md`
+and CSS/font notices as `ASSET-LICENSES.txt`.
+Missing assets, source maps, mock bundles, and mismatched release tags fail packaging.
+`views/memory/` and `dist/` remain ignored; source downloads contain source only.
+See [release instructions](../CONTRIBUTING.md#release-packaging) for CI and publishing.
+
 Assets use relative URLs. AstrBot injects its plugin view SDK, which sets
 `html[data-theme]`; the stylesheet follows that attribute without browser storage.
 Future API calls should use `window.AstrBotPluginView` and plugin routes registered
@@ -110,6 +118,7 @@ To replace the component library:
 2. Update `src/ui/styles.css`, retaining the semantic tokens used by the views
    and the host's `html[data-theme]` behavior. Remove `src/ui/shadcn/`,
    `components.json`, and unused vendor dependencies when no longer needed.
+   Update the CSS/font license entries in `vite.config.ts` to match dependencies.
 3. Run `pnpm check`, `pnpm build`, and the mock preview. Check keyboard focus,
    drawer dismissal, tab selection, themes, and narrow layouts with the new library.
 
