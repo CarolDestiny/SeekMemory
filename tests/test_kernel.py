@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.checkpoint import CheckpointManager
 from app.contracts import ChatRequest
 from core.artifact import make, revise
 from core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
@@ -116,6 +117,23 @@ class StoreBoundaryTest(unittest.TestCase):
         cache = Cache(db)
         cache.put(art)
         self.assertEqual([a.header.id for a in cache.by_subject("u1")], [art.header.id])
+
+
+class CheckpointTest(unittest.TestCase):
+    def test_checkpoint_creates_revision_and_state_event(self):
+        db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
+        cache = Cache(db)
+        art = _memory()
+        db.commit(art, expected_revision=0, op="create")
+        cache.put(art)
+        mgr = CheckpointManager(db, cache)
+        mgr.record(art)
+        mgr.record(art)
+        self.assertEqual(mgr.flush(), 1)
+        got = cache.get(art.header.id)
+        self.assertEqual(got.header.revision, 2)
+        self.assertEqual(got.header.strength.hits, 2)
+        self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM state_events").fetchone()[0], 1)
 
 
 class ModelBoundaryTest(unittest.TestCase):

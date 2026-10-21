@@ -95,5 +95,10 @@
     "description": "输出检索与注入的调试日志",
     "type": "bool",
     "default": false
+  },
+  "checkpoint_seconds": {
+    "description": "cognitive checkpoint interval in seconds",
+    "type": "int",
+    "default": 1800
   }
 }

@@ -4,7 +4,10 @@ import asyncio
 import time
 from typing import Any
 
-from app.contracts import ChatRequest, ChatResponse
+try:
+    from ..app.contracts import ChatRequest, ChatResponse
+except ImportError:
+    from app.contracts import ChatRequest, ChatResponse
 
 
 class ProviderChatModel:
