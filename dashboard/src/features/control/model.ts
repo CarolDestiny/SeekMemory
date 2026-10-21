@@ -8,15 +8,13 @@ import type { MemoryRecord } from "../memory/model.ts"
 
 export const detailSchema = z.object({
   artifact: z.object({
-    header: z
-      .object({
-        id: z.string(),
-        family: z.string(),
-        revision: z.number().int().positive(),
-        state: z.enum(["active", "forgotten", "merged"]),
-        scope: z.enum(["private", "shared", "shadow"]),
-      })
-      .passthrough(),
+    header: z.looseObject({
+      id: z.string(),
+      family: z.string(),
+      revision: z.number().int().positive(),
+      state: z.enum(["active", "forgotten", "merged"]),
+      scope: z.enum(["private", "shared", "shadow"]),
+    }),
     payload: z.record(z.string(), z.json()),
   }),
   versions: z.array(z.record(z.string(), z.json())),

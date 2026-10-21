@@ -33,7 +33,8 @@
           }
         ]
       }
-    ]
+    ],
+    "typescript/no-deprecated": "error"
   },
   "overrides": [
     {
