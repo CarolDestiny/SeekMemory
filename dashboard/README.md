@@ -1,57 +1,48 @@
-# SeekMemory dashboard
+# SeekMemory 管理界面
 
-React, TypeScript, Vite, Tailwind CSS and shadcn/ui (Base UI / Nova).
-The standalone mock workspace supports layout development without running AstrBot,
-Python, a database, or a model provider. Production uses AstrBot's authenticated
-Plugin Page bridge against the live memory engine.
+使用 React、TypeScript、Vite、Tailwind CSS 和 shadcn/ui（Base UI / Nova）。
+独立 Mock 工作台支持在不启动 AstrBot、Python、数据库或模型服务的情况下开发排版。
+生产环境通过 AstrBot 已认证的插件视图桥接器访问运行中的记忆引擎。
 
-## Development
+## 本地开发
 
-The local setup was verified with Node.js 26.7 and pnpm 10.13. From this directory:
+本地环境已使用 Node.js 26.7 和 pnpm 10.13 验证。在本目录执行：
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-The development server binds to `http://127.0.0.1:5176`. `pnpm dev` and
-`pnpm dev:mock` both enable mock mode. All names, sessions, and memories are fictional.
-The preview does not connect to AstrBot, read its configuration, or change memory data.
-It has no persistence; reloading restores the initial preview.
+开发服务器监听 `http://127.0.0.1:5176`。`pnpm dev` 和 `pnpm dev:mock` 都启用 Mock 模式。
+所有人物、会话和记忆均为虚构数据；预览不会连接 AstrBot、读取其配置或修改真实记忆。
+Mock 数据只保存在内存中，刷新页面后恢复初始状态。
 
-The preview includes:
+预览覆盖：
 
-- Search by content, tag, subject, or session; category and state filters; pagination.
-- Memory details, version selection with previous-version content comparison,
-  and navigation between related records.
-- Desktop detail panels and a narrow-screen detail drawer.
-- Light and dark themes, plus normal, loading, empty, error, and long-content scenarios.
-- All six artifact families, scope/session filters, JSON revision editing,
-  runtime checks, task confirmations, recall diagnostics and lifecycle logs.
-  Mock mutations reset on reload; mock diagnostics use simplified text matching.
+- 按内容、标签、相关对象和会话搜索，类型与状态筛选，以及分页。
+- 记忆详情、历史版本选择、与上一版本的内容对比、关联记忆跳转。
+- 桌面详情面板和窄屏详情抽屉。
+- 深浅主题，以及正常、加载中、空数据、错误和长内容场景。
+- 全部六个 Artifact 家族、scope/会话筛选、JSON 修订、运行检测、任务确认、召回诊断和生命周期日志。
+  Mock 修改在刷新后重置；Mock 诊断仅使用简化的文本匹配。
 
-Use the toolbar at the top to switch scenarios and themes. In the error scenario,
-the retry button returns to normal data. Resize the browser to inspect responsive
-layouts; below 1280 CSS pixels, select a memory to open its detail drawer.
+顶部工具栏可切换场景和主题。错误场景中的重试按钮会恢复正常数据。
+调整浏览器宽度可检查响应式布局；低于 1280 CSS 像素时，选择记忆会打开详情抽屉。
 
-`pnpm dev:host` starts without mocks and requires the host bridge; opening it
-directly shows a connection error. Mock code is loaded only when both `import.meta.env.DEV` is true
-and the Vite mode is `mock`; production builds exclude the fixture JavaScript.
-Even `vite build --mode mock` does not enable demo data.
+`pnpm dev:host` 不加载 Mock，需要宿主桥接器；直接打开会显示连接错误。
+只有 `import.meta.env.DEV` 为真且 Vite 模式为 `mock` 时才加载 Mock 代码。
+生产构建排除示例 JavaScript，即使运行 `vite build --mode mock` 也不会启用示例数据。
 
-## Validation and packaging
+## 检查与打包
 
-Type checking uses TypeScript 7.0.2. App, build, and test configurations inherit
-strict settings from `tsconfig.base.json`, including unchecked indexed access
-and exact optional properties. Oxlint replaces ESLint and runs type-aware rules
-through `oxlint-tsgolint`. Explicit `any`, unsafe use of propagated `any`, unsafe
-type assertions, non-null assertions, and unhandled promises are errors.
-Warnings also fail the lint command. Third-party declarations are not linted.
+类型检查使用 TypeScript 7.0.2。应用、构建和测试配置继承 `tsconfig.base.json` 的严格设置，
+包括索引访问检查和精确可选属性。Oxlint 替代 ESLint，通过 `oxlint-tsgolint` 执行类型感知规则。
+显式 `any`、传播而来的 `any` 的不安全使用、不安全类型断言、非空断言和未处理的 Promise 均视为错误。
+警告也会导致检查失败；不对第三方类型声明执行 lint。
 
-Oxfmt handles formatting through `.oxfmtrc.json`, including Tailwind class sorting
-in JSX and `cn`/`cva` calls. It preserves double quotes, no semicolons, and LF
-line endings. Prettier and its Tailwind plugin are no longer required.
-Use `pnpm format` to apply formatting; `pnpm check` includes a formatting check.
+Oxfmt 使用 `.oxfmtrc.json` 格式化代码，并对 JSX 及 `cn`/`cva` 中的 Tailwind 类名排序。
+保持双引号、无分号和 LF 换行；不再需要 Prettier 及其 Tailwind 插件。
+`pnpm format` 应用格式化，`pnpm check` 包含格式检查。
 
 ```bash
 pnpm typecheck
@@ -62,135 +53,108 @@ pnpm check
 pnpm build
 ```
 
-The build replaces `../pages/memory/` with generated assets. AstrBot discovers
-`pages/memory/index.html` after the plugin is reloaded. Release packages must
-include these generated files; users should not need Node.js to use the plugin.
+构建会用生成资源替换 `../pages/memory/`。插件重载后，AstrBot 发现 `pages/memory/index.html`。
+Release 安装包必须包含这些生成文件，使用者无需安装 Node.js。
 
-From the plugin root, `python scripts/package_plugin.py` packages the prebuilt
-view and tracked backend runtime into `dist/astrbot_plugin_seekmemory.zip` with
-`dist/SHA256SUMS`. The build emits JavaScript dependency licenses as `LICENSES.md`
-and CSS/font notices as `ASSET-LICENSES.txt`.
-Missing assets, source maps, mock bundles, and mismatched release tags fail packaging.
-`pages/memory/` and `dist/` remain ignored; source downloads contain source only.
-See [release instructions](../CONTRIBUTING.md#release-packaging) for CI and publishing.
+在插件根目录运行 `python scripts/package_plugin.py`，将已构建视图和 Git 跟踪的后端运行文件
+打包为 `dist/astrbot_plugin_seekmemory.zip`，并生成 `dist/SHA256SUMS`。
+构建会输出 JavaScript 依赖许可证 `LICENSES.md` 和 CSS/字体声明 `ASSET-LICENSES.txt`。
+资源缺失、源码映射、Mock 代码混入或发布标签不匹配都会导致打包失败。
+`pages/memory/` 与 `dist/` 保持 Git 忽略；源码下载仅包含源码。
+CI 与发布步骤见[发布说明](../CONTRIBUTING.md#release-packaging)。
 
-Assets use relative URLs. AstrBot injects its plugin view SDK, which sets
-`html[data-theme]`; the stylesheet follows that attribute without browser storage.
-The production client uses `window.AstrBotPluginPage` and plugin routes registered
-through `Context.register_web_api`. Calls return unknown input validated by Zod.
-No host cookies, local storage, or direct parent-window access is required.
+资源使用相对 URL。AstrBot 注入插件视图 SDK 并设置 `html[data-theme]`，样式跟随该属性，无需浏览器存储。
+生产客户端使用 `window.AstrBotPluginPage` 和 `Context.register_web_api` 注册的插件路由。
+调用结果按未知输入处理，再由 Zod 校验；无需访问宿主 Cookie、本地存储或父窗口。
 
-Tests run with Node's built-in TypeScript support and test runner. They cover
-schema failures, immutable inputs, combined filters, page resets, empty and
-shrinking datasets, cross-page navigation, deterministic ordering, administrative
-commands, runtime/detail schemas, legacy/structured logs, all nine category filters
-and the host bridge boundary. React hook tests
-use Happy DOM with an injected client, without rendering component-library code.
-They verify workspace filters, post-write refresh races, confirmed task identity,
-duplicate-submit prevention, and invalidation of reads from a replaced client.
-Architecture fixtures run the real Oxlint import rules against both forbidden
-and permitted dependency directions; these checks run in `pnpm check` and CI.
+测试使用 Node 内置的 TypeScript 支持和测试运行器，覆盖契约失败、输入不可变性、组合筛选、
+分页重置、空数据与数据缩减、跨页跳转、稳定排序、管理命令、运行/详情契约、新旧日志、九种类型和宿主桥接边界。
+React hook 测试使用 Happy DOM 和注入的客户端，无需渲染组件库代码，验证工作台筛选、写入后刷新竞态、
+确认的目标任务身份、重复提交拦截和客户端替换后旧请求失效。
+架构测试使用真实 Oxlint 导入规则验证允许与禁止的依赖方向，纳入 `pnpm check` 和 CI。
 
-## Architecture and component replacement
+## 架构与组件替换
 
-The memory feature uses a small MVVM-style split:
+记忆功能采用轻量 MVVM 分层：
 
 ```text
-src/dev/                         Development source and preview controls
-src/infrastructure/astrbot-client.ts  Host Page bridge and response validation
+src/dev/                         开发数据源与预览控制
+src/infrastructure/astrbot-client.ts  宿主视图桥接与响应校验
 src/features/control/
-  model.ts                       Management port and Zod wire contracts
-  use-control.ts                 Scope/session filters, task commands and refresh lifecycle
-  use-editor.ts                  Drafts, revisions, confirmation and conflict errors
-  use-diagnostics.ts             Read-only diagnostic action state
-  use-logs.ts                     Combined log filters and searchable business metadata
-  views/                         Workspace, runtime, editor, diagnostics and logs
+  model.ts                       管理接口与 Zod 传输契约
+  use-control.ts                 scope/会话筛选、任务命令与刷新生命周期
+  use-editor.ts                  草稿、修订、确认与冲突错误
+  use-diagnostics.ts             只读诊断的操作状态
+  use-logs.ts                    日志组合筛选与业务字段搜索
+  views/                         工作台、运行检测、编辑、诊断与日志视图
 src/features/memory/
-  model.ts                       Zod schemas, inferred types, loading state
-  library-state.ts               Pure reducer and derived selection/statistics
-  use-memory-library.ts          React binding and user actions
-  use-memory-detail.ts           Version selection and resolved relationships
-  views/                        Layout, labels, icons, responsive behavior
+  model.ts                       Zod 契约、推导类型与加载状态
+  library-state.ts               纯 reducer、选中项与统计派生
+  use-memory-library.ts          React 绑定与用户操作
+  use-memory-detail.ts           版本选择与关联解析
+  views/                         布局、文案、图标与响应式行为
 src/ui/
-  index.tsx                     Application-owned UI contracts and adapters
-  styles.css                    Theme tokens and component-vendor CSS
-  shadcn/                       Generated component implementation
+  index.tsx                      应用自有的 UI 契约与适配器
+  styles.css                     主题变量与组件库样式
+  shadcn/                        生成的组件实现
 ```
 
-Data sources validate unknown input with `memoryCollectionSchema` before passing
-a `MemorySource` to the workspace. Types are inferred from the Zod schemas;
-there is no separate interface to keep in sync. Ready, loading, and error sources
-are a discriminated union; empty results are a valid ready source. The current
-mock source uses this same boundary. `ManagementClient` is implemented by the
-host adapter and the development mock; hooks receive it explicitly and do not
-choose transport or fixture implementations.
+数据源先用 `memoryCollectionSchema` 校验未知输入，再将 `MemorySource` 传给工作台。
+类型由 Zod 契约推导，无需维护另一份重复接口。就绪、加载中和错误来源构成可辨识联合类型，
+空结果是合法的就绪状态。Mock 数据源使用同一边界。
+宿主适配器和开发 Mock 都实现 `ManagementClient`；hook 显式接收客户端，不选择传输方式或示例实现。
 
-Pure models and state do not import React or access browser globals. React hooks
-own application state and derived data; views own presentation concerns such as
-the mobile drawer. The UI adapter cannot import memory features or mock data.
-Oxlint enforces these directions and blocks direct vendor imports from views.
-Models and hooks have no dependency on shadcn, Base UI, CSS, or Lucide.
-Hooks and views cannot import the concrete host client or mock implementation;
-transport adapters depend on contracts rather than hooks. These are direct-import
-checks, not a complete transitive dependency analysis.
+纯模型和状态不导入 React，也不访问浏览器全局对象。React hook 管理应用状态及派生数据，
+视图负责手机抽屉等呈现状态。UI 适配器不能导入记忆功能或 Mock 数据。
+Oxlint 约束上述方向，并阻止视图直接导入组件库。模型和 hook 不依赖 shadcn、Base UI、CSS 或 Lucide。
+hook 和视图不能导入具体宿主客户端或 Mock 实现；传输适配器依赖契约而非 hook。
+这些规则检查直接导入关系，不是完整的传递依赖分析。
 
-Workspace scope/session selection, task confirmation and dispatch belong to
-`use-control.ts`. The selected workspace tab, editor visibility and responsive
-drawer remain view state. Ordinary refreshes share an in-flight request; refreshes
-after a write supersede it so older responses cannot overwrite the saved result.
-Task cancellation retains the ID shown when confirmation began, even if polling
-discovers a different active task before confirmation completes.
+工作台 scope/会话选择、任务确认与派发属于 `use-control.ts`。
+当前页签、编辑器显隐和响应式抽屉保留为视图状态。
+普通刷新复用进行中的请求；写入后刷新会取代旧请求，防止旧响应覆盖保存结果。
+取消任务保留开始确认时显示的任务 ID，即使轮询期间活动任务发生变化，也不会误取消新任务。
 
-To replace the component library:
+替换组件库的步骤：
 
-1. Reimplement `src/ui/index.tsx` against the new library, preserving its own
-   React/DOM contracts. Compound controls expose `DetailDrawer` and `Tabs` rather
-   than exporting Base UI's composition API or vendor prop types.
-2. Update `src/ui/styles.css`, retaining the semantic tokens used by the views
-   and the host's `html[data-theme]` behavior. Remove `src/ui/shadcn/`,
-   `components.json`, and unused vendor dependencies when no longer needed.
-   Update the CSS/font license entries in `vite.config.ts` to match dependencies.
-3. Run `pnpm check`, `pnpm build`, and the mock preview. Check keyboard focus,
-   drawer dismissal, tab selection, themes, and narrow layouts with the new library.
+1. 基于新组件库重写 `src/ui/index.tsx`，保留应用自有的 React/DOM 契约。
+   组合控件暴露 `DetailDrawer` 和 `Tabs`，不向业务层导出 Base UI 的组合 API 或属性类型。
+2. 更新 `src/ui/styles.css`，保留视图使用的语义变量及宿主 `html[data-theme]` 行为。
+   不再使用时移除 `src/ui/shadcn/`、`components.json` 和旧组件库依赖，
+   并同步 `vite.config.ts` 的 CSS/字体许可证条目。
+3. 运行 `pnpm check`、`pnpm build` 和 Mock 预览，检查新组件库的键盘焦点、
+   抽屉关闭、页签选择、主题和窄屏布局。
 
-The model, reducer, and hooks require no changes for a component-library swap.
-Views still intentionally use React, Tailwind layout utilities, and Lucide icons.
-Replacing those technologies involves their presentation files too; the UI
-adapter is not a promise of framework-independent rendering. A small injected
-port is sufficient; no repository or dependency-injection framework is needed.
+替换组件库无需修改模型、reducer 和 hook。视图仍使用 React、Tailwind 布局类和 Lucide 图标，
+替换这些技术也需要修改相应视图文件；UI 适配器不提供跨框架渲染能力。
+当前使用小型注入接口即可，无需仓储层或依赖注入框架。
 
-`tests/test_webui_host.py` validates real AstrBot request/auth context, page
-discovery and lifecycle ownership without starting bots. It skips when a compatible
-host is unavailable; build first to include page discovery. Live deployment and
-real model quality remain separate from the mock browser checks.
+`tests/test_webui_host.py` 不启动机器人，验证真实 AstrBot 请求/认证上下文、页面发现和生命周期资源归属。
+无兼容宿主时跳过；验证页面发现前需先构建。Mock 浏览器检查不覆盖实际部署和真实模型质量。
 
-## Components
+## 组件维护
 
 ```bash
 pnpm exec shadcn add button
 ```
 
-Generated components live in `src/ui/shadcn`. Add components as needed and expose
-application-owned contracts through `src/ui/index.tsx`; feature views import only
-`@/ui`. Keep vendor-specific selectors and styling in the adapter.
-See the [AstrBot plugin view guide](https://docs.astrbot.app/dev/star/guides/plugin-pages.html)
-and [shadcn/ui documentation](https://ui.shadcn.com/docs/installation/vite).
+生成组件位于 `src/ui/shadcn`。按需添加组件，并通过 `src/ui/index.tsx` 暴露应用自有契约；
+功能视图只导入 `@/ui`。组件库专属选择器和样式保留在适配层。
+参考 [AstrBot 插件视图指南](https://docs.astrbot.app/dev/star/guides/plugin-pages.html)
+和 [shadcn/ui 文档](https://ui.shadcn.com/docs/installation/vite)。
 
-## Business logging integration
+## 业务日志接入
 
-Backend `Journal.record()` captures the real caller's module, relative file,
-function and line. `Journal.span()` wraps business stages, measures duration and
-records exception frame locations without exception messages or local variables.
-The task runner supplies a ContextVar correlation ID; individual stage success
-cannot mark a whole task complete during restart recovery. Extraction receives a
-context-manager callback, keeping the domain independent of the log transport.
+后端 `Journal.record()` 采集真实调用者的模块、相对文件、函数和行号。
+`Journal.span()` 包裹业务阶段，记录耗时及异常帧位置，不采集异常消息或局部变量。
+任务执行器通过 ContextVar 传递关联 ID；重启恢复时，单个阶段成功不能被当作整个任务完成。
+抽取逻辑接收注入的上下文管理器回调，保持领域代码与日志传输方式独立。
 
 ```python
 with journal.span("weekly", "merge", threshold=0.6) as metrics:
     metrics["merged"] = merge_similar(db, cache, threshold=0.6)
 ```
 
-Only pass explicit safe IDs and counters in context. This is not automatic tracing
-of every function or a capture of all AstrBot logs. The viewer separates severity,
-lifecycle status, business stage, call site, context and exception frames; filtering
-belongs to `use-logs.ts`. Old events remain readable without fabricated call sites.
+上下文只传入显式的安全 ID 和计数。此封装不自动跟踪每个函数，也不采集全部 AstrBot 日志。
+日志视图分别呈现级别、生命周期状态、业务阶段、调用位置、上下文和异常帧；筛选逻辑属于 `use-logs.ts`。
+旧事件仍可读取，缺失调用位置时不补造信息。
