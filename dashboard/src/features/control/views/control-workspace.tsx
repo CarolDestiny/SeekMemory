@@ -26,32 +26,7 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
   const vm = useControl(client)
   const [section, setSection] =
     useState<(typeof sections)[number]["id"]>("memory")
-  const [scope, setScope] = useState("all")
-  const [session, setSession] = useState("all")
   const [editorId, setEditorId] = useState<string | null>(null)
-  const [action, setAction] = useState<"extract" | "weekly" | "cancel" | null>(
-    null
-  )
-  const [confirmed, setConfirmed] = useState(false)
-  const [cancelId, setCancelId] = useState("")
-  const source =
-    vm.source.status === "ready"
-      ? {
-          ...vm.source,
-          records: vm.source.records.filter(
-            (record) =>
-              (scope === "all" || record.scope === scope) &&
-              (session === "all" || record.session === session)
-          ),
-        }
-      : vm.source
-  const sessions =
-    vm.source.status === "ready"
-      ? Array.from(
-          new Set(vm.source.records.map((record) => record.session))
-        ).sort()
-      : []
-  const task = vm.status?.activeTask
   return (
     <div className="flex min-h-svh flex-col bg-background">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-3 sm:px-6">
@@ -98,8 +73,8 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
             <span className="text-muted-foreground">管理范围</span>
             <Select
               label="筛选 scope"
-              value={scope}
-              onValueChange={setScope}
+              value={vm.scope}
+              onValueChange={vm.setScope}
               options={[
                 { value: "all", label: "全部 scope" },
                 { value: "private", label: "私有" },
@@ -110,11 +85,11 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
             <Select
               label="筛选来源会话"
               className="max-w-80"
-              value={session}
-              onValueChange={setSession}
+              value={vm.session}
+              onValueChange={vm.setSession}
               options={[
                 { value: "all", label: "全部来源会话" },
-                ...sessions.map((value) => ({ value, label: value })),
+                ...vm.sessions.map((value) => ({ value, label: value })),
               ]}
             />
             <span className="text-muted-foreground">
@@ -122,7 +97,7 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
             </span>
           </div>
           <MemoryWorkspace
-            source={source}
+            source={vm.source}
             onRetry={() => {
               void vm.refresh()
             }}
@@ -134,11 +109,7 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
         <RuntimePanel
           status={vm.status}
           busy={vm.busy}
-          onAction={(next) => {
-            setAction(next)
-            setCancelId(task?.id ?? "")
-            setConfirmed(false)
-          }}
+          onAction={vm.requestAction}
         />
       )}
       {section === "diagnose" && <Diagnostics client={client} />}
@@ -148,12 +119,12 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
         client={client}
         id={editorId}
         close={() => setEditorId(null)}
-        onSaved={vm.refresh}
+        onSaved={vm.refreshAfterWrite}
       />
       <DetailDrawer
-        open={action !== null}
+        open={vm.action !== null}
         onOpenChange={(open) => {
-          if (!open) setAction(null)
+          if (!open) vm.dismissAction()
         }}
         title="确认维护操作"
         description="确认任务影响后执行"
@@ -161,36 +132,29 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
         <div className="space-y-5 p-6">
           <h2 className="text-xl font-semibold">
             确认
-            {action === "extract"
+            {vm.action === "extract"
               ? "立即抽取"
-              : action === "weekly"
+              : vm.action === "weekly"
                 ? "每周整理"
                 : "取消任务"}
           </h2>
           <p className="text-sm leading-7 text-muted-foreground">
-            {action === "cancel"
+            {vm.action === "cancel"
               ? "取消会保留尚未处理的抽取消息；已经完成的写入不会撤销。同步整理开始后可能已完成，取消并不保证回滚。"
               : "此操作会修改真实记忆数据。旧版本和已写入的账本会保留；抽取还可能产生模型调用费用。"}
           </p>
           <label className="flex gap-2 text-sm">
             <input
               type="checkbox"
-              checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
+              checked={vm.confirmed}
+              onChange={(event) => vm.setConfirmed(event.target.checked)}
             />
             我已确认本次操作及其影响
           </label>
           <Button
-            disabled={!confirmed || vm.busy}
+            disabled={!vm.confirmed || vm.busy}
             onClick={() => {
-              const selected = action
-              if (!selected) return
-              setAction(null)
-              void vm.run(() =>
-                selected === "cancel"
-                  ? client.cancel(cancelId)
-                  : client.task(selected)
-              )
+              void vm.executeAction()
             }}
           >
             确认执行
