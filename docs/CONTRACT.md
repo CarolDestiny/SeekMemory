@@ -274,7 +274,17 @@ detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整�
 抽取通过注入的 context-manager 回调记录 provider.call、response.parse、memory.deduplicate、
 artifact.validate、artifact.persist 和 impression.revise，不导入 WebUI 或宿主模块。
 前端模型、hooks、views、宿主适配和组件适配的边界由 Oxlint 约束。
-插件未使用 OpenAPI 代码生成；更改接口时需同步 Zod 契约、客户端和契约测试。
+机器可读契约以根目录 [`openapi.yaml`](../openapi.yaml) 为准，描述八个管理操作、请求、成功数据与错误结构。
+`dashboard/src/contracts/generated.ts` 由 `pnpm generate:api` 生成，不手工修改。
+`ApiRequest` / `ApiResponse` 直接引用生成的 operation 类型；Zod 用 `satisfies` 检查传输兼容性，
+并继续处理未知输入、旧日志默认值、深层只读和版本一致性等领域约束。
+JSON 扩展内容在生成类型中使用 `unknown`，运行时再由 Zod 递归校验，不使用 `any`。
+生成类型不会代替运行校验，也不替换 `ManagementClient` 注入接口或宿主桥接器。
+
+`tests/test_api_contract.py` 校验真实路由/业务输出并导出临时样本；前端跨语言测试用同一 YAML 和 Zod 双重验证。
+Mock 返回值也对照 YAML 校验。契约未同步生成类型、实现输出不符、样本缺失或操作覆盖不全都会使 CI 失败。
+宿主集成测试在 AstrBot 可用时另行校验真实响应；独立 CI 不依赖宿主启动。
+完整开发命令见 [前端工程说明](../dashboard/README.md#接口契约与类型生成)。
 
 ## 全局约束
 

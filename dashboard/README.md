@@ -100,7 +100,7 @@ src/ui/
 ```
 
 数据源先用 `memoryCollectionSchema` 校验未知输入，再将 `MemorySource` 传给工作台。
-类型由 Zod 契约推导，无需维护另一份重复接口。就绪、加载中和错误来源构成可辨识联合类型，
+领域类型由 Zod 推导，并通过 `satisfies` 与 OpenAPI 生成的传输类型关联。就绪、加载中和错误来源构成可辨识联合类型，
 空结果是合法的就绪状态。Mock 数据源使用同一边界。
 宿主适配器和开发 Mock 都实现 `ManagementClient`；hook 显式接收客户端，不选择传输方式或示例实现。
 
@@ -158,3 +158,42 @@ with journal.span("weekly", "merge", threshold=0.6) as metrics:
 上下文只传入显式的安全 ID 和计数。此封装不自动跟踪每个函数，也不采集全部 AstrBot 日志。
 日志视图分别呈现级别、生命周期状态、业务阶段、调用位置、上下文和异常帧；筛选逻辑属于 `use-logs.ts`。
 旧事件仍可读取，缺失调用位置时不补造信息。
+
+## 接口契约与类型生成
+
+根目录 `openapi.yaml` 是管理 API 的唯一传输契约来源。修改接口时先更新 YAML，再执行：
+
+```bash
+pnpm generate:api
+pnpm check
+```
+
+生成文件 `src/contracts/generated.ts` 提交到 Git，禁止手工修改。`check:api` 使用生成器的 `--check`
+检测漂移，不会自动改写文件；已纳入 `pnpm check`。生成文件保留工具原始格式，Oxfmt 不重排它，
+其类型仍受 TS 7 和 Oxlint 检查。`src/contracts/api.ts` 提供操作请求/响应别名，模型只依赖这些纯类型。
+Zod 保留运行时校验、旧日志默认值及版本一致性约束；ViewModel 和 UI 不依赖生成器或 OpenAPI 工具。
+成功响应直接返回数据；失败使用 `{status, message, data}`。宿主负责 HTTP 前缀、认证与 iframe 通信。
+桥接适配器继续调用 `AstrBotPluginPage`，保存和取消的响应也校验返回 ID。
+
+`openapi-typescript` 依赖 TS 5 编译器 API，无法直接使用 TS 7 的原生工具包。
+因此 `tools/api-codegen` 是独立开发 workspace，固定生成器 7.13.0 和 TypeScript 5.9.3；
+应用、构建和测试仍由根依赖 TypeScript 7.0.2 检查，共用一个 pnpm 锁文件。
+无需降级应用，也不把生成器带入生产依赖。
+
+独立 Mock 测试用 Ajv 按 YAML 校验所有家族、日志、诊断和修订后的数据。
+实际后端响应的跨语言测试从插件根目录运行：
+
+```bash
+python -m pip install -r requirements-dev.txt
+python tests/test_api_contract.py --export dashboard/node_modules/.tmp/backend-contract.json
+pnpm --dir dashboard test:contract
+```
+
+Python 测试使用真实路由、内存 SQLite、管理服务和任务执行器，仅替代宿主的请求/响应传输对象。
+导出的实际响应同时接受 YAML 和前端 Zod 校验，覆盖全部八个成功操作和
+400/401/404/405/409/413/500/503 错误；文件缺失或覆盖不足会失败，不回退到 Mock。
+安装兼容 AstrBot 后，宿主测试也会检查实际响应对象。CI 和发布构建都执行完整校验链。
+业务层的 family 校验、版本冲突、状态转换、权限和副作用仍由实现测试覆盖，静态类型不能代替它们。
+
+OpenAPI、生成源码、代码生成器、Ajv、PyYAML、jsonschema、测试及导出样本都不进入运行 ZIP；
+生产仍仅包含原有后端运行文件和已构建视图，不新增 Python 运行依赖。

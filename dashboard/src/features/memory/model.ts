@@ -1,4 +1,5 @@
 import { z } from "zod"
+import type { ApiSchemas, DeepReadonly } from "../../contracts/api.ts"
 
 export const memoryCategorySchema = z.enum([
   "fact",
@@ -60,7 +61,7 @@ export const memoryRecordSchema = z
       }
     }
   })
-  .readonly()
+  .readonly() satisfies z.ZodType<DeepReadonly<ApiSchemas["MemoryRecord"]>>
 
 export const memoryCollectionSchema = z
   .array(memoryRecordSchema)

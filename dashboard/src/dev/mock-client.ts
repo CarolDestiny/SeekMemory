@@ -1,7 +1,7 @@
 import {
   memoryCollectionSchema,
   type MemoryRecord,
-} from "@/features/memory/model"
+} from "../features/memory/model.ts"
 import {
   detailSchema,
   eventSchema,
@@ -9,8 +9,8 @@ import {
   type ArtifactDetail,
   type ManagementClient,
   type OperationEvent,
-} from "@/features/control/model"
-import { mockMemories } from "./mock-data"
+} from "../features/control/model.ts"
+import { mockMemories } from "./mock-data.ts"
 
 const base = mockMemories[0]
 if (!base) throw new Error("Mock 示例需要至少一条基础记录")

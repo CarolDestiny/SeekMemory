@@ -63,6 +63,11 @@ class PackageTests(unittest.TestCase):
             "core/private.db",
             "tests/fixture.py",
             "dashboard/src/demo.ts",
+            "openapi.yaml",
+            "requirements-dev.txt",
+            "dashboard/src/contracts/generated.ts",
+            "dashboard/tools/api-codegen/package.json",
+            "dashboard/node_modules/.tmp/backend-contract.json",
         ):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,6 +99,11 @@ class PackageTests(unittest.TestCase):
                     "core/untracked.py",
                     "tests/fixture.py",
                     "dashboard/src/demo.ts",
+                    "openapi.yaml",
+                    "requirements-dev.txt",
+                    "dashboard/src/contracts/generated.ts",
+                    "dashboard/tools/api-codegen/package.json",
+                    "dashboard/node_modules/.tmp/backend-contract.json",
                 }
                 & names
             )

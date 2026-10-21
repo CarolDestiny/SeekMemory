@@ -1,4 +1,5 @@
 import { z } from "zod"
+import type { ApiRequest, ApiResponse } from "../contracts/api.ts"
 import { memoryCollectionSchema } from "../features/memory/model.ts"
 import {
   detailSchema,
@@ -41,6 +42,10 @@ async function bridge(): Promise<PluginBridge> {
   return current
 }
 
+const idResponseSchema = z.object({ id: z.string() }) satisfies z.ZodType<
+  ApiResponse<"task">
+>
+
 export const astrbotClient: ManagementClient = {
   async records() {
     const data = await (await bridge()).apiGet("manage/records")
@@ -59,21 +64,27 @@ export const astrbotClient: ManagementClient = {
       .events
   },
   async update(command) {
-    await (await bridge()).apiPost("manage/update", updateSchema.parse(command))
+    const body = updateSchema.parse(command) satisfies ApiRequest<"update">
+    idResponseSchema.parse(
+      await (await bridge()).apiPost("manage/update", body)
+    )
   },
   async diagnose(query) {
+    const body: ApiRequest<"diagnose"> = query
     return diagnosticSchema.parse(
-      await (await bridge()).apiPost("manage/diagnose", query)
+      await (await bridge()).apiPost("manage/diagnose", body)
     )
   },
   async task(kind) {
-    return z
-      .object({ id: z.string() })
-      .parse(
-        await (await bridge()).apiPost("manage/task", { kind, confirmed: true })
-      ).id
+    const body = { kind, confirmed: true } satisfies ApiRequest<"task">
+    return idResponseSchema.parse(
+      await (await bridge()).apiPost("manage/task", body)
+    ).id
   },
   async cancel(id) {
-    await (await bridge()).apiPost("manage/cancel", { id, confirmed: true })
+    const body = { id, confirmed: true } satisfies ApiRequest<"cancel">
+    idResponseSchema.parse(
+      await (await bridge()).apiPost("manage/cancel", body)
+    )
   },
 }
