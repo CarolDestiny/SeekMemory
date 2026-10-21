@@ -11,9 +11,9 @@ export default function MockApp() {
   const [dark, setDark] = useState(false)
 
   useEffect(() => {
-    document.documentElement.dataset.theme = dark ? "dark" : "light"
+    document.documentElement.dataset["theme"] = dark ? "dark" : "light"
     return () => {
-      delete document.documentElement.dataset.theme
+      delete document.documentElement.dataset["theme"]
     }
   }, [dark])
 
@@ -45,9 +45,17 @@ export default function MockApp() {
             id="preview-scenario"
             className="filter-select h-7 min-w-24 bg-card text-xs"
             value={scenario}
-            onChange={(event) =>
-              setScenario(event.target.value as typeof scenario)
-            }
+            onChange={(event) => {
+              const value = event.target.value
+              if (
+                value === "ready" ||
+                value === "loading" ||
+                value === "empty" ||
+                value === "error" ||
+                value === "long"
+              )
+                setScenario(value)
+            }}
           >
             <option value="ready">正常数据</option>
             <option value="loading">加载中</option>

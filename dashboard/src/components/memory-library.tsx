@@ -31,6 +31,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   categoryLabels,
+  memoryCategories,
   memoryDateFormat,
   type MemoryCategory,
   type MemoryRecord,
@@ -160,8 +161,8 @@ export function MemoryLibrary({
           <p className="px-3 pt-7 pb-2 text-[11px] tracking-widest text-muted-foreground">
             按类型查看
           </p>
-          {Object.entries(categoryLabels).map(([value, label]) => {
-            const key = value as MemoryCategory
+          {memoryCategories.map((key) => {
+            const label = categoryLabels[key]
             const Icon = categoryIcons[key]
             return (
               <Button
@@ -287,15 +288,20 @@ export function MemoryLibrary({
                     aria-label="记忆类型"
                     value={category}
                     onChange={(event) => {
-                      setCategory(event.target.value as MemoryCategory | "all")
+                      const value = event.target.value
+                      const category = memoryCategories.find(
+                        (item) => item === value
+                      )
+                      if (value === "all" || category)
+                        setCategory(category ?? "all")
                       setPage(0)
                     }}
                     className="filter-select max-w-32 lg:hidden"
                   >
                     <option value="all">全部类型</option>
-                    {Object.entries(categoryLabels).map(([value, label]) => (
+                    {memoryCategories.map((value) => (
                       <option key={value} value={value}>
-                        {label}
+                        {categoryLabels[value]}
                       </option>
                     ))}
                   </select>
