@@ -10,6 +10,8 @@ class DialogueTurn:
     role: str
     text: str
     at: str = ""
+    source_id: str = ""
+    topic_id: str = ""
 
 
 @dataclass(frozen=True)

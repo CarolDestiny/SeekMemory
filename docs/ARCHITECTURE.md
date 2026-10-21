@@ -66,3 +66,10 @@ implementation. A BM25 retriever can fill `lexical` without changing the scoring
 
 All production writes now use `DB.commit()` with expected revision, version snapshots, evidence
 links and ledger entries. `DB.upsert()` remains only as a legacy compatibility primitive.
+
+## Topic, subject and time
+
+Buffer entries are typed `DialogueTurn` objects. Topics split on a 90-minute gap or low
+character-bigram similarity; `topic_ttl_seconds` forces aged topics to extraction.
+The extractor returns `subject_kind`, `subject_id`, `event_at` and validity dates.
+`TimeSpan.created` uses event time, not extraction time.
