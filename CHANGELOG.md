@@ -42,7 +42,7 @@
 - 安装入口从源码克隆调整为 Release 的 `astrbot_plugin_seekmemory.zip` 附件；
   源码 ZIP/tar.gz 和 Git 克隆保留开发源码，不含前端产物。详见 README 的安装说明。
 - 入口映射：原“插件配置”继续用于配置；记忆操作改从“插件卡片 → 插件视图”进入。
-  页面与截图见 [中文指南](docs/zh/webui.md) / [English guide](docs/en/webui.md)。
+  页面与截图见 [WebUI 使用说明](docs/webui/README.md)。
 
 
 ## 0.3.1 - 2026-10-21
