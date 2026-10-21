@@ -17,7 +17,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 
 from .core.graph import Graph
 from .core.tree import Tree
-from .perceive.absorb import absorb
+from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
 from .perceive.compress import build_compress_prompt, parse_compress
 from .recall.assemble import build as assemble_text
@@ -44,6 +44,8 @@ class Main(star.Star):
         self.graph: Graph | None = None
         self.buffer: Buffer | None = None
         self._flushing = False
+        self._flush_day = ""
+        self._flush_count = 0
         self._init_engine()
 
     # ---------------- 配置 ----------------
@@ -226,13 +228,20 @@ class Main(star.Star):
 
     # ---------------- 抽取：空闲触发 + 夜间兜底 ----------------
     def _should_flush(self) -> bool:
-        """攒够条数、且安静够久，就值得抽一次。"""
+        """白天要不要抽：安静够久 + 攒够条数 + 有值得记的事 + 没超每天上限。"""
         if self._flushing or self.buffer is None or self.db is None:
             return False
-        return self.buffer.should_flush(
-            float(self._c("idle_flush_seconds", 180)),
-            int(self._c("min_pending", 4)),
-        )
+        idle = float(self._c("idle_flush_seconds", 0))
+        if idle <= 0:  # 0 = 白天不抽，只等晚上批量
+            return False
+        if not self.buffer.should_flush(idle, int(self._c("min_pending", 8))):
+            return False
+        if not worth_now(self.buffer.items):
+            return False
+        today = datetime.date.today().isoformat()
+        if self._flush_day != today:
+            self._flush_day, self._flush_count = today, 0
+        return self._flush_count < int(self._c("max_flushes_per_day", 2))
 
     async def _idle_loop(self) -> None:
         """聊完安静一会儿就抽，不用等到半夜。"""
@@ -258,11 +267,15 @@ class Main(star.Star):
             if not prov:
                 return
             items = self.buffer.take()
+            self._flush_count += 1
             written = await absorb(
                 items, self.db, self.cache, self.graph, prov,
                 log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
             )
-            logger.info(f"[seekmemory] {reason}抽取：{len(items)} 条对话，写入 {written} 条")
+            logger.info(
+                f"[seekmemory] {reason}抽取：{len(items)} 条对话，写入 {written} 条"
+                f"（今日第 {self._flush_count} 次）"
+            )
         finally:
             self._flushing = False
 
