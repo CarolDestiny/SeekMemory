@@ -13,6 +13,8 @@
 | `maintain/` | **维护**：衰减、合并、晋升、反思 | [maintain/README](maintain/README.md) |
 | `tests/` | 单元测试 | — |
 | `dashboard/` | WebUI 源码、独立 Mock 与严格前端检查 | [dashboard/README](../dashboard/README.md) |
+| `webui/` | 宿主路由、管理服务、任务互斥、生命周期日志 | [契约](CONTRACT.md#webui-管理接口) |
+| `docs/zh/` / `docs/en/` | 插件视图使用说明与截图 | [中文](zh/webui.md) · [English](en/webui.md) |
 | `scripts/package_plugin.py` | 运行文件白名单与 Release ZIP 打包 | [发布说明](../CONTRIBUTING.md#release-packaging) |
 | `docs/` | 设计文档 | [DESIGN](DESIGN.md) · [CONTRACT](CONTRACT.md) |
 
@@ -31,7 +33,8 @@ perceive/  maintain/  recall/
 - `core/` 不 import 任何人
 - `store/` 只 import `core/`
 - `recall/` `perceive/` `maintain/` 可以 import `core/` 和 `store/`
-- **没有任何模块 import `main.py`**
+- 业务模块不在运行时 import `main.py`；WebUI 路由仅使用类型注解引用入口。
+- `webui/routes.py` 适配宿主，`service.py` 调用 core/store/recall；任务与日志不依赖宿主。
 
 ## 两条硬规则
 

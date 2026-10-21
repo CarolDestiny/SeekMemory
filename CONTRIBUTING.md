@@ -153,8 +153,8 @@ To publish after review and merge:
    are not overwritten; a rerun against an existing Release fails for review.
 
 The archive contains tracked `.py` files from `core`, `store`, `recall`,
-`perceive`, and `maintain`, plus `main.py`, metadata, config schema,
-`store/schema.sql`, licenses, and the production `views/memory` assets.
+`perceive`, `maintain`, and `webui`, plus `main.py`, metadata, config schema,
+`store/schema.sql`, licenses, and the production `pages/memory` assets.
 When adding runtime resources or packages, update `scripts/package_plugin.py`
 and its archive tests. Do not add compiled assets to Git or alter source archives
 to masquerade as installation packages. The backend needs no compilation;
@@ -164,6 +164,13 @@ For a local package, follow the root README's build commands. Run
 `python -m unittest discover -s tests -p 'test_*.py'` and
 `python tests/test_smoke.py` before publishing. The archive test extracts the
 ZIP and runs the backend smoke test in an isolated Python process.
+
+`tests/test_webui_host.py` also exercises the real AstrBot request context and
+plugin lifecycle when a compatible host is installed. Standalone CI skips these
+host-only tests; storage, scope, revision and task tests run without AstrBot.
+No test starts messaging adapters or calls a paid model. After API changes,
+update `dashboard/src/features/control/model.ts`, the bridge adapter, and their
+contract tests together. This plugin has no generated OpenAPI client.
 
 Installation uses the Release attachment, not the automatically generated
 GitHub source archives. Configure a custom plugin source's `download_url` to

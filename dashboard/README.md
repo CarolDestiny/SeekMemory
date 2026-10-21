@@ -2,7 +2,8 @@
 
 React, TypeScript, Vite, Tailwind CSS and shadcn/ui (Base UI / Nova).
 The standalone mock workspace supports layout development without running AstrBot,
-Python, a database, or a model provider. Real memory APIs are not connected yet.
+Python, a database, or a model provider. Production uses AstrBot's authenticated
+Plugin Page bridge against the live memory engine.
 
 ## Development
 
@@ -25,13 +26,16 @@ The preview includes:
   and navigation between related records.
 - Desktop detail panels and a narrow-screen detail drawer.
 - Light and dark themes, plus normal, loading, empty, error, and long-content scenarios.
+- All six artifact families, scope/session filters, JSON revision editing,
+  runtime checks, task confirmations, recall diagnostics and lifecycle logs.
+  Mock mutations reset on reload; mock diagnostics use simplified text matching.
 
 Use the toolbar at the top to switch scenarios and themes. In the error scenario,
 the retry button returns to normal data. Resize the browser to inspect responsive
 layouts; below 1280 CSS pixels, select a memory to open its detail drawer.
 
-`pnpm dev:host` starts without mocks and currently shows the API integration
-placeholder. Mock code is loaded only when both `import.meta.env.DEV` is true
+`pnpm dev:host` starts without mocks and requires the host bridge; opening it
+directly shows a connection error. Mock code is loaded only when both `import.meta.env.DEV` is true
 and the Vite mode is `mock`; production builds exclude the fixture JavaScript.
 Even `vite build --mode mock` does not enable demo data.
 
@@ -58,8 +62,8 @@ pnpm check
 pnpm build
 ```
 
-The build replaces `../views/memory/` with generated assets. AstrBot discovers
-`views/memory/index.html` after the plugin is reloaded. Release packages must
+The build replaces `../pages/memory/` with generated assets. AstrBot discovers
+`pages/memory/index.html` after the plugin is reloaded. Release packages must
 include these generated files; users should not need Node.js to use the plugin.
 
 From the plugin root, `python scripts/package_plugin.py` packages the prebuilt
@@ -67,17 +71,19 @@ view and tracked backend runtime into `dist/astrbot_plugin_seekmemory.zip` with
 `dist/SHA256SUMS`. The build emits JavaScript dependency licenses as `LICENSES.md`
 and CSS/font notices as `ASSET-LICENSES.txt`.
 Missing assets, source maps, mock bundles, and mismatched release tags fail packaging.
-`views/memory/` and `dist/` remain ignored; source downloads contain source only.
+`pages/memory/` and `dist/` remain ignored; source downloads contain source only.
 See [release instructions](../CONTRIBUTING.md#release-packaging) for CI and publishing.
 
 Assets use relative URLs. AstrBot injects its plugin view SDK, which sets
 `html[data-theme]`; the stylesheet follows that attribute without browser storage.
-Future API calls should use `window.AstrBotPluginView` and plugin routes registered
-through `Context.register_web_api`.
+The production client uses `window.AstrBotPluginPage` and plugin routes registered
+through `Context.register_web_api`. Calls return unknown input validated by Zod.
+No host cookies, local storage, or direct parent-window access is required.
 
 Tests run with Node's built-in TypeScript support and test runner. They cover
 schema failures, immutable inputs, combined filters, page resets, empty and
-shrinking datasets, cross-page navigation, and deterministic ordering.
+shrinking datasets, cross-page navigation, deterministic ordering, administrative
+commands, runtime/detail schemas and the host bridge boundary.
 
 ## Architecture and component replacement
 
@@ -85,6 +91,13 @@ The memory feature uses a small MVVM-style split:
 
 ```text
 src/dev/                         Development source and preview controls
+src/infrastructure/astrbot-client.ts  Host Page bridge and response validation
+src/features/control/
+  model.ts                       Management port and Zod wire contracts
+  use-control.ts                 Refresh, partial failures and task polling
+  use-editor.ts                  Drafts, revisions, confirmation and conflict errors
+  use-diagnostics.ts             Read-only diagnostic action state
+  views/                         Workspace, runtime, editor, diagnostics and logs
 src/features/memory/
   model.ts                       Zod schemas, inferred types, loading state
   library-state.ts               Pure reducer and derived selection/statistics
@@ -101,8 +114,9 @@ Data sources validate unknown input with `memoryCollectionSchema` before passing
 a `MemorySource` to the workspace. Types are inferred from the Zod schemas;
 there is no separate interface to keep in sync. Ready, loading, and error sources
 are a discriminated union; empty results are a valid ready source. The current
-mock source uses this same boundary. The future AstrBot source should adapt the
-wire format here, without adding demo fallbacks to the real client.
+mock source uses this same boundary. `ManagementClient` is implemented by the
+host adapter and the development mock; hooks receive it explicitly and do not
+choose transport or fixture implementations.
 
 Pure models and state do not import React or access browser globals. React hooks
 own application state and derived data; views own presentation concerns such as
@@ -125,11 +139,13 @@ To replace the component library:
 The model, reducer, and hooks require no changes for a component-library swap.
 Views still intentionally use React, Tailwind layout utilities, and Lucide icons.
 Replacing those technologies involves their presentation files too; the UI
-adapter is not a promise of framework-independent rendering. There is no
-repository/DI framework while only one development source exists.
+adapter is not a promise of framework-independent rendering. A small injected
+port is sufficient; no repository or dependency-injection framework is needed.
 
-Authentication, bridge behavior, and real memory operations still require
-integration testing inside AstrBot.
+`tests/test_webui_host.py` validates real AstrBot request/auth context, page
+discovery and lifecycle ownership without starting bots. It skips when a compatible
+host is unavailable; build first to include page discovery. Live deployment and
+real model quality remain separate from the mock browser checks.
 
 ## Components
 
