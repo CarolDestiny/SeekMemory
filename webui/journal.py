@@ -76,20 +76,18 @@ class Journal:
             self.persistence_error = True
         unfinished: dict[str, dict] = {}
         for event in self.events:
-            if (
-                event["taskId"]
-                and not event.get("stage")
-                and event["status"]
-                in {
-                    "queued",
-                    "running",
-                    "succeeded",
-                    "failed",
-                    "cancelled",
-                    "interrupted",
-                }
-            ):
-                unfinished[event["taskId"]] = event
+            if not event["taskId"] or event.get("stage"):
+                continue
+            if event["status"] not in {
+                "queued",
+                "running",
+                "succeeded",
+                "failed",
+                "cancelled",
+                "interrupted",
+            }:
+                continue
+            unfinished[event["taskId"]] = event
         for task_id, event in unfinished.items():
             if event["status"] in {"queued", "running"}:
                 self.record(
@@ -136,15 +134,21 @@ class Journal:
                 frames.append(_location(tb.tb_frame, tb.tb_lineno))
                 tb = tb.tb_next
             failure = {"type": type(error).__name__, "frames": frames[-12:]}
-        level = (
-            "ERROR"
-            if status == "failed"
-            else (
-                "WARNING"
-                if status in {"warning", "cancelled", "interrupted"}
-                else ("DEBUG" if status == "debug" else "INFO")
+        level = "INFO"
+        if status == "failed":
+            level = "ERROR"
+        elif status in {"warning", "cancelled", "interrupted"}:
+            level = "WARNING"
+        elif status == "debug":
+            level = "DEBUG"
+
+        safe_context = {}
+        for key, value in list((context or {}).items())[:32]:
+            if value is not None and type(value) not in (str, int, float, bool):
+                continue
+            safe_context[str(key)[:80]] = (
+                value[:200] if isinstance(value, str) else value
             )
-        )
         row = {
             "id": uuid4().hex,
             "at": datetime.now(timezone.utc).isoformat(),
@@ -155,11 +159,7 @@ class Journal:
             "level": level,
             "stage": stage,
             "source": source,
-            "context": {
-                str(key)[:80]: value[:200] if isinstance(value, str) else value
-                for key, value in list((context or {}).items())[:32]
-                if value is None or type(value) in (str, int, float, bool)
-            },
+            "context": safe_context,
             "durationMs": duration_ms,
             "error": failure,
         }

@@ -8,27 +8,26 @@ export function useLogs(events: readonly OperationEvent[]) {
   const [module, setModule] = useState("all")
   const [query, setQuery] = useState("")
   const needle = query.trim().toLowerCase()
-  const filtered = events.filter(
-    (event) =>
-      (kind === "all" || event.kind === kind) &&
-      (state === "all" || event.status === state) &&
-      (level === "all" || event.level === level) &&
-      (module === "all" || event.source?.module === module) &&
-      [
-        event.message,
-        event.taskId,
-        event.stage,
-        event.source?.module,
-        event.source?.file,
-        event.source?.function,
-        event.source?.line,
-        JSON.stringify(event.context),
-        event.error?.type,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(needle)
-  )
+  const filtered = events.filter((event) => {
+    if (kind !== "all" && event.kind !== kind) return false
+    if (state !== "all" && event.status !== state) return false
+    if (level !== "all" && event.level !== level) return false
+    if (module !== "all" && event.source?.module !== module) return false
+    const searchText = [
+      event.message,
+      event.taskId,
+      event.stage,
+      event.source?.module,
+      event.source?.file,
+      event.source?.function,
+      event.source?.line,
+      JSON.stringify(event.context),
+      event.error?.type,
+    ]
+      .join(" ")
+      .toLowerCase()
+    return searchText.includes(needle)
+  })
   return {
     kind,
     setKind,

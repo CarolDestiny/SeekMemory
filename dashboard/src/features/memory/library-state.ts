@@ -71,21 +71,21 @@ export function selectLibrary(
       left.id.localeCompare(right.id)
   )
   const query = state.query.trim().toLowerCase()
-  const filtered = orderedRecords.filter(
-    (record) =>
-      (state.category === "all" || record.category === state.category) &&
-      (state.state === "all" || record.state === state.state) &&
-      [
-        record.title,
-        record.text,
-        record.subject,
-        record.session,
-        ...record.tags,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
-  )
+  const filtered = orderedRecords.filter((record) => {
+    if (state.category !== "all" && record.category !== state.category)
+      return false
+    if (state.state !== "all" && record.state !== state.state) return false
+    const searchText = [
+      record.title,
+      record.text,
+      record.subject,
+      record.session,
+      ...record.tags,
+    ]
+      .join(" ")
+      .toLowerCase()
+    return searchText.includes(query)
+  })
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
   const currentPage = Math.max(0, Math.min(state.page, pageCount - 1))
   const pageRecords = filtered.slice(

@@ -104,7 +104,7 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
         path = root / name
         if path.is_symlink() or not path.resolve().is_relative_to(root):
             raise ValueError(f"不支持符号链接或指向插件目录外的运行文件： {name}")
-        if not path.is_file() or path.stat().st_size == 0 and path.suffix != ".py":
+        if not path.is_file() or (path.stat().st_size == 0 and path.suffix != ".py"):
             raise ValueError(f"运行文件缺失或为空： {name}")
     html = (view / "index.html").read_text(encoding="utf-8")
     references = re.findall(r'(?:src|href)="([^"#]+)"', html)
@@ -114,23 +114,26 @@ def package_plugin(root: Path, output: Path, tag: str = "") -> Path:
     ):
         raise ValueError("入口 HTML 必须通过相对路径引用已打包的生产资源")
     for name in files:
-        if name.endswith(".css"):
-            for ref in re.findall(
-                r"url\([\"']?([^\"')]+)", (root / name).read_text(encoding="utf-8")
+        path = root / name
+        if path.suffix not in {".css", ".js"}:
+            continue
+        content = path.read_text(encoding="utf-8")
+        if path.suffix == ".js":
+            if any(
+                marker in content
+                for marker in ("mock_memory_", "MockApp", "/@vite/client")
             ):
-                if ref.startswith("data:"):
-                    continue
-                target = (root / name).parent.joinpath(ref).resolve()
-                if (
-                    not target.is_relative_to(root)
-                    or target.relative_to(root).as_posix() not in files
-                ):
-                    raise ValueError(f"CSS 引用了未打包的资源： {ref}")
-        if name.endswith(".js") and any(
-            marker in (root / name).read_text(encoding="utf-8")
-            for marker in ("mock_memory_", "MockApp", "/@vite/client")
-        ):
-            raise ValueError(f"生产资源中发现开发代码： {name}")
+                raise ValueError(f"生产资源中发现开发代码： {name}")
+            continue
+        references = re.findall(r"url\([\"']?([^\"')]+)", content)
+        for ref in references:
+            if ref.startswith("data:"):
+                continue
+            target = path.parent.joinpath(ref).resolve()
+            if not target.is_relative_to(root):
+                raise ValueError(f"CSS 引用了未打包的资源： {ref}")
+            if target.relative_to(root).as_posix() not in files:
+                raise ValueError(f"CSS 引用了未打包的资源： {ref}")
 
     output.mkdir(parents=True, exist_ok=True)
     archive = output / "astrbot_plugin_seekmemory.zip"

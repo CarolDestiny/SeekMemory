@@ -34,7 +34,8 @@
         ]
       }
     ],
-    "typescript/no-deprecated": "error"
+    "typescript/no-deprecated": "error",
+    "no-nested-ternary": "error"
   },
   "overrides": [
     {

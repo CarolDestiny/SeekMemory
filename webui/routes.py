@@ -36,6 +36,91 @@ class WebRoutes:
         routes = self.plugin.context.registered_web_apis
         routes[:] = [route for route in routes if route[1] != self.handle]
 
+    async def _status(self) -> dict:
+        """汇总引擎、模型、任务与配置状态，不发送模型请求。
+
+        Returns:
+            状态接口的数据；模型查询失败仅影响对应检查项。
+        """
+        from ..store.ledger import Ledger
+
+        plugin = self.plugin
+
+        checks = [
+            {"name": "engine", "ok": plugin.ready, "detail": "记忆引擎"},
+            {
+                "name": "journal",
+                "ok": not plugin.journal.persistence_error,
+                "detail": "生命周期日志持久化",
+            },
+        ]
+        if plugin.db is not None:
+            checks.append(
+                {
+                    "name": "ledger",
+                    "ok": Ledger(plugin.db).verify(),
+                    "detail": "账本哈希链",
+                }
+            )
+        try:
+            provider = await plugin.context.get_using_provider_async()
+            provider_detail = "检查模型服务配置，未发送模型请求"
+        except Exception as exc:
+            provider = None
+            provider_detail = f"查询模型服务失败： {type(exc).__name__}"
+        checks.append(
+            {
+                "name": "provider",
+                "ok": provider is not None,
+                "detail": provider_detail,
+            }
+        )
+        pending = (
+            Counter(turn.session_id for turn in plugin.buffer.items)
+            if plugin.buffer is not None
+            else Counter()
+        )
+        active = plugin.jobs.task is not None and not plugin.jobs.task.done()
+        return {
+            "ready": plugin.ready,
+            "checks": checks,
+            "activeTask": {
+                "id": plugin.jobs.task_id,
+                "kind": plugin.jobs.kind,
+            }
+            if active
+            else None,
+            "pending": [
+                {"session": key, "count": value} for key, value in pending.items()
+            ],
+            "schedulerCount": sum(not task.done() for task in plugin._schedulers),
+            "config": {
+                key: plugin.cfg.get(key)
+                for key in (
+                    "owner_umo",
+                    "open_to",
+                    "observe_groups",
+                    "summary_time",
+                    "weekly_day",
+                    "idle_flush_seconds",
+                    "checkpoint_seconds",
+                    "max_sessions_per_flush",
+                    "budget_chars",
+                    "recall_k",
+                    "trusted",
+                    "explore_rate",
+                    "recall_min_ev_abs",
+                    "recall_min_ev_rel",
+                    "min_pending",
+                    "backlog_flush_at",
+                    "topic_ttl_seconds",
+                    "max_flushes_per_day",
+                    "enable_reflect",
+                    "max_episodes",
+                )
+            },
+        }
+
     async def handle(self, action: str):
         """分发经过认证的管理操作。
 
@@ -73,87 +158,7 @@ class WebRoutes:
                 ]
                 return json_response({"events": events, "capacity": 500})
             if action == "status":
-                from ..store.ledger import Ledger
-
-                checks = [
-                    {"name": "engine", "ok": plugin.ready, "detail": "记忆引擎"},
-                    {
-                        "name": "journal",
-                        "ok": not plugin.journal.persistence_error,
-                        "detail": "生命周期日志持久化",
-                    },
-                ]
-                if plugin.db is not None:
-                    checks.append(
-                        {
-                            "name": "ledger",
-                            "ok": Ledger(plugin.db).verify(),
-                            "detail": "账本哈希链",
-                        }
-                    )
-                try:
-                    provider = await plugin.context.get_using_provider_async()
-                    provider_detail = "检查模型服务配置，未发送模型请求"
-                except Exception as exc:
-                    provider = None
-                    provider_detail = f"查询模型服务失败： {type(exc).__name__}"
-                checks.append(
-                    {
-                        "name": "provider",
-                        "ok": provider is not None,
-                        "detail": provider_detail,
-                    }
-                )
-                pending = (
-                    Counter(turn.session_id for turn in plugin.buffer.items)
-                    if plugin.buffer is not None
-                    else Counter()
-                )
-                active = plugin.jobs.task is not None and not plugin.jobs.task.done()
-                return json_response(
-                    {
-                        "ready": plugin.ready,
-                        "checks": checks,
-                        "activeTask": {
-                            "id": plugin.jobs.task_id,
-                            "kind": plugin.jobs.kind,
-                        }
-                        if active
-                        else None,
-                        "pending": [
-                            {"session": key, "count": value}
-                            for key, value in pending.items()
-                        ],
-                        "schedulerCount": sum(
-                            not task.done() for task in plugin._schedulers
-                        ),
-                        "config": {
-                            key: plugin.cfg.get(key)
-                            for key in (
-                                "owner_umo",
-                                "open_to",
-                                "observe_groups",
-                                "summary_time",
-                                "weekly_day",
-                                "idle_flush_seconds",
-                                "checkpoint_seconds",
-                                "max_sessions_per_flush",
-                                "budget_chars",
-                                "recall_k",
-                                "trusted",
-                                "explore_rate",
-                                "recall_min_ev_abs",
-                                "recall_min_ev_rel",
-                                "min_pending",
-                                "backlog_flush_at",
-                                "topic_ttl_seconds",
-                                "max_flushes_per_day",
-                                "enable_reflect",
-                                "max_episodes",
-                            )
-                        },
-                    }
-                )
+                return json_response(await self._status())
             if (
                 not plugin.ready
                 or plugin.db is None
