@@ -37,7 +37,7 @@ Even `vite build --mode mock` does not enable demo data.
 
 ## Validation and packaging
 
-Type checking uses TypeScript 7.0.2. Both app and build configuration inherit
+Type checking uses TypeScript 7.0.2. App, build, and test configurations inherit
 strict settings from `tsconfig.base.json`, including unchecked indexed access
 and exact optional properties. Oxlint replaces ESLint and runs type-aware rules
 through `oxlint-tsgolint`. Explicit `any`, unsafe use of propagated `any`, unsafe
@@ -47,6 +47,8 @@ Warnings also fail the lint command. Third-party declarations are not linted.
 ```bash
 pnpm typecheck
 pnpm lint
+pnpm test
+pnpm check
 pnpm build
 ```
 
@@ -59,12 +61,60 @@ Assets use relative URLs. AstrBot injects its plugin view SDK, which sets
 Future API calls should use `window.AstrBotPluginView` and plugin routes registered
 through `Context.register_web_api`.
 
-The presentational components in `src/components/memory-library.tsx` and
-`src/components/memory-detail.tsx` receive a view model from `src/lib/memory.ts`.
-Development fixtures and preview controls live separately in `src/dev/`.
-When the API is implemented, adapt its responses to this model instead of
-embedding demo-data fallbacks in the production client. Authentication and
-real memory operations still require integration testing inside AstrBot.
+Tests run with Node's built-in TypeScript support and test runner. They cover
+schema failures, immutable inputs, combined filters, page resets, empty and
+shrinking datasets, cross-page navigation, and deterministic ordering.
+
+## Architecture and component replacement
+
+The memory feature uses a small MVVM-style split:
+
+```text
+src/dev/                         Development source and preview controls
+src/features/memory/
+  model.ts                       Zod schemas, inferred types, loading state
+  library-state.ts               Pure reducer and derived selection/statistics
+  use-memory-library.ts          React binding and user actions
+  use-memory-detail.ts           Version selection and resolved relationships
+  views/                        Layout, labels, icons, responsive behavior
+src/ui/
+  index.tsx                     Application-owned UI contracts and adapters
+  styles.css                    Theme tokens and component-vendor CSS
+  shadcn/                       Generated component implementation
+```
+
+Data sources validate unknown input with `memoryCollectionSchema` before passing
+a `MemorySource` to the workspace. Types are inferred from the Zod schemas;
+there is no separate interface to keep in sync. Ready, loading, and error sources
+are a discriminated union; empty results are a valid ready source. The current
+mock source uses this same boundary. The future AstrBot source should adapt the
+wire format here, without adding demo fallbacks to the real client.
+
+Pure models and state do not import React or access browser globals. React hooks
+own application state and derived data; views own presentation concerns such as
+the mobile drawer. The UI adapter cannot import memory features or mock data.
+Oxlint enforces these directions and blocks direct vendor imports from views.
+Models and hooks have no dependency on shadcn, Base UI, CSS, or Lucide.
+
+To replace the component library:
+
+1. Reimplement `src/ui/index.tsx` against the new library, preserving its own
+   React/DOM contracts. Compound controls expose `DetailDrawer` and `Tabs` rather
+   than exporting Base UI's composition API or vendor prop types.
+2. Update `src/ui/styles.css`, retaining the semantic tokens used by the views
+   and the host's `html[data-theme]` behavior. Remove `src/ui/shadcn/`,
+   `components.json`, and unused vendor dependencies when no longer needed.
+3. Run `pnpm check`, `pnpm build`, and the mock preview. Check keyboard focus,
+   drawer dismissal, tab selection, themes, and narrow layouts with the new library.
+
+The model, reducer, and hooks require no changes for a component-library swap.
+Views still intentionally use React, Tailwind layout utilities, and Lucide icons.
+Replacing those technologies involves their presentation files too; the UI
+adapter is not a promise of framework-independent rendering. There is no
+repository/DI framework while only one development source exists.
+
+Authentication, bridge behavior, and real memory operations still require
+integration testing inside AstrBot.
 
 ## Components
 
@@ -72,6 +122,8 @@ real memory operations still require integration testing inside AstrBot.
 pnpm exec shadcn add button
 ```
 
-Generated components live in `src/components/ui`. Add components as needed.
+Generated components live in `src/ui/shadcn`. Add components as needed and expose
+application-owned contracts through `src/ui/index.tsx`; feature views import only
+`@/ui`. Keep vendor-specific selectors and styling in the adapter.
 See the [AstrBot plugin view guide](https://docs.astrbot.app/dev/star/guides/plugin-pages.html)
 and [shadcn/ui documentation](https://ui.shadcn.com/docs/installation/vite).

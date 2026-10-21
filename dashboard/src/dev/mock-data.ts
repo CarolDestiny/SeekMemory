@@ -1,7 +1,7 @@
-import type { MemoryRecord } from "@/lib/memory"
+import type { MemoryRecord } from "../features/memory/model.ts"
 
 // All people, sessions, and memories below are fictional layout fixtures.
-export const mockMemories: MemoryRecord[] = [
+export const mockMemories: readonly MemoryRecord[] = [
   {
     id: "mock_memory_001",
     title: "林舟喜欢清淡一些的咖啡",
