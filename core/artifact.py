@@ -70,6 +70,7 @@ class Header:
     time: TimeSpan = field(default_factory=TimeSpan)
     said_by: str = "owner"
     shareable: str = "private_only"
+    subject_id: str = ""
 
 
 @dataclass(frozen=True)
