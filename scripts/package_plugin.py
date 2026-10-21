@@ -17,7 +17,7 @@ RUNTIME_FILES = {
     "LICENSE-MIT",
     "LICENSE-APACHE",
 }
-RUNTIME_PACKAGES = {"core", "store", "recall", "perceive", "maintain"}
+RUNTIME_PACKAGES = {"core", "store", "recall", "perceive", "maintain", "webui"}
 ASSET_EXTENSIONS = {
     ".js",
     ".css",

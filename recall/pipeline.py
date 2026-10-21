@@ -6,14 +6,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..core.graph import Graph
     from ..recall.assemble import build as assemble_text
     from ..recall.designated import deliverable, mark_given
-    from ..recall.drift import best_of as drift_best, should_drift
-    from ..recall.history import trajectory
+    from ..recall.drift import best_of as drift_best
+    from ..recall.drift import should_drift
     from ..recall.gate import pinned
+    from ..recall.history import trajectory
     from ..recall.intent import intent_of
     from ..recall.scope import visible
     from ..recall.score import select
@@ -21,21 +24,22 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.spread import activate
     from ..store.cache import Cache
     from ..store.db import DB
-    from ..core.graph import Graph
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
+    from core.graph import Graph
+    from store.cache import Cache
+    from store.db import DB
+
     from recall.assemble import build as assemble_text
     from recall.designated import deliverable, mark_given
-    from recall.drift import best_of as drift_best, should_drift
-    from recall.history import trajectory
+    from recall.drift import best_of as drift_best
+    from recall.drift import should_drift
     from recall.gate import pinned
+    from recall.history import trajectory
     from recall.intent import intent_of
     from recall.scope import visible
     from recall.score import select
     from recall.seed import seeds
     from recall.spread import activate
-    from store.cache import Cache
-    from store.db import DB
-    from core.graph import Graph
 
 Conf = Callable[[str, Any], Any]
 
@@ -49,19 +53,46 @@ def subject_of(speaker: str, owner_umo: str) -> str:
     return "owner" if owner_id and talker == owner_id else talker
 
 
-def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
-                private: bool, conf: Conf, owner_umo: str,
-                speaker: str = "",
-                log: Callable[[str], None] = lambda _msg: None) -> tuple[str, dict]:
-    """按"常驻层 + 检索 + 偶然浮现"拼出注入文本。
+def build_block(
+    cache: Cache,
+    graph: Graph,
+    db: DB,
+    umo: str,
+    text: str,
+    private: bool,
+    conf: Conf,
+    owner_umo: str,
+    speaker: str = "",
+    log: Callable[[str], None] = lambda _msg: None,
+    *,
+    dry_run: bool = False,
+) -> tuple[str, dict]:
+    """Assemble pinned, retrieved and spontaneous memories for a conversation.
 
-    返回 (文本, 决策信息)：决策里有唤起档位与命中条数，供监控统计。
+    Args:
+        cache: Live active-artifact cache.
+        graph: Relationship graph for activation spreading.
+        db: Database for ownership lookup and designated delivery.
+        umo: Exact conversation identity.
+        text: Incoming message to recall against.
+        private: Whether this is a private conversation.
+        conf: Typed configuration lookup shared with the plugin.
+        owner_umo: Configured owner conversation.
+        speaker: Actual sender identity.
+        log: Callback for recall summaries.
+        dry_run: Skip delivery writes for administrative previews.
+
+    Returns:
+        Injection text and operational decision counters.
     """
     lookup = db.source_umo if db is not None else None
     subject = subject_of(speaker, owner_umo)
     pinned_arts = visible(pinned(cache, subject), umo, owner_umo, lookup)
-    pool = [a for a in visible(cache.active(), umo, owner_umo, lookup)
-            if deliverable(a, text, private)]
+    pool = [
+        a
+        for a in visible(cache.active(), umo, owner_umo, lookup)
+        if deliverable(a, text, private)
+    ]
     if not pool and not pinned_arts:
         return "", {"mode": "none", "picked": 0, "pinned": 0, "chars": 0}
 
@@ -76,7 +107,9 @@ def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
         candidates = [(a, float(activation.get(a.header.id, 0.0))) for a in pool]
         loose = mode == "loose"
         picked = select(
-            candidates, text, 0.0,
+            candidates,
+            text,
+            0.0,
             k=int(conf("recall_k", 8)) + (2 if loose else 0),
             explore=float(conf("explore_rate", 0.1)),
             gate=True,
@@ -108,7 +141,13 @@ def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
         is_private=private,
         notes=notes,
     )
-    mark_given(db, cache, designated + picked, block)
-    info = {"mode": mode, "picked": len(picked), "pinned": len(pinned_arts),
-            "chars": len(block), "drift": bool(picked) and not designated}
+    if not dry_run:
+        mark_given(db, cache, designated + picked, block)
+    info = {
+        "mode": mode,
+        "picked": len(picked),
+        "pinned": len(pinned_arts),
+        "chars": len(block),
+        "drift": bool(picked) and not designated,
+    }
     return block, info

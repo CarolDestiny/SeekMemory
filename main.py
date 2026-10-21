@@ -10,21 +10,24 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import os
+from pathlib import Path
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 from .core.graph import Graph
 from .core.tree import Tree
 from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
 from .perceive.calls import log_call
-from .perceive.compress import build_compress_prompt, parse_compress
 from .recall.designated import is_private
 from .recall.pipeline import build_block
 from .store.cache import Cache
 from .store.db import DB
+from .webui.jobs import Jobs
+from .webui.journal import Journal
+from .webui.routes import WebRoutes
 
 
 class Main(star.Star):
@@ -40,7 +43,17 @@ class Main(star.Star):
         self._flushing = False
         self._flush_day = ""
         self._flush_count = 0
+        self._schedulers: list[asyncio.Task] = []
+        self.data_path = (
+            Path(str(self._c("db_path", ""))).expanduser()
+            if self._c("db_path", "")
+            else Path(get_astrbot_plugin_data_path()) / "seekmemory" / "memory.db"
+        )
+        self.journal = Journal(self.data_path.parent / "lifecycle.jsonl")
+        self.jobs = Jobs(self.journal)
         self._init_engine()
+        self.web = WebRoutes(self)
+        self.web.register()
 
     # ---------------- 配置 ----------------
     def _c(self, key: str, default):
@@ -64,22 +77,23 @@ class Main(star.Star):
     # ---------------- 初始化 ----------------
     def _init_engine(self) -> None:
         try:
-            path = str(self._c("db_path", "")) or os.path.join(
-                "/AstrBot/data/plugin_data/seekmemory", "memory.db"
-            )
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            self.db = DB(path)
+            self.data_path.parent.mkdir(parents=True, exist_ok=True)
+            self.db = DB(str(self.data_path))
             self.cache = Cache(self.db)
             self.cache.load()
             self.tree = Tree(self.db, self.cache)
             self.graph = Graph(self.db, self.cache)
+            self.buffer = Buffer(str(self.data_path.parent / "pending.json"))
             self.ready = True
-            self.buffer = Buffer(os.path.join(os.path.dirname(path), "pending.json"))
+            self.journal.record(
+                "plugin", "ready", f"Loaded {self.cache.size()} active artifacts"
+            )
             logger.info(
                 f"[seekmemory] 已加载 {self.cache.size()} 条记忆，"
                 f"待抽取 {len(self.buffer.items)} 条"
             )
         except Exception as e:  # noqa: BLE001
+            self.journal.record("plugin", "failed", type(e).__name__)
             logger.error(f"[seekmemory] 初始化失败，记忆功能降级：{e}")
 
     # ---------------- 权限 ----------------
@@ -124,28 +138,43 @@ class Main(star.Star):
                 return
 
             umo = str(getattr(event, "unified_msg_origin", "") or "")
-            block, info = self._recall_block(text, umo, is_private(event),
-                                            str(event.get_sender_id()))
+            block, info = self._recall_block(
+                text, umo, is_private(event), str(event.get_sender_id())
+            )
             log_call(self._calls_path(), umo, info)
+            self.journal.record(
+                "recall",
+                "info",
+                f"mode={info['mode']} picked={info['picked']} chars={info['chars']}",
+            )
             if block:
                 req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
                 if self._c("debug_log", False):
                     logger.info(f"[seekmemory] 注入 {len(block)} 字")
         except Exception as e:  # noqa: BLE001
+            self.journal.record("recall", "failed", type(e).__name__)
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
 
     def _calls_path(self) -> str:
         """调用日志路径：和数据目录放一起。"""
-        db = self._c("db_path", "")
-        base = os.path.dirname(str(db)) if db else "/AstrBot/data/plugin_data/seekmemory"
-        return os.path.join(base, "calls.jsonl")
+        return str(self.data_path.parent / "calls.jsonl")
 
-    def _recall_block(self, text: str, umo: str = "", private: bool = False,
-                      speaker: str = "") -> tuple[str, dict]:
+    def _recall_block(
+        self, text: str, umo: str = "", private: bool = False, speaker: str = ""
+    ) -> tuple[str, dict]:
         """交给读路径模块：常驻层 + 检索 + 偶然浮现。"""
-        return build_block(self.cache, self.graph, self.db, umo, text, private,
-                           self._c, self.owner_umo, speaker,
-                           log=lambda msg: logger.info(f"[seekmemory] {msg}"))
+        return build_block(
+            self.cache,
+            self.graph,
+            self.db,
+            umo,
+            text,
+            private,
+            self._c,
+            self.owner_umo,
+            speaker,
+            log=lambda msg: logger.info(f"[seekmemory] {msg}"),
+        )
 
     # ---------------- 写路径：缓冲 ----------------
     @filter.event_message_type(filter.EventMessageType.ALL)
@@ -163,23 +192,51 @@ class Main(star.Star):
     # ---------------- 定时 ----------------
     @filter.on_astrbot_loaded()
     async def start_jobs(self) -> None:
-        asyncio.create_task(self._nightly_loop())
-        asyncio.create_task(self._weekly_loop())
-        asyncio.create_task(self._idle_loop())
+        if not self.ready or self.jobs.closed or self._schedulers:
+            return
+        self._schedulers = [
+            asyncio.create_task(operation())
+            for operation in (self._nightly_loop, self._weekly_loop, self._idle_loop)
+        ]
+        self.journal.record("scheduler", "running", "Maintenance schedules started")
+
+    async def initialize(self) -> None:
+        """Start schedules on activation, including plugin reload."""
+        await self.start_jobs()
+
+    async def terminate(self) -> None:
+        """Cancel owned tasks, detach routes, and close storage in that order."""
+        self.ready = False
+        for task in self._schedulers:
+            task.cancel()
+        await asyncio.gather(*self._schedulers, return_exceptions=True)
+        self._schedulers.clear()
+        await self.jobs.close()
+        self.web.close()
+        if self.buffer is not None:
+            self.buffer.save()
+        if self.db is not None:
+            self.db.close()
+            self.db = None
+        self.journal.record("plugin", "stopped", "Plugin resources released")
 
     async def _nightly_loop(self) -> None:
         while True:
-            await asyncio.sleep(self._seconds_until(str(self._c("summary_time", "23:50"))))
+            await asyncio.sleep(
+                self._seconds_until(str(self._c("summary_time", "23:50")))
+            )
             try:
-                await self._nightly()
+                self.jobs.submit("nightly", self._nightly)
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 夜间整理失败：{e}")
 
     async def _weekly_loop(self) -> None:
         while True:
-            await asyncio.sleep(self._seconds_until("23:55", weekday=self._c("weekly_day", 6)))
+            await asyncio.sleep(
+                self._seconds_until("23:55", weekday=self._c("weekly_day", 6))
+            )
             try:
-                await self._weekly()
+                self.jobs.submit("weekly", self._weekly)
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 每周整理失败：{e}")
 
@@ -187,6 +244,8 @@ class Main(star.Star):
     def _seconds_until(hhmm: str, weekday: int | None = None) -> float:
         try:
             hh, mm = (int(x) for x in hhmm.split(":"))
+            if not 0 <= hh <= 23 or not 0 <= mm <= 59:
+                raise ValueError("Invalid schedule")
         except Exception:
             hh, mm = 23, 50
         now = datetime.datetime.now()
@@ -194,6 +253,7 @@ class Main(star.Star):
         if target <= now:
             target += datetime.timedelta(days=1)
         if weekday is not None:
+            weekday = int(weekday) % 7
             while target.weekday() != weekday:
                 target += datetime.timedelta(days=1)
         return max((target - now).total_seconds(), 60)
@@ -221,7 +281,7 @@ class Main(star.Star):
             await asyncio.sleep(30)
             try:
                 if self._should_flush():
-                    await self._flush("空闲")
+                    self.jobs.submit("idle", lambda: self._flush("idle"))
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 空闲抽取失败：{e}")
 
@@ -236,32 +296,62 @@ class Main(star.Star):
             buckets.setdefault(str(row[0] or ""), []).append(row)
         cap = int(self._c("max_sessions_per_flush", 6))
         ordered = sorted(buckets.items(), key=lambda kv: len(kv[1]), reverse=True)
-        return ordered[:max(1, cap)]
+        return ordered[: max(1, cap)]
 
     async def _flush(self, reason: str) -> None:
         """抽一批：调用模型、解析、写库建边；全程 fail-open。"""
-        if self._flushing or self.buffer is None or not self.buffer.items or self.db is None:
+        if (
+            self._flushing
+            or self.buffer is None
+            or not self.buffer.items
+            or self.db is None
+        ):
             return
         self._flushing = True
         try:
             prov = await self.context.get_using_provider_async()
             if not prov:
-                return
-            items = self.buffer.take()
-            self._flush_count += 1
+                raise RuntimeError("No model provider is configured")
+            items = list(self.buffer.items)
             sessions = self._split_sessions(items)
+            self._flush_count += 1
             written = 0
             for umo, part in sessions:
                 got = await absorb(
-                    part, self.db, self.cache, self.graph, prov,
-                    log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
+                    part,
+                    self.db,
+                    self.cache,
+                    self.graph,
+                    prov,
+                    log=lambda _msg: self.journal.record(
+                        "extract",
+                        "warning",
+                        "Extraction reported a warning",
+                        self.jobs.task_id,
+                    ),
+                    strict=True,
                 )
+                # Keep in-flight messages persisted until processing succeeds.
+                # Identity preserves identical messages arriving during the await.
+                processed = {id(row) for row in part}
+                self.buffer.items = [
+                    row for row in self.buffer.items if id(row) not in processed
+                ]
+                self.buffer.save()
                 written += got
-                logger.info(f"[seekmemory] {reason}抽取 {umo or '未知会话'}："
-                            f"{len(part)} 条对话，写入 {got} 条")
+                logger.info(
+                    f"[seekmemory] {reason}抽取 {umo or '未知会话'}："
+                    f"{len(part)} 条对话，写入 {got} 条"
+                )
             logger.info(
                 f"[seekmemory] {reason}抽取：{len(sessions)} 个会话，"
                 f"共写入 {written} 条（今日第 {self._flush_count} 次）"
+            )
+            self.journal.record(
+                "extract",
+                "info",
+                f"sessions={len(sessions)} written={written}",
+                self.jobs.task_id,
             )
         finally:
             self._flushing = False
@@ -277,6 +367,12 @@ class Main(star.Star):
         dropped = decay_all(self.db, self.cache, today)
         merged = merge_similar(self.db, self.cache, threshold=0.6)
         persona = distill_persona(self.db, self.cache, today, self.owner_umo)
+        self.journal.record(
+            "weekly",
+            "info",
+            f"forgotten={dropped} merged={merged} persona={bool(persona)}",
+            self.jobs.task_id,
+        )
         logger.info(
             f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组，"
             f"人格 {'已更新' if persona else '无变化'}"
