@@ -1,6 +1,27 @@
+import { lazy, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 
+// Vite removes this branch and its fixture import from production builds.
+const MockApp =
+  import.meta.env.DEV && import.meta.env.MODE === "mock"
+    ? lazy(() => import("@/dev/MockApp"))
+    : null
+
 export default function App() {
+  if (MockApp) {
+    return (
+      <Suspense
+        fallback={
+          <p role="status" className="p-8 text-sm text-muted-foreground">
+            正在加载预览…
+          </p>
+        }
+      >
+        <MockApp />
+      </Suspense>
+    )
+  }
+
   return (
     <main className="mx-auto flex min-h-svh max-w-4xl flex-col justify-center gap-6 p-8">
       <div className="space-y-3">
