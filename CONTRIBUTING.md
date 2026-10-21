@@ -1,5 +1,8 @@
 # 贡献指南
 
+> AI agents and external contributors must also read [AGENTS.md](AGENTS.md).
+
+
 > 背景：v0.1 的所有改动都直接进了 `main`，没有 issue、PR 和评审。从这份文件开始，
 > P0/P1 改动必须先记录问题，再在分支上修，最后走 PR 流程合并。
 >
