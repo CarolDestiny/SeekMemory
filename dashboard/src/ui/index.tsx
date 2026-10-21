@@ -21,9 +21,21 @@ import {
 // Public contracts use React/DOM types, never component-vendor prop types.
 export interface ButtonProps extends ComponentProps<"button"> {
   variant?:
-    "default" | "outline" | "secondary" | "ghost" | "destructive" | "link"
+    | "default"
+    | "outline"
+    | "secondary"
+    | "ghost"
+    | "destructive"
+    | "link"
   size?:
-    "default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg"
+    | "default"
+    | "xs"
+    | "sm"
+    | "lg"
+    | "icon"
+    | "icon-xs"
+    | "icon-sm"
+    | "icon-lg"
 }
 
 export function Button(props: ButtonProps) {
@@ -32,7 +44,12 @@ export function Button(props: ButtonProps) {
 
 export interface BadgeProps extends ComponentProps<"span"> {
   variant?:
-    "default" | "secondary" | "destructive" | "outline" | "ghost" | "link"
+    | "default"
+    | "secondary"
+    | "destructive"
+    | "outline"
+    | "ghost"
+    | "link"
 }
 
 export function Badge(props: BadgeProps) {
