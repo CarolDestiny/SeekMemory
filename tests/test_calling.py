@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -15,6 +16,7 @@ from recall.drift import best_of, eligible, should_drift  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
 from recall.gate import pinned  # noqa: E402
 from recall.history import trajectory  # noqa: E402
+from perceive.calls import log_call  # noqa: E402
 from recall.intent import intent_of  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store.db import DB  # noqa: E402
@@ -205,6 +207,22 @@ class TrajectoryTest(unittest.TestCase):
         note = trajectory(cache, art)
         block = assemble([art], budget=500, notes={art.header.id: note})
         self.assertIn("觉得", block)
+
+
+class CallLogTest(unittest.TestCase):
+    """调用日志：记的是"这轮翻没翻记忆"，不记内容。"""
+
+    def test_log_and_read(self):
+        path = os.path.join(tempfile.mkdtemp(prefix="seekmem_call_"), "calls.jsonl")
+        log_call(path, "napcat:GroupMessage:1", {"mode": "none", "picked": 0, "chars": 0})
+        log_call(path, "napcat:FriendMessage:2", {"mode": "loose", "picked": 3, "chars": 41})
+        rows = [json.loads(line) for line in open(path, encoding="utf-8")]
+        self.assertEqual([r["mode"] for r in rows], ["none", "loose"])
+        self.assertEqual(rows[1]["picked"], 3)
+        self.assertEqual(rows[0]["kind"], "GroupMessage")
+
+    def test_bad_path_is_silent(self):
+        log_call("", "x", {})  # 不抛异常就算过
 
 
 if __name__ == "__main__":
