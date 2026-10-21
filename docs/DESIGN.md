@@ -647,4 +647,4 @@ WebUI 的 TypeScript 源码保存在 `dashboard/`，发版 CI 构建 `pages/memo
 不修改 Source；任务执行器串行处理手动/定时维护，卸载时先取消任务再释放数据库。
 生命周期日志保存最近 500 条，1 MiB 轮转并保留一个备份；重启把未结束任务标记为 interrupted。
 界面不改变已有 scope 语义：shared/shadow 进入跨会话候选，private 按归属过滤；shadow 正文仍由组装层遮蔽。
-详情和限制见 [WebUI 使用说明](zh/webui.md)、[管理接口](CONTRACT.md#webui-管理接口)。
+详情和限制见 [WebUI 使用说明](webui/README.md)、[管理接口](CONTRACT.md#webui-管理接口)。

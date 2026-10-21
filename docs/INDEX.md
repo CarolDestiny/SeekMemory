@@ -14,7 +14,7 @@
 | `tests/` | 单元测试 | — |
 | `dashboard/` | WebUI 源码、独立 Mock 与严格前端检查 | [dashboard/README](../dashboard/README.md) |
 | `webui/` | 宿主路由、管理服务、任务互斥、生命周期日志 | [契约](CONTRACT.md#webui-管理接口) |
-| `docs/zh/` / `docs/en/` | 插件视图使用说明与截图 | [中文](zh/webui.md) · [English](en/webui.md) |
+| `docs/webui/` | 插件视图使用说明与截图 | [使用说明](webui/README.md) |
 | `scripts/package_plugin.py` | 运行文件白名单与 Release ZIP 打包 | [发布说明](../CONTRIBUTING.md#release-packaging) |
 | `docs/` | 设计文档 | [ARCHITECTURE](ARCHITECTURE.md) / [DESIGN](DESIGN.md) · [CONTRACT](CONTRACT.md) |
 
