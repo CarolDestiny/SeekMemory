@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -143,6 +144,18 @@ class ModelBoundaryTest(unittest.TestCase):
         self.assertEqual(got.text, "ok")
         self.assertEqual(got.usage_in, 10)
         self.assertEqual(got.provider_id, "p1")
+
+
+class MigrationTest(unittest.TestCase):
+    def test_old_nodes_table_gets_subject_id(self):
+        path = os.path.join(tempfile.mkdtemp(), "old.db")
+        con = sqlite3.connect(path)
+        con.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, family TEXT, level TEXT, parent TEXT, blob TEXT, state TEXT, scope TEXT, strength TEXT, time TEXT, said_by TEXT, shareable TEXT, created_at TEXT, updated_at TEXT, revision INTEGER, lineage TEXT)")
+        con.commit()
+        con.close()
+        db = DB(path)
+        cols = {r[1] for r in db.conn.execute("PRAGMA table_info(nodes)")}
+        self.assertIn("subject_id", cols)
 
 
 class ImportBoundaryTest(unittest.TestCase):

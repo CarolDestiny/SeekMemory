@@ -93,9 +93,10 @@ class DB:
 
     def _migrate(self) -> None:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(nodes)")}
-        if "subject_id" not in cols:
-            with self.conn:
+        with self.conn:
+            if "subject_id" not in cols:
                 self.conn.execute("ALTER TABLE nodes ADD COLUMN subject_id TEXT NOT NULL DEFAULT ''")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_subject ON nodes(subject_id)")
 
     def upsert(self, art: Artifact) -> None:
         h, now = art.header, _now()
