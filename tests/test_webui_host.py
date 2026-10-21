@@ -226,6 +226,8 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.db.commit(art, expected_revision=0, op="create")
         self.plugin.cache.put(art)
         self.plugin.checkpoint.record(art)
+        response = await self.request("status")
+        self.assertEqual(json.loads(response.body)["checkpointPending"], 1)
         await self.plugin.terminate()
         db = store.DB(str(Path(self.temp.name) / "memory.db"))
         try:

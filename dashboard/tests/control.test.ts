@@ -1,3 +1,7 @@
+import {
+  selectAttribution,
+  selectDisclosure,
+} from "../src/features/control/model.ts"
 import assert from "node:assert/strict"
 import test from "node:test"
 import {
@@ -68,6 +72,13 @@ void test("runtime status supports an unavailable engine while retaining diagnos
     checks: [{ name: "engine", ok: false, detail: "Unavailable" }],
     activeTask: null,
     pending: [],
+    pendingTopics: [],
+    extractionPolicy: {
+      backlogThreshold: 30,
+      topicTtlSeconds: 86400,
+      maxTopicsPerBatch: 6,
+    },
+    checkpointPending: null,
     schedulerCount: 0,
     config: {},
   }
@@ -124,5 +135,84 @@ void test("structured logs preserve source, context and bounded exception frames
   assert.equal(
     eventSchema.safeParse({ ...input, context: { payload: {} } }).success,
     false
+  )
+})
+
+void test("主体与事件时间保持独立，旧记录不伪造归属和日期", () => {
+  const detail = detailSchema.parse({
+    artifact: {
+      header: {
+        id: "a",
+        family: "memory",
+        revision: 1,
+        state: "active",
+        scope: "shared",
+        subject_id: "subject-2",
+        said_by: "speaker-1",
+        time: {
+          created: "2026-10-19",
+          updated: "2026-10-21",
+          valid_from: "2026-10-19",
+          valid_to: null,
+        },
+      },
+      payload: { subject_kind: "third_party" },
+    },
+    versions: [],
+    sources: [],
+    ledger: [],
+  })
+  const info = selectAttribution(detail)
+  assert.equal(info.subjectId, "subject-2")
+  assert.equal(info.saidBy, "speaker-1")
+  assert.equal(info.subjectKind, "third_party")
+  assert.equal(info.created, "2026-10-19")
+  assert.equal(info.validTo, null)
+  const legacy = detailSchema.parse({
+    ...detail,
+    artifact: {
+      header: {
+        id: "old",
+        family: "memory",
+        revision: 1,
+        state: "active",
+        scope: "private",
+      },
+      payload: {},
+    },
+  })
+  assert.deepEqual(selectAttribution(legacy), {
+    subjectId: null,
+    saidBy: null,
+    subjectKind: null,
+    created: null,
+    validFrom: null,
+    validTo: null,
+  })
+})
+
+void test("披露展示保留静默和未知级别，不把缺失或损坏结果当成全文许可", () => {
+  const result = {
+    block: "",
+    info: {
+      disclosure: {
+        a: "full",
+        b: "paraphrase",
+        c: "hint",
+        d: "silence",
+        e: "future",
+      },
+    },
+    visible: ["a", "b", "c", "d", "e", "unchecked"],
+    excluded: [],
+  }
+  assert.deepEqual(
+    selectDisclosure(result).map((item) => item.level),
+    ["full", "paraphrase", "hint", "silence", "future"]
+  )
+  assert.deepEqual(selectDisclosure({ ...result, info: {} }), [])
+  assert.deepEqual(
+    selectDisclosure({ ...result, info: { disclosure: { a: 1 } } }),
+    []
   )
 })

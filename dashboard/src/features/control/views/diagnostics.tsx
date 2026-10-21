@@ -2,6 +2,13 @@ import { Badge, Button, Input, JsonView, Textarea } from "@/ui"
 import type { ManagementClient } from "../model"
 import { useDiagnostics } from "../use-diagnostics"
 
+const disclosureLabels: Record<string, string> = {
+  full: "全文",
+  paraphrase: "改述",
+  hint: "提示",
+  silence: "静默",
+}
+
 export function Diagnostics({ client }: { client: ManagementClient }) {
   const {
     query,
@@ -11,6 +18,7 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
     speaker,
     setSpeaker,
     result,
+    disclosure,
     error,
     busy,
     diagnose,
@@ -72,7 +80,7 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
         <div className="space-y-5">
           {result.info["mock"] === true && (
             <Badge variant="outline">
-              Mock 文本匹配示意 · 不代表真实召回质量
+              Mock 匹配与披露示意 · 不代表真实召回规则
             </Badge>
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -98,6 +106,30 @@ export function Diagnostics({ client }: { client: ManagementClient }) {
           <p className="rounded-xl border bg-primary/5 p-6 text-sm leading-7 whitespace-pre-wrap">
             {result.block || "本次不会注入记忆"}
           </p>
+          <section className="surface-panel space-y-3 p-5">
+            <h2 className="text-lg font-semibold">逐条披露结果</h2>
+            <p className="text-xs leading-6 text-muted-foreground">
+              仅展示检索选中记忆的披露判定，不包含所有常驻或指定交付条目。全文许可仍受最终组装与字数预算限制；静默表示该条未进入披露后的选中集合。
+            </p>
+            {disclosure.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                本次没有逐条披露记录。
+              </p>
+            )}
+            <ul className="divide-y">
+              {disclosure.map(({ id, level }) => (
+                <li
+                  key={id}
+                  className="flex items-start justify-between gap-3 py-3"
+                >
+                  <code className="min-w-0 text-xs wrap-anywhere">{id}</code>
+                  <Badge variant="outline">
+                    {disclosureLabels[level] ?? `未知级别：${level}`}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </section>
           <h2 className="text-lg font-semibold">决策指标</h2>
           <JsonView value={result.info} />
           <div className="grid gap-4 md:grid-cols-2">

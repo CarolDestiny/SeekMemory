@@ -10,6 +10,15 @@ import {
 import type { ManagementClient } from "../model"
 import { useEditor } from "../use-editor"
 
+const subjectLabels: Record<string, string> = {
+  owner: "主人",
+  speaker: "说话人",
+  self: "机器人自身",
+  world: "外部事实",
+  relation: "关系",
+  third_party: "第三方",
+}
+
 export function ArtifactEditor({
   client,
   id,
@@ -41,6 +50,34 @@ export function ArtifactEditor({
         <p className="font-mono text-xs wrap-anywhere text-muted-foreground">
           {id}
         </p>
+        {vm.attribution && (
+          <section className="space-y-3 rounded-xl border bg-secondary/40 p-4">
+            <h3 className="font-semibold">主体与时间</h3>
+            <dl className="grid grid-cols-2 gap-4 text-xs">
+              {[
+                ["记忆主体 ID", vm.attribution.subjectId],
+                ["说话人标记", vm.attribution.saidBy],
+                [
+                  "主体类型",
+                  subjectLabels[vm.attribution.subjectKind ?? ""] ??
+                    vm.attribution.subjectKind,
+                ],
+                ["事件 / 创建时间", vm.attribution.created],
+                ["有效期开始", vm.attribution.validFrom],
+                ["有效期结束", vm.attribution.validTo],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0 space-y-1">
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd className="wrap-anywhere">{value || "未记录"}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="text-xs leading-5 text-muted-foreground">
+              说话人不一定是记忆主体。新版抽取优先记录事件时间，旧记忆可能仅有创建时间；此处保留原始时间，不补推缺失信息。
+              修改 JSON 不会自动重算头部的主体 ID 或时间。
+            </p>
+          </section>
+        )}
         {vm.error && (
           <p
             role="alert"

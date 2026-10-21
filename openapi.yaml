@@ -613,6 +613,24 @@ components:
           $ref: '#/components/schemas/MemoryState'
         scope:
           $ref: '#/components/schemas/Scope'
+        subject_id:
+          type: string
+        said_by:
+          type: string
+        time:
+          type: object
+          properties:
+            created:
+              type: string
+            updated:
+              type: string
+            valid_from:
+              type: [string, 'null']
+            valid_to:
+              type: [string, 'null']
+            expires:
+              type: [string, 'null']
+          additionalProperties: true
       required:
       - id
       - family
@@ -653,6 +671,22 @@ components:
       - ledger
       additionalProperties: false
       description: 原始快照、来源和账本保持 JSON 扩展字段；不补造历史缺失数据。header 允许既有 lineage、strength、time 等字段。
+    PendingTopic:
+      type: object
+      properties:
+        id:
+          type: string
+        session:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+        oldestAt:
+          type: [string, 'null']
+          format: date-time
+      required: [id, session, count, oldestAt]
+      additionalProperties: false
+      description: 按上游话题分组的待处理消息，仅提供计数和时间，不返回对话正文。
     RuntimeStatus:
       type: object
       properties:
@@ -701,6 +735,25 @@ components:
             - session
             - count
             additionalProperties: false
+        pendingTopics:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingTopic'
+        extractionPolicy:
+          type: object
+          properties:
+            backlogThreshold:
+              type: integer
+            topicTtlSeconds:
+              type: number
+            maxTopicsPerBatch:
+              type: integer
+              minimum: 1
+          required: [backlogThreshold, topicTtlSeconds, maxTopicsPerBatch]
+          additionalProperties: false
+        checkpointPending:
+          type: [integer, 'null']
+          minimum: 0
         schedulerCount:
           type: integer
           minimum: 0
@@ -711,6 +764,9 @@ components:
       - checks
       - activeTask
       - pending
+      - pendingTopics
+      - extractionPolicy
+      - checkpointPending
       - schedulerCount
       - config
       additionalProperties: false

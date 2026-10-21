@@ -13,14 +13,17 @@ Every save appends a revision and ledger entry atomically; stale revisions confl
 Saves use the upstream Artifact kernel and preserve subject IDs and version-level evidence.
 New ledger entries store before/after revision numbers; content hashes are in version blobs.
 Loading an older payload creates an editable draft, not an immediate rollback.
-Merged records cannot be independently restored. Editing does not rebuild graph edges.
+Merged records cannot be independently restored. Editing does not recompute header subject IDs, times or graph edges.
+The attribution panel separates subject ID, speaker marker and subject kind, with event/creation
+time and validity dates. Missing legacy metadata remains unknown; creation time is not always event time.
 
 Administrators can inspect every scope. `private` uses conversation ownership;
 `shared` is visible across conversations; `shadow` enters the same candidate pool
 but assembly hides its content. The source-session filter does not change access.
 Upstream v0.3.0 also evaluates subject-aware disclosure for retrieved selections:
 full text, paraphrase, hint or silence. Scope visibility does not guarantee full-text
-injection; per-record decisions appear in the diagnostic disclosure data.
+injection. The disclosure panel lists returned IDs and their levels, including silent records.
+It covers retrieved selections, not every pinned/designated record; final injection also depends on budget.
 Read-only recall diagnostics accept a UMO, sender ID and query, reuse live rules,
 and do not consume designated delivery. Exploration can produce varying results.
 
@@ -36,7 +39,10 @@ but the batch still ends as failed. Backlog triggering follows the upstream thre
 and quiet-window policy; runtime configuration includes backlog_flush_at.
 Extraction resolves the model per session and batches turns by topic. Upstream v0.3.1
 provides topic segmentation/TTL, subject attribution and event-time parsing. The existing
-max_sessions_per_flush option now limits topics; pending counts remain grouped by session.
+max_sessions_per_flush option now limits topics. Runtime lists topic IDs, sessions, message counts
+and oldest timestamps, plus session totals and the effective backlog threshold, TTL and batch limit.
+TTL triggers extraction, not deletion. Pending reinforcement counts memories awaiting checkpoint persistence
+separately from messages awaiting extraction.
 Extraction logs include both session and topic identifiers. Four scheduler loops cover nightly extraction,
 weekly maintenance, idle extraction and checkpoints. Shutdown awaits tasks, saves pending
 messages and flushes recall reinforcement checkpoints before closing the database.
@@ -53,7 +59,7 @@ Retained unfinished tasks are marked interrupted after restart. Active tasks pol
 every two seconds; refresh idle views manually. This is not a complete host log archive.
 
 For standalone development, run `pnpm dev` in `dashboard/`. Mock mutations are
-temporary, tasks are simulated, and mock diagnostics only approximate text matching.
+temporary, tasks are simulated, and mock diagnostics demonstrate matching and disclosure levels without verifying live rules.
 Production uses the host bridge and never falls back to mock data. See the
 [engineering guide](../../dashboard/README.md) and [Chinese guide](../zh/webui.md).
 
@@ -64,7 +70,7 @@ surfaces; success, warning and error badges retain distinct colors and text labe
 Screenshots use fictional mock data and the shared production components:
 
 ![Memory library](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-memory-light.png)
-![Runtime and tasks](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-runtime-light.png)
+![Runtime and tasks](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/95812b0d36ebb76e859ebd2c4033fe784f87b923/images/topic-runtime.png)
 ![Lifecycle logs](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-logs-light.png)
 
 Preview images live on the separate [webui-previews branch](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews),
@@ -73,7 +79,7 @@ covers all nine category filters, versions, evidence, ledger, tasks, diagnostics
 and structured logs. Categories share the same library/detail UI; they are not
 nine specialized editors. Mock diagnostics do not verify real recall quality.
 
-![Recall diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-diagnostics-light.png)
+![Recall diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/95812b0d36ebb76e859ebd2c4033fe784f87b923/images/recall-disclosure.png)
 Earlier-theme functional reference (current colors are shown above):
 
 ![No-match diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-empty.png)

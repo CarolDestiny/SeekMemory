@@ -14,6 +14,17 @@ export const detailSchema = z.object({
       revision: z.number().int().positive(),
       state: z.enum(["active", "forgotten", "merged"]),
       scope: z.enum(["private", "shared", "shadow"]),
+      subject_id: z.string().exactOptional(),
+      said_by: z.string().exactOptional(),
+      time: z
+        .looseObject({
+          created: z.string().exactOptional(),
+          updated: z.string().exactOptional(),
+          valid_from: z.string().nullable().exactOptional(),
+          valid_to: z.string().nullable().exactOptional(),
+          expires: z.string().nullable().exactOptional(),
+        })
+        .exactOptional(),
     }),
     payload: z.record(z.string(), z.json()),
   }),
@@ -30,6 +41,20 @@ export const statusSchema = z.object({
   pending: z.array(
     z.object({ session: z.string(), count: z.number().int().nonnegative() })
   ),
+  pendingTopics: z.array(
+    z.object({
+      id: z.string(),
+      session: z.string(),
+      count: z.number().int().positive(),
+      oldestAt: z.iso.datetime({ offset: true }).nullable(),
+    })
+  ),
+  extractionPolicy: z.object({
+    backlogThreshold: z.number().int(),
+    topicTtlSeconds: z.number(),
+    maxTopicsPerBatch: z.number().int().positive(),
+  }),
+  checkpointPending: z.number().int().nonnegative().nullable(),
   schedulerCount: z.number().int().nonnegative(),
   config: z.record(z.string(), z.json()),
 }) satisfies z.ZodType<ApiResponse<"status">>
@@ -96,4 +121,27 @@ export interface ManagementClient {
   diagnose(query: DiagnosticQuery): Promise<Diagnostic>
   task(kind: "extract" | "weekly"): Promise<string>
   cancel(id: string): Promise<void>
+}
+
+/** 仅展示已记录的归属和时间，不从说话人或更新日期推断缺失信息。 */
+export function selectAttribution(detail: ArtifactDetail) {
+  const { header, payload } = detail.artifact
+  const subjectKind = payload["subject_kind"]
+  return {
+    subjectId: header.subject_id || null,
+    saidBy: header.said_by || null,
+    subjectKind: typeof subjectKind === "string" ? subjectKind : null,
+    created: header.time?.created || null,
+    validFrom: header.time?.valid_from || null,
+    validTo: header.time?.valid_to || null,
+  }
+}
+
+/** 披露判定只覆盖后端返回的记录，不将缺失结果当成全文许可。 */
+export function selectDisclosure(result: Diagnostic) {
+  const parsed = z
+    .record(z.string(), z.string())
+    .safeParse(result.info["disclosure"])
+  if (!parsed.success) return []
+  return Object.entries(parsed.data).map(([id, level]) => ({ id, level }))
 }

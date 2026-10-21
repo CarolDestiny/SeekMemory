@@ -74,6 +74,7 @@ for (const record of records) {
       familyPayload = { text: record.text }
   }
   const payload = {
+    subject_kind: "third_party",
     owner_umo: record.session,
     tags: [...record.tags],
     ...familyPayload,
@@ -88,7 +89,15 @@ for (const record of records) {
           revision: record.versions[0].revision,
           state: record.state,
           scope: record.scope,
-          said_by: record.subject,
+          said_by: "10001",
+          subject_id: "10002",
+          time: {
+            created: "2026-10-19T15:00:00+08:00",
+            updated: record.updatedAt,
+            valid_from: "2026-10-19",
+            valid_to: "2026-12-31",
+            expires: null,
+          },
           lineage: {
             sources: record.id === base.id ? ["demo-source-001"] : [],
           },
@@ -173,7 +182,7 @@ let events: OperationEvent[] = [
     message: "阶段已完成 （虚构预览）",
     taskId: "demo-extract-01",
     level: "INFO",
-    stage: "session.extract",
+    stage: "topic.extract",
     durationMs: 1240,
     source: {
       module: "seekmemory.main",
@@ -208,7 +217,7 @@ let events: OperationEvent[] = [
     message: "阶段中断 （虚构预览）",
     taskId: "demo-extract-02",
     level: "ERROR",
-    stage: "session.extract",
+    stage: "topic.extract",
     durationMs: 3012,
     source: {
       module: "seekmemory.main",
@@ -253,6 +262,26 @@ export const mockClient: ManagementClient = {
       })),
       activeTask: null,
       pending: [{ session: "napcat:GroupMessage:10001", count: 8 }],
+      pendingTopics: [
+        {
+          id: "tp_mock_coffee",
+          session: "napcat:GroupMessage:10001",
+          count: 5,
+          oldestAt: "2026-10-20T14:00:00+08:00",
+        },
+        {
+          id: "tp_mock_travel",
+          session: "napcat:GroupMessage:10001",
+          count: 3,
+          oldestAt: "2026-10-21T09:00:00+08:00",
+        },
+      ],
+      extractionPolicy: {
+        backlogThreshold: 30,
+        topicTtlSeconds: 86400,
+        maxTopicsPerBatch: 6,
+      },
+      checkpointPending: 2,
       schedulerCount: 4,
       config: {
         owner_umo: "napcat:FriendMessage:10001",
@@ -333,14 +362,28 @@ export const mockClient: ManagementClient = {
     const picked = visible.filter((record) =>
       record.text.includes(query.trim())
     )
+    // 轮流演示四种披露级别，不模拟后端的主体披露算法。
+    const levels = ["full", "paraphrase", "hint", "silence"] as const
+    const disclosure: Record<string, string> = {}
+    const blocks: string[] = []
+    for (const [index, record] of picked.entries()) {
+      const level = levels[index % levels.length] ?? "silence"
+      disclosure[record.id] = level
+      if (level === "full") blocks.push(record.text)
+      else if (level === "paraphrase")
+        blocks.push("曾提到过一件相关的事，细节不在这里展开。（Mock）")
+      else if (level === "hint") blocks.push("隐约记得一件相关的事。（Mock）")
+    }
+    const block = blocks.join("\n")
     return {
-      block: picked.map((record) => record.text).join("\n"),
+      block,
       info: {
         mock: true,
         mode: "strict",
-        picked: picked.length,
+        picked: blocks.length,
         pinned: 0,
-        chars: picked.map((record) => record.text).join("\n").length,
+        chars: block.length,
+        disclosure,
       },
       visible: visible.map((record) => record.id),
       excluded: records

@@ -1,5 +1,9 @@
 import { useState } from "react"
-import type { Diagnostic, ManagementClient } from "./model"
+import {
+  selectDisclosure,
+  type Diagnostic,
+  type ManagementClient,
+} from "./model"
 
 export function useDiagnostics(client: ManagementClient) {
   const [query, setQuery] = useState("")
@@ -21,6 +25,7 @@ export function useDiagnostics(client: ManagementClient) {
     }
   }
   return {
+    disclosure: result ? selectDisclosure(result) : [],
     query,
     setQuery,
     umo,
