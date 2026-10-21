@@ -13,9 +13,9 @@ export function MemorySidebar({ vm }: { vm: MemoryLibraryViewModel }) {
     categoryCounts,
   } = vm
   return (
-    <aside className="hidden w-56 shrink-0 flex-col border-r bg-card lg:flex">
+    <aside className="hidden w-56 shrink-0 flex-col border-r bg-sidebar lg:flex">
       <div className="flex items-center gap-3 px-6 py-7">
-        <div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+        <div className="brand-mark">
           <Layers3 className="size-5" />
         </div>
         <div>
@@ -33,7 +33,7 @@ export function MemorySidebar({ vm }: { vm: MemoryLibraryViewModel }) {
           className={cn(
             "h-10 w-full justify-start gap-3 px-3",
             category === "all" &&
-              "bg-primary/8 text-primary hover:bg-primary/12 hover:text-primary"
+              "bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover hover:text-primary-foreground"
           )}
           onClick={() => {
             setCategory("all")
@@ -41,9 +41,7 @@ export function MemorySidebar({ vm }: { vm: MemoryLibraryViewModel }) {
         >
           <Library className="size-4" />
           全部记忆
-          <span className="ml-auto font-mono text-xs opacity-60">
-            {stats.total}
-          </span>
+          <span className="ml-auto font-mono text-xs">{stats.total}</span>
         </Button>
         <p className="px-3 pt-7 pb-2 text-[11px] tracking-widest text-muted-foreground">
           按类型查看
@@ -59,7 +57,7 @@ export function MemorySidebar({ vm }: { vm: MemoryLibraryViewModel }) {
               className={cn(
                 "h-10 w-full justify-start gap-3 px-3 font-normal text-muted-foreground",
                 category === key &&
-                  "bg-primary/8 font-medium text-primary hover:text-primary"
+                  "bg-primary font-medium text-primary-foreground shadow-sm hover:bg-primary-hover hover:text-primary-foreground"
               )}
               onClick={() => {
                 setCategory(key)
@@ -67,7 +65,7 @@ export function MemorySidebar({ vm }: { vm: MemoryLibraryViewModel }) {
             >
               <Icon className="size-4" />
               {label}
-              <span className="ml-auto font-mono text-xs opacity-60">
+              <span className="ml-auto font-mono text-xs">
                 {categoryCounts[key]}
               </span>
             </Button>

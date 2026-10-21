@@ -47,17 +47,23 @@ temporary, tasks are simulated, and mock diagnostics only approximate text match
 Production uses the host bridge and never falls back to mock data. See the
 [engineering guide](../../dashboard/README.md) and [Chinese guide](../zh/webui.md).
 
+The cool-blue theme uses pale sky blue for supporting surfaces and a small blush accent.
+Solid selection and metric surfaces balance the white content cards. Dark mode uses navy
+surfaces; success, warning and error badges retain distinct colors and text labels.
+
 Screenshots use fictional mock data and the shared production components:
 
-![Memory library](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-memory.png)
-![Runtime and tasks](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-runtime.png)
-![Lifecycle logs](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-logs.png)
+![Memory library](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-memory-light.png)
+![Runtime and tasks](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-runtime-light.png)
+![Lifecycle logs](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-logs-light.png)
 
 Preview images live on the separate [webui-previews branch](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews),
-not in the code PR or release ZIP. The [25-image gallery](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews#readme)
+not in the code PR or release ZIP. The [theme and feature gallery](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews#readme)
 covers all nine category filters, versions, evidence, ledger, tasks, diagnostics
 and structured logs. Categories share the same library/detail UI; they are not
 nine specialized editors. Mock diagnostics do not verify real recall quality.
 
-![Recall diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-result.png)
+![Recall diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-diagnostics-light.png)
+Earlier-theme functional reference (current colors are shown above):
+
 ![No-match diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-empty.png)

@@ -43,6 +43,7 @@ export function Button(props: ButtonProps) {
 }
 
 export interface BadgeProps extends ComponentProps<"span"> {
+  tone?: "success" | "warning" | "danger" | "info"
   variant?:
     | "default"
     | "secondary"
@@ -52,8 +53,22 @@ export interface BadgeProps extends ComponentProps<"span"> {
     | "link"
 }
 
-export function Badge(props: BadgeProps) {
-  return <ShadcnBadge {...props} />
+export function Badge({ tone, className, variant, ...props }: BadgeProps) {
+  const toneClass = tone
+    ? {
+        success: "border-success/20 bg-success-soft text-success",
+        warning: "border-warning/20 bg-warning-soft text-warning",
+        danger: "border-destructive/20 bg-danger-soft text-destructive",
+        info: "border-info/20 bg-info-soft text-info",
+      }[tone]
+    : ""
+  return (
+    <ShadcnBadge
+      {...props}
+      variant={variant ?? (tone ? "outline" : "default")}
+      className={[toneClass, className].filter(Boolean).join(" ")}
+    />
+  )
 }
 
 export function Input(props: ComponentProps<"input">) {

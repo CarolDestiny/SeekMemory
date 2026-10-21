@@ -34,7 +34,7 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
           {sections.map(({ id, label, icon: Icon }) => (
             <Button
               key={id}
-              variant={section === id ? "secondary" : "ghost"}
+              variant={section === id ? "default" : "ghost"}
               aria-pressed={section === id}
               onClick={() => setSection(id)}
             >
@@ -44,7 +44,7 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <Badge variant="outline">
+          <Badge tone={vm.status?.ready ? "success" : "warning"}>
             {vm.status?.ready ? "引擎就绪" : "等待连接"}
           </Badge>
           <Button

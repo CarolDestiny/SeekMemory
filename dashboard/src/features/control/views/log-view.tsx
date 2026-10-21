@@ -20,7 +20,7 @@ export function LogView({ events }: { events: readonly OperationEvent[] }) {
   const vm = useLogs(events)
   return (
     <section className="mx-auto w-full max-w-7xl space-y-6 p-5 sm:p-8">
-      <div>
+      <div className="workspace-intro">
         <h1 className="text-2xl font-semibold">生命周期与日志</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           最近 500 条业务记录 · 模块 / 函数 / 行号 · 阶段耗时与任务关联
@@ -83,7 +83,7 @@ export function LogView({ events }: { events: readonly OperationEvent[] }) {
       <p className="text-xs text-muted-foreground">
         匹配 {vm.filtered.length} / {events.length} 条
       </p>
-      <div className="divide-y overflow-hidden rounded-xl border bg-card">
+      <div className="surface-panel divide-y overflow-hidden">
         {vm.filtered.length === 0 && (
           <p className="p-10 text-center text-muted-foreground">暂无匹配日志</p>
         )}
@@ -93,7 +93,13 @@ export function LogView({ events }: { events: readonly OperationEvent[] }) {
               <time className="text-muted-foreground">{event.at}</time>
               <Badge
                 variant="outline"
-                className={event.level === "ERROR" ? "text-destructive" : ""}
+                tone={
+                  event.level === "ERROR"
+                    ? "danger"
+                    : event.level === "WARNING"
+                      ? "warning"
+                      : "info"
+                }
               >
                 {event.level}
               </Badge>

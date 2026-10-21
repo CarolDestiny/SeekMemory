@@ -13,7 +13,7 @@ export function RuntimePanel({
   const task = status?.activeTask
   return (
     <section className="mx-auto w-full max-w-6xl space-y-6 p-5 sm:p-8">
-      <div>
+      <div className="workspace-intro">
         <h1 className="text-2xl font-semibold">运行检测与任务</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           检查引擎、账本、模型配置与持久化状态，查看待处理会话。
@@ -31,7 +31,7 @@ export function RuntimePanel({
           ],
           ["当前操作", task?.kind ?? "空闲"],
         ].map(([label, value]) => (
-          <div key={label} className="rounded-xl border bg-card p-6">
+          <div key={label} className="surface-panel p-6">
             <p className="text-xs text-muted-foreground">{label}</p>
             <p className="mt-3 text-2xl font-semibold">{value}</p>
           </div>
@@ -41,7 +41,7 @@ export function RuntimePanel({
         {status?.checks.map((check) => (
           <div
             key={check.name}
-            className="flex items-center justify-between rounded-xl border bg-card p-5"
+            className="surface-panel flex items-center justify-between gap-3 p-5"
           >
             <div>
               <p className="font-medium">
@@ -56,16 +56,13 @@ export function RuntimePanel({
                 {check.detail}
               </p>
             </div>
-            <Badge
-              variant="outline"
-              className={check.ok ? "text-primary" : "text-destructive"}
-            >
+            <Badge tone={check.ok ? "success" : "warning"}>
               {check.ok ? "正常" : "需检查"}
             </Badge>
           </div>
         ))}
       </div>
-      <div className="space-y-4 rounded-xl border bg-card p-6">
+      <div className="surface-panel space-y-4 p-6">
         <h2 className="text-lg font-semibold">维护操作</h2>
         <p className="text-sm leading-6 text-muted-foreground">
           立即抽取会调用配置的模型并写入记忆；每周整理会遗忘、合并并提炼人格。操作共用后台任务锁，运行期间暂停人工编辑。
