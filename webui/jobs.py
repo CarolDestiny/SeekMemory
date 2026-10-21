@@ -39,6 +39,7 @@ class Jobs:
         self.journal.record(kind, "queued", "Task accepted", task_id)
 
         async def execute() -> None:
+            token = self.journal.task_id.set(task_id)
             self.journal.record(kind, "running", "Task started", task_id)
             try:
                 await operation()
@@ -46,9 +47,11 @@ class Jobs:
                 self.journal.record(kind, "cancelled", "Task cancelled", task_id)
                 raise
             except Exception as exc:
-                self.journal.record(kind, "failed", type(exc).__name__, task_id)
+                self.journal.record(kind, "failed", "Task failed", task_id, error=exc)
             else:
                 self.journal.record(kind, "succeeded", "Task completed", task_id)
+            finally:
+                self.journal.task_id.reset(token)
 
         self.task = asyncio.create_task(execute(), name=f"seekmemory-{kind}")
 

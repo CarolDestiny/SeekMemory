@@ -261,7 +261,19 @@ detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整�
 模型检测失败仍返回其他检测结果；错误只记录类型，不把异常内容泄漏到生命周期日志。
 
 `webui/service.py` 无宿主依赖；`routes.py` 负责宿主适配；`jobs.py` 管理单一活动任务；
-`journal.py` 管理有界持久化日志。前端模型、hooks、views、宿主适配和组件适配的边界由 Oxlint 约束。
+`journal.py` 管理有界持久化日志。每条新事件包含 `level`、`stage`、
+`source:{module,file,function,line}`、`context`、`durationMs` 和可空的 `error:{type,frames}`。
+`file` 为插件相对路径，外部依赖仅显示文件名；异常帧不含源码正文、局部变量或异常消息。
+旧记录缺少字段时前端保留兼容默认值，位置显示“旧记录未采集源码位置”，不会伪造位置信息。
+`context` 仅接受显式传入的标量计数或 ID，最多 32 项，字符串截断为 200 字符。
+前端支持级别、模块、业务类型和状态组合筛选，文本搜索覆盖函数、行号、阶段、业务字段和任务 ID。
+
+`Journal.span(kind, stage, **context)` 记录阶段起止、耗时、失败或取消，并原样抛出异常。
+`Jobs` 使用实例内 ContextVar 传递任务 ID，结束后 reset，避免并发诊断请求误挂在维护任务上。
+重启恢复只根据无 stage 的任务生命周期事件判定终态；中间阶段成功不代表整个任务成功。
+抽取通过注入的 context-manager 回调记录 provider.call、response.parse、memory.deduplicate、
+artifact.validate、artifact.persist 和 impression.revise，不导入 WebUI 或宿主模块。
+前端模型、hooks、views、宿主适配和组件适配的边界由 Oxlint 约束。
 插件未使用 OpenAPI 代码生成；更改接口时需同步 Zod 契约、客户端和契约测试。
 
 ## 全局约束

@@ -175,18 +175,22 @@ class WebRoutes:
             if not isinstance(body, dict):
                 raise ValueError("JSON object required")
             if action == "diagnose":
-                result = service.diagnose(body)
-                plugin.journal.record(
-                    "diagnose", "info", "Read-only recall preview completed"
-                )
+                with plugin.journal.span("diagnose", "recall.preview") as metrics:
+                    result = service.diagnose(body)
+                    metrics.update(
+                        visible=len(result["visible"]),
+                        excluded=len(result["excluded"]),
+                        chars=len(result["block"]),
+                    )
                 return json_response(result)
             if action == "update":
                 if plugin.jobs.task is not None and not plugin.jobs.task.done():
                     return error_response("维护任务运行中，请稍后编辑", status_code=409)
-                node_id = service.update(body)
-                plugin.journal.record(
-                    "edit", "succeeded", f"Artifact revised: {node_id}"
-                )
+                with plugin.journal.span("edit", "artifact.revise") as metrics:
+                    node_id = service.update(body)
+                    metrics.update(
+                        artifactId=node_id, revision=body["expectedRevision"] + 1
+                    )
                 return json_response({"id": node_id})
             if body.get("confirmed") is not True:
                 raise ValueError("Confirmation required")
@@ -215,5 +219,11 @@ class WebRoutes:
         except RuntimeError:
             return error_response("任务正在运行或插件正在停止", status_code=409)
         except Exception as exc:
-            plugin.journal.record("webui", "failed", type(exc).__name__)
+            plugin.journal.record(
+                "webui",
+                "failed",
+                "Administrative request failed",
+                error=exc,
+                context={"action": action},
+            )
             return error_response("操作失败，请查看插件日志", status_code=500)
