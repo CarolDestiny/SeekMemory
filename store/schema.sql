@@ -100,7 +100,6 @@ CREATE TABLE IF NOT EXISTS state_events (
     at            TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_nodes_subject ON nodes(subject_id);
 CREATE INDEX IF NOT EXISTS idx_versions_entity ON artifact_versions(entity, revision);
 CREATE INDEX IF NOT EXISTS idx_state_entity ON state_events(entity, at);
 
