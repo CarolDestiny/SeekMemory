@@ -51,7 +51,9 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             cfg={},
             _c={}.get,
             _schedulers=[],
-            buffer=SimpleNamespace(items=[("bot:FriendMessage:alice",)]),
+            buffer=SimpleNamespace(
+                items=[SimpleNamespace(session_id="bot:FriendMessage:alice")]
+            ),
             context=SimpleNamespace(
                 get_using_provider_async=AsyncMock(return_value=None)
             ),

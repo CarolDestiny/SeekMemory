@@ -18,6 +18,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 from .app.checkpoint import CheckpointManager
+from .app.contracts import DialogueTurn
 from .app.flush_policy import decide_flush
 from .core.graph import Graph
 from .core.source import Source, make_source_id
@@ -219,7 +220,7 @@ class Main(star.Star):
             source = Source(source_id, turn_id, umo, sender, "user", text, now)
             if self.db is not None:
                 self.db.append_sources([source])
-            self.buffer.add(umo, text, sender, source_id)
+            self.buffer.add(umo, text, sender, source_id, now)
             event.set_extra("_seekmemory_turn_id", turn_id)
             event.set_extra("_seekmemory_source_id", source_id)
         except Exception:
@@ -369,6 +370,8 @@ class Main(star.Star):
             min_pending=int(self._c("min_pending", 8)),
             max_flushes_per_day=int(self._c("max_flushes_per_day", 2)),
             backlog_flush_at=int(self._c("backlog_flush_at", 30)),
+            topic_age_seconds=self.buffer.oldest_topic_age(),
+            topic_ttl_seconds=float(self._c("topic_ttl_seconds", 86400)),
         )
         return decision.should
 
@@ -387,14 +390,19 @@ class Main(star.Star):
         """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
         await self._flush("夜间")
 
-    def _split_sessions(self, items: list) -> list[tuple[str, list]]:
-        """按会话切开，每个会话单独抽一次；单个夜晚最多处理 N 个会话。"""
-        buckets: dict[str, list] = {}
-        for row in items:
-            buckets.setdefault(str(row[0] or ""), []).append(row)
+    def _split_topics(
+        self, items: list[DialogueTurn]
+    ) -> list[tuple[str, str, list[DialogueTurn]]]:
+        """按上游话题归组与批次上限选择待抽取消息。"""
+        buckets: dict[tuple[str, str], list[DialogueTurn]] = {}
+        for turn in items:
+            key = (str(turn.session_id or ""), str(turn.topic_id or ""))
+            buckets.setdefault(key, []).append(turn)
         cap = int(self._c("max_sessions_per_flush", 6))
         ordered = sorted(buckets.items(), key=lambda kv: len(kv[1]), reverse=True)
-        return ordered[: max(1, cap)]
+        return [
+            (session, topic, rows) for (session, topic), rows in ordered[: max(1, cap)]
+        ]
 
     async def _flush(self, reason: str) -> None:
         """按上游会话与结果契约抽取，处理成功前保留缓冲。
@@ -414,12 +422,14 @@ class Main(star.Star):
             return
         self._flushing = True
         try:
-            sessions = self._split_sessions(list(self.buffer.items))
+            topics = self._split_topics(list(self.buffer.items))
             ready = []
             failure: Exception | None = None
-            for umo, part in sessions:
+            for umo, topic_id, part in topics:
                 try:
-                    with self.journal.span("extract", "provider.resolve", session=umo):
+                    with self.journal.span(
+                        "extract", "provider.resolve", session=umo, topic=topic_id
+                    ):
                         prov = await self.context.get_using_provider_async(umo or None)
                 except Exception as exc:
                     failure = failure or exc
@@ -430,20 +440,24 @@ class Main(star.Star):
                         "warning",
                         "该会话尚未配置模型服务，保留待抽取消息",
                         stage="provider.resolve",
-                        context={"session": umo},
+                        context={"session": umo, "topic": topic_id},
                     )
                     continue
-                ready.append((umo, part, prov))
+                ready.append((umo, topic_id, part, prov))
             if not ready:
                 if failure is not None:
                     raise failure
                 return
             self._flush_count += 1
             written = 0
-            for umo, part, prov in ready:
+            for umo, topic_id, part, prov in ready:
                 try:
                     with self.journal.span(
-                        "extract", "session.extract", session=umo, messages=len(part)
+                        "extract",
+                        "topic.extract",
+                        session=umo,
+                        topic=topic_id,
+                        messages=len(part),
                     ) as metrics:
                         outcome = await absorb(
                             part,
@@ -452,6 +466,9 @@ class Main(star.Star):
                             self.graph,
                             ProviderChatModel(prov),
                             log=partial(self.journal.record, "extract", "warning"),
+                            owner_id=self.owner_umo.split(":")[-1]
+                            if self.owner_umo
+                            else "",
                             strict=True,
                             stage=partial(self.journal.span, "extract"),
                         )
@@ -471,13 +488,13 @@ class Main(star.Star):
                 written += outcome.written
                 logger.info(
                     f"[seekmemory] {reason}抽取 {umo or '未知会话'}："
-                    f"{len(part)} 条对话，写入 {outcome.written} 条，跳过 {outcome.skipped} 条"
+                    f"话题 {topic_id}，{len(part)} 条对话，写入 {outcome.written} 条，跳过 {outcome.skipped} 条"
                 )
             self.journal.record(
                 "extract",
                 "info",
-                f"已尝试 {len(ready)} 个会话，写入 {written} 条记忆",
-                context={"sessions": len(ready), "written": written},
+                f"已尝试 {len(ready)} 个话题，写入 {written} 条记忆",
+                context={"topics": len(ready), "written": written},
                 stage="batch.complete",
             )
             if failure is not None:

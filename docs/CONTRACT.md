@@ -276,6 +276,7 @@ detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整�
 重启恢复只根据无 stage 的任务生命周期事件判定终态；中间阶段成功不代表整个任务成功。
 抽取通过注入的 context-manager 回调记录 provider.call、response.parse、memory.deduplicate、
 artifact.validate、artifact.persist 和 impression.revise，不导入 WebUI 或宿主模块。
+缓冲沿用上游 `DialogueTurn` 与话题划分；status 按 session_id 汇总，日志记录 topic.extract 与话题 ID。
 抽取返回上游 `WriteOutcome`，阶段日志记录 written/skipped；模型失败保留会话缓冲。
 没有可用模型不消耗批次次数；单个会话失败后继续其他可用会话，批次结束再传播首个失败。
 成功后才移除该会话快照中的消息，保留取消、失败以及调用期间新增的消息。

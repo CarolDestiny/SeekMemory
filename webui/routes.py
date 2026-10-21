@@ -105,7 +105,7 @@ class WebRoutes:
                     }
                 )
                 pending = (
-                    Counter(row[0] for row in plugin.buffer.items)
+                    Counter(turn.session_id for turn in plugin.buffer.items)
                     if plugin.buffer is not None
                     else Counter()
                 )
@@ -146,6 +146,7 @@ class WebRoutes:
                                 "recall_min_ev_rel",
                                 "min_pending",
                                 "backlog_flush_at",
+                                "topic_ttl_seconds",
                                 "max_flushes_per_day",
                                 "enable_reflect",
                                 "max_episodes",

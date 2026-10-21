@@ -193,7 +193,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.buffer.add("bot:FriendMessage:bob", "Plan B", "bob")
         with self.assertRaises(ValueError):
             await self.plugin._nightly()
-        self.assertEqual([row[3] for row in self.plugin.buffer.items], ["Plan A"])
+        self.assertEqual([row.text for row in self.plugin.buffer.items], ["Plan A"])
         self.assertEqual(self.plugin._flush_count, 1)
 
     async def test_cancellation_preserves_inflight_and_new_messages(self) -> None:
@@ -214,7 +214,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):
             await task
         persisted = json.loads((Path(self.temp.name) / "pending.json").read_text())
-        self.assertEqual([row[3] for row in persisted["items"]], ["Plan A", "New plan"])
+        self.assertEqual(
+            [row["text"] for row in persisted["items"]], ["Plan A", "New plan"]
+        )
         self.assertFalse(plugin._flushing)
 
     async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
@@ -234,6 +236,39 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         finally:
             db.close()
 
+    async def test_topics_are_extracted_separately_and_status_counts_turns(
+        self,
+    ) -> None:
+        prompts = []
+
+        class Provider:
+            async def text_chat(self, **kwargs):
+                prompts.append(kwargs["prompt"])
+                return SimpleNamespace(completion_text="[]")
+
+        self.context.provider = Provider()
+        self.plugin.cfg["max_sessions_per_flush"] = 2
+        self.plugin.buffer.add("bot:FriendMessage:alice", "Travel itinerary", "alice")
+        self.plugin.buffer.add("bot:FriendMessage:alice", "Database index", "alice")
+        self.assertEqual(len(self.plugin.buffer.topics()), 2)
+        response = await self.request("status")
+        self.assertEqual(
+            json.loads(response.body)["pending"],
+            [{"session": "bot:FriendMessage:alice", "count": 2}],
+        )
+        await self.plugin._nightly()
+        self.assertEqual(len(prompts), 2)
+        self.assertTrue(
+            all(
+                not ("Travel itinerary" in p and "Database index" in p) for p in prompts
+            )
+        )
+        self.assertEqual(self.plugin.buffer.items, [])
+        events = [
+            e for e in self.plugin.journal.events if e["stage"] == "topic.extract"
+        ]
+        self.assertEqual(len({e["context"]["topic"] for e in events}), 2)
+
     async def test_session_cap_and_new_messages_survive_success(self) -> None:
         plugin = self.plugin
 
@@ -250,7 +285,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await plugin._nightly()
         self.assertEqual(self.context.provider_sessions, ["bot:FriendMessage:alice"])
         self.assertEqual(
-            [row[3] for row in plugin.buffer.items],
+            [row.text for row in plugin.buffer.items],
             ["Plan B", "Arrived during model call"],
         )
 

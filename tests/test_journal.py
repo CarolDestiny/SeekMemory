@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.contracts import DialogueTurn
 from perceive.absorb import absorb
 from store.db import DB
 from webui.jobs import Jobs
@@ -40,7 +41,7 @@ class JournalTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         written = await absorb(
-            [("demo:FriendMessage:1", "1", "user", "PRIVATE INPUT")],
+            [DialogueTurn("demo:FriendMessage:1", "1", "user", "PRIVATE INPUT")],
             db,
             None,
             None,
