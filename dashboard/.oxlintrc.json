@@ -1,8 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "react", "jsx-a11y", "import"],
-  "categories": { "correctness": "error" },
-  "options": { "typeAware": true },
+  "categories": {
+    "correctness": "error"
+  },
+  "options": {
+    "typeAware": true
+  },
   "ignorePatterns": ["node_modules/**"],
   "rules": {
     "jsx-a11y/prefer-tag-over-role": "off",
@@ -43,7 +47,7 @@
           {
             "patterns": [
               {
-                "regex": "(^react($|/)|^react-dom($|/)|^lucide-react$|^@base-ui/|^@radix-ui/|(^|/)(ui|views|dev|components)(/|$)|(^|/)use-[^/]+$)",
+                "regex": "(^react($|/)|^react-dom($|/)|^lucide-react$|^@base-ui/|^@radix-ui/|(^|/)(ui|views|dev|components|infrastructure)(/|$)|(^|/)use-[^/]+$)",
                 "message": "Pure memory models and state must not depend on React, views, component libraries, or development sources."
               }
             ]
@@ -66,8 +70,8 @@
           {
             "patterns": [
               {
-                "regex": "(^react-dom($|/)|^lucide-react$|^@base-ui/|^@radix-ui/|(^|/)(ui|views|dev|components)(/|$))",
-                "message": "View models may depend on React and the model, not the UI or mock data."
+                "regex": "(^react-dom($|/)|^lucide-react$|^@base-ui/|^@radix-ui/|(^|/)(ui|views|dev|components|infrastructure)(/|$))",
+                "message": "View models use injected ports, never UI components, mock data, or concrete transports."
               }
             ]
           }
@@ -89,11 +93,18 @@
           {
             "patterns": [
               {
-                "regex": "(^@base-ui/|^@radix-ui/|(^|/)shadcn/|(^|/)components/ui/|(^|/)dev(/|$))",
-                "message": "Views use @/ui and injected data, never component internals or mock fixtures."
+                "regex": "(^@base-ui/|^@radix-ui/|(^|/)shadcn/|(^|/)components/ui/|(^|/)(dev|infrastructure)(/|$))",
+                "message": "Views use injected view models and the public UI adapter, never concrete transports or mock fixtures."
               }
             ]
           }
+        ],
+        "no-restricted-globals": [
+          "error",
+          "fetch",
+          "localStorage",
+          "XMLHttpRequest",
+          "WebSocket"
         ]
       }
     },
@@ -105,8 +116,24 @@
           {
             "patterns": [
               {
-                "regex": "(^|/)(features|dev)(/|$)",
+                "regex": "(^|/)(features|dev|infrastructure)(/|$)",
                 "message": "The UI adapter must remain independent of application features and mock data."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/infrastructure/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(^react($|/)|^react-dom($|/)|^lucide-react$|^@base-ui/|^@radix-ui/|(^|/)(ui|views|dev|components)(/|$)|(^|/)use-[^/]+$)",
+                "message": "Transport adapters depend on contracts, never React state, UI, or mocks."
               }
             ]
           }
