@@ -1,92 +1,98 @@
-# 代码索引
+# Code Index
 
-> 新人从这里开始。三个 README 读完就能改代码：根目录 → 目标文件夹 → 文件头部 docstring。
+> Start here. Read this file, then docs/ARCHITECTURE.md, docs/CONTRACT.md and CONTRIBUTING.md.
+> External contributors and agents must also read ../AGENTS.md.
 
-## 目录总览
+## Current version
 
-| 目录 | 管什么 | 开始读 |
+```text
+v0.3.1
+```
+
+## Directory map
+
+| Directory | Responsibility | Start here |
 |---|---|---|
-| `core/` | **原语**：Artifact 的定义、强度算法、抽象树、关系图 | [core/README](core/README.md) |
-| `store/` | **持久化**：SQLite、内存缓存、追加日志 | [store/README](store/README.md) |
-| `recall/` | **检索**：种子提取、激活扩散、打分、组装 | [recall/README](recall/README.md) |
-| `perceive/` | **抽取**：从对话里提炼印象 | [perceive/README](perceive/README.md) |
-| `maintain/` | **维护**：衰减、合并、晋升、反思 | [maintain/README](maintain/README.md) |
-| `tests/` | 单元测试 | — |
-| `docs/` | 设计文档 | [ARCHITECTURE](ARCHITECTURE.md) / [DESIGN](DESIGN.md) · [CONTRACT](CONTRACT.md) |
+| core/ | Artifact and Source values, Strength, versioning, disclosure, retrieval values | core/README.md |
+| app/ | Use-case DTOs, ports, flush policy, checkpoint orchestration | docs/ARCHITECTURE.md |
+| store/ | SQLite repository, cache/read model, ledger | store/README.md |
+| perceive/ | Extraction prompt, ChatModel adapter, topic buffer | perceive/README.md |
+| recall/ | Candidate retrieval, scoring, disclosure-aware assembly | recall/README.md |
+| maintain/ | Decay, merge, persona and reflection policies | maintain/README.md |
+| tests/ | Unit, integration and kernel end-to-end tests | tests/test_kernel.py |
+| docs/ | Architecture, contracts, issues, proposals | docs/BM25-PROPOSAL.md |
+| main.py | AstrBot event mapping and composition only | main.py |
 
-## 依赖方向（单向，不许反向）
+## Dependency direction
 
-```
-main.py
-  ↓
-perceive/  maintain/  recall/
-  ↓            ↓        ↓
-        core/  ←───────┘
-          ↓
-        store/
-```
-
-- `core/` 不 import 任何人
-- `store/` 只 import `core/`
-- `recall/` `perceive/` `maintain/` 可以 import `core/` 和 `store/`
-- **没有任何模块 import `main.py`**
-
-## 两条硬规则
-
-1. **只有 `core/artifact.py` 定义数据结构** —— 改结构只改一个文件
-2. **只有 `store/db.py` 写 SQL** —— 换存储只改一个文件
-
-## 一次请求的完整路径
-
-```
-QQ 消息
-  → main.py  buffer_message      存进当天缓冲（带 umo）
-  → main.py  inject_memory
-       → recall/scope.py         按 scope 过滤：private 只给归属会话
-       → recall/designated.py    指定记忆：私聊 + 触发词 + 未 given 才交付
-       → recall/seed.py          从消息里找种子
-       → recall/spread.py        沿关系边扩散
-       → recall/score.py         打分 + 探索
-       → recall/assemble.py      按层级措辞，卡预算；shadow 只给影子句
-  → 拼进 system_prompt 中部
-  → LLM 回复
+```text
+main.py / AstrBot adapter
+        |
+        v
+app/ use cases and ports
+        |
+        v
+core/ Artifact kernel
+        ^
+        |
+store/ perceive/ recall/ maintain/ adapters
 ```
 
-## 每晚的路径
+Rules:
 
+- core/ imports no storage, SDK, plugin or app code.
+- app/ imports core/ only; external systems are behind ports.
+- store/ is the only place that writes SQL.
+- recall/ and maintain/ are migration zones; do not add new cross-layer dependencies.
+- No module imports main.py.
+
+## Write path
+
+```text
+AstrBot user message
+  -> main.buffer_message
+  -> Source(user) + DialogueTurn buffer with topic_id
+  -> backlog / idle / nightly extraction
+  -> ChatModel
+  -> Artifact construction + validation
+  -> DB.commit(expected_revision)
+       -> blob
+       -> node head
+       -> artifact_versions
+       -> artifact_evidence
+       -> ledger
+  -> cache.put
+
+assistant reply
+  -> main.capture_reply
+  -> Source(assistant, reply_to=user source)
 ```
-23:50
-  → main.py _nightly
-  → perceive/extract.py   抽印象（一次模型调用）
-  → store/db.py           写入 + 追加日志
-  → store/cache.py        更新内存
-  → maintain/link.py      写入时建 similar/temporal 边（causal 留接口）
 
-周日 23:55
-  → maintain/decay.py     重算留存率，标 forgotten
-  → maintain/merge.py     相似场景合并成印象
-  → maintain/persona.py   把稳定 impression 沉淀成 persona
+## Read path
+
+```text
+AstrBot on_llm_request
+  -> recall.pipeline.build_block
+  -> visible scope filter
+  -> GraphRetriever (activation)
+  -> select / evidence gate
+  -> disclosure (full / paraphrase / hint / silence)
+  -> assemble safe text
+  -> system prompt
 ```
 
-## 文件行数约定
+Recall does not write. Reinforcement is queued and flushed by app/checkpoint.py.
 
-- 单文件 ≤ 300 行，目标 150
-- 超过就拆，拆的依据是**职责**，不是行数
+## Active design work
 
-## 开发流程
+- BM25 hybrid retrieval: docs/BM25-PROPOSAL.md, ISSUE-0024.
+- Future: reflection wiring, RBAC, capacity governance, persona source policy.
 
-> 多人/多 agent 协作从 [CONTRIBUTING](../CONTRIBUTING.md) 开始：P0/P1 先开 issue，
-> 再在分支上修，最后走 PR 合并。
+## Hard rules
 
-| 事项 | 入口 |
-|---|---|
-| 问题分级、分支命名、合并与提交规范 | [CONTRIBUTING.md](../CONTRIBUTING.md) |
-| 所有 issue 与 PR 记录 | [docs/issues/](issues/) |
-| 开新 issue | [TEMPLATE-ISSUE.md](issues/TEMPLATE-ISSUE.md) |
-| 写 PR 描述 | [TEMPLATE-PR.md](issues/TEMPLATE-PR.md) |
-| 已记录的问题 | [ISSUE-0001](issues/ISSUE-0001.md)：无 BM25 / 向量检索，同跨度问法的召回为 0 |
-
-- GitHub CLI 未登录期间，`docs/issues/` 是 issue/PR 的唯一事实源；登录后按
-  CONTRIBUTING 的「同步到 GitHub」补链接。
-- issue/PR 文件只追加，不改历史；合并后把 issue 状态改为 `closed`。
-- P2 可以直接提交，但涉及 `recall/`、`core/`、`store/` 的行为变化仍建议先开 issue。
+1. Only core/artifact.py defines Artifact data structures.
+2. Only store/db.py writes SQL.
+3. All production writes use DB.commit with expected revision.
+4. Source is immutable truth; Artifact is derived interpretation.
+5. Cross-session content must pass disclosure before injection.
+6. New P0/P1 work needs an issue and a PR record.

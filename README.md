@@ -1,5 +1,10 @@
 # SeekMemory
 
+> Current implementation: **v0.3.1**. Kernel invariants and integration contracts are in
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [AGENTS.md](AGENTS.md).
+> BM25 design: [docs/BM25-PROPOSAL.md](docs/BM25-PROPOSAL.md).
+
+
 **SeekMemory makes your agent bot more like people.**
 
 <p align="center">
