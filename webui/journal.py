@@ -17,6 +17,8 @@ from uuid import uuid4
 
 Scalar = str | int | float | bool | None
 _ROOT = Path(__file__).resolve().parents[1]
+_MAX_FILE_BYTES = 1024 * 1024
+_REQUIRED_FIELDS = ("id", "at", "kind", "status", "message", "taskId")
 
 
 def _location(frame: FrameType, line: int) -> dict:
@@ -50,27 +52,26 @@ class Journal:
         self.persistence_error = False
         try:
             for file in (path.with_suffix(".jsonl.1"), path):
-                if file.exists():
-                    with file.open("rb") as stream:
-                        stream.seek(max(0, file.stat().st_size - 1024 * 1024))
-                        for line in stream.read().splitlines():
-                            try:
-                                row = json.loads(line)
-                                if isinstance(row, dict) and all(
-                                    isinstance(row.get(key), str)
-                                    for key in (
-                                        "id",
-                                        "at",
-                                        "kind",
-                                        "status",
-                                        "message",
-                                        "taskId",
-                                    )
-                                ):
-                                    # 兼容旧事件，其源码位置保持未知。
-                                    self.events.append(row)
-                            except (ValueError, UnicodeError):
-                                continue
+                if not file.exists():
+                    continue
+                # 每个文件只读末尾 1 MiB，截断的首行会按损坏行跳过。
+                offset = max(0, file.stat().st_size - _MAX_FILE_BYTES)
+                with file.open("rb") as stream:
+                    stream.seek(offset)
+                    lines = stream.read().splitlines()
+                for line in lines:
+                    try:
+                        row = json.loads(line)
+                    except (ValueError, UnicodeError):
+                        continue
+                    if not isinstance(row, dict):
+                        continue
+                    if not all(
+                        isinstance(row.get(key), str) for key in _REQUIRED_FIELDS
+                    ):
+                        continue
+                    # 兼容旧事件，其源码位置保持未知。
+                    self.events.append(row)
         except OSError:
             self.persistence_error = True
         unfinished: dict[str, dict] = {}
@@ -165,7 +166,7 @@ class Journal:
         self.events.append(row)
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            if self.path.exists() and self.path.stat().st_size > 1024 * 1024:
+            if self.path.exists() and self.path.stat().st_size > _MAX_FILE_BYTES:
                 self.path.replace(self.path.with_suffix(".jsonl.1"))
             with self.path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(row, ensure_ascii=False) + "\n")
