@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.artifact import content_of  # noqa: E402
 from core.graph import Graph  # noqa: E402
-from perceive.absorb import absorb, dialogue_of, owner_of  # noqa: E402
+from perceive.absorb import absorb, dialogue_of, owner_of, worth_now  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import build_prompt, parse_response  # noqa: E402
 from store.cache import Cache  # noqa: E402
@@ -123,6 +123,28 @@ class AbsorbTest(unittest.TestCase):
         self.assertIn("user: 一", dialogue_of(items))
         self.assertEqual(owner_of(items), "umo:a")
         self.assertEqual(owner_of([("umo:a", "user", "一"), ("umo:b", "user", "二")]), "")
+
+
+class WorthNowTest(unittest.TestCase):
+    def test_plan_counts(self):
+        items = [("umo:a", "user", "我下周三要去杭州出差")]
+        self.assertTrue(worth_now(items))
+
+    def test_fact_counts(self):
+        self.assertTrue(worth_now([("umo:a", "user", "我女朋友叫许棠")]))
+
+    def test_strong_emotion_counts(self):
+        self.assertTrue(worth_now([("umo:a", "user", "今天差点崩溃")]))
+
+    def test_chitchat_does_not(self):
+        items = [("umo:a", "user", "在吗"), ("umo:a", "user", "哈哈"),
+                 ("umo:a", "user", "嗯")]
+        self.assertFalse(worth_now(items))
+
+    def test_noise_and_own_output_ignored(self):
+        items = [("umo:a", "assistant", "我下周要去杭州出差"),
+                 ("umo:a", "user", "项目联调有点烦")]
+        self.assertFalse(worth_now(items))
 
 
 class PromptTest(unittest.TestCase):

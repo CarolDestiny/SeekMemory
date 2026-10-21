@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import Any, Awaitable, Callable
 
 try:  # 作为 astrbot 插件包的一部分导入
@@ -30,6 +32,14 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from store.db import DB
 
 MAX_ITEMS = 6
+
+# 值得不等晚上的信号：计划与日期、稳定事实、强情绪。命中任一就当场抽。
+_PLAN = re.compile(r"(下周|明天|后天|下个月|周末|计划|打算|准备|约了|要去|出差|搬家|"
+                   r"面试|入职|离职|辞职|生日|纪念日|考试|体检)")
+_FACT = re.compile(r"(我叫|名字|住在|老家|公司|工作|职业|女朋友|男朋友|老婆|老公|对象|"
+                   r"爸|妈|猫|狗|住院|手术|升职|加薪|毕业)")
+_STRONG = re.compile(r"(崩溃|吵架|分手|哭了|想死|撑不住|很难受|被骂|裁员|辞退|生病|发烧)")
+_NOT_WORTH = re.compile(r"^(早|晚安|在吗|在不在|哈哈|嗯|哦|好|好的|收到)[。！？!?~～]*$")
 Log = Callable[[str], None]
 
 
@@ -59,6 +69,19 @@ def strength_of(item: dict) -> dict:
         except (TypeError, ValueError):
             pass
     return out
+
+
+def worth_now(items: list[tuple[str, str, str]]) -> bool:
+    """这批对话里有没有值得当场记住的事（计划/事实/强情绪）。"""
+    for _umo, role, text in items[-30:]:
+        if str(role) != "user":
+            continue
+        line = str(text or "").strip()
+        if not line or _NOT_WORTH.match(line):
+            continue
+        if _PLAN.search(line) or _FACT.search(line) or _STRONG.search(line):
+            return True
+    return False
 
 
 def dialogue_of(items: list[tuple[str, str, str]]) -> str:
