@@ -44,10 +44,16 @@ through `oxlint-tsgolint`. Explicit `any`, unsafe use of propagated `any`, unsaf
 type assertions, non-null assertions, and unhandled promises are errors.
 Warnings also fail the lint command. Third-party declarations are not linted.
 
+Oxfmt handles formatting through `.oxfmtrc.json`, including Tailwind class sorting
+in JSX and `cn`/`cva` calls. It preserves double quotes, no semicolons, and LF
+line endings. Prettier and its Tailwind plugin are no longer required.
+Use `pnpm format` to apply formatting; `pnpm check` includes a formatting check.
+
 ```bash
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm format:check
 pnpm check
 pnpm build
 ```
