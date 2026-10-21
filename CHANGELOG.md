@@ -9,6 +9,8 @@
 - 修正抽取失败/取消、会话数量限制和抽取期间新消息的缓冲保留；热重载时清理任务、路由、数据库。
 - 默认数据库路径使用 AstrBot 数据目录 API，兼容 Windows 与自定义部署路径。
 - 前端采用 TypeScript 7 严格检查、Oxlint、Oxfmt 与 Zod，隔离业务状态和 UI 适配层。
+- 工作台筛选与任务确认收敛到 ViewModel；写入后刷新覆盖旧请求，取消操作固定目标任务。
+  新增实际 React hook 回归测试及 Oxlint 分层规则的正反向测试，防止视图绕过适配层。
 - 新增 Release 打包：发布时构建前端，只分发后端运行文件、静态产物及许可证。
 - 安装入口从源码克隆调整为 Release 的 `astrbot_plugin_seekmemory.zip` 附件；
   源码 ZIP/tar.gz 和 Git 克隆保留开发源码，不含前端产物。详见 README 的安装说明。

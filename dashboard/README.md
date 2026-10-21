@@ -83,7 +83,12 @@ No host cookies, local storage, or direct parent-window access is required.
 Tests run with Node's built-in TypeScript support and test runner. They cover
 schema failures, immutable inputs, combined filters, page resets, empty and
 shrinking datasets, cross-page navigation, deterministic ordering, administrative
-commands, runtime/detail schemas and the host bridge boundary.
+commands, runtime/detail schemas and the host bridge boundary. React hook tests
+use Happy DOM with an injected client, without rendering component-library code.
+They verify workspace filters, post-write refresh races, confirmed task identity,
+duplicate-submit prevention, and invalidation of reads from a replaced client.
+Architecture fixtures run the real Oxlint import rules against both forbidden
+and permitted dependency directions; these checks run in `pnpm check` and CI.
 
 ## Architecture and component replacement
 
@@ -94,7 +99,7 @@ src/dev/                         Development source and preview controls
 src/infrastructure/astrbot-client.ts  Host Page bridge and response validation
 src/features/control/
   model.ts                       Management port and Zod wire contracts
-  use-control.ts                 Refresh, partial failures and task polling
+  use-control.ts                 Scope/session filters, task commands and refresh lifecycle
   use-editor.ts                  Drafts, revisions, confirmation and conflict errors
   use-diagnostics.ts             Read-only diagnostic action state
   views/                         Workspace, runtime, editor, diagnostics and logs
@@ -123,6 +128,16 @@ own application state and derived data; views own presentation concerns such as
 the mobile drawer. The UI adapter cannot import memory features or mock data.
 Oxlint enforces these directions and blocks direct vendor imports from views.
 Models and hooks have no dependency on shadcn, Base UI, CSS, or Lucide.
+Hooks and views cannot import the concrete host client or mock implementation;
+transport adapters depend on contracts rather than hooks. These are direct-import
+checks, not a complete transitive dependency analysis.
+
+Workspace scope/session selection, task confirmation and dispatch belong to
+`use-control.ts`. The selected workspace tab, editor visibility and responsive
+drawer remain view state. Ordinary refreshes share an in-flight request; refreshes
+after a write supersede it so older responses cannot overwrite the saved result.
+Task cancellation retains the ID shown when confirmation began, even if polling
+discovers a different active task before confirmation completes.
 
 To replace the component library:
 
