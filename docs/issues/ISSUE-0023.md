@@ -4,7 +4,7 @@
 |---|---|
 | id | ISSUE-0023 |
 | level | P1 |
-| status | open |
+| status | closed |
 | date | 2026-10-21 |
 | branch | feat/issue-0023-topic-subject-time |
 
