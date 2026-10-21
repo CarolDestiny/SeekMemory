@@ -1,4 +1,50 @@
 # 变更记录
+## 未发布
+
+- WebUI 补充话题队列、抽取策略与 checkpoint 待提交计数；区分记忆主体/说话人及事件时间，直观展示逐条披露级别。
+  同步 OpenAPI、生成类型和前后端测试，旧记录缺失信息保持未知。
+
+- 简化 WebUI 日志、路由状态查询、前端筛选/页面状态、Mock 数据及发布资源检查的控制流；
+  启用嵌套三元表达式 lint 拦截与正反例验证，保持接口和运行行为不变。
+
+- 同步上游 v0.3.1 的话题缓冲、主体归属和事件时间，适配运行页计数及话题抽取日志，保留取消时缓冲。
+
+- 同步上游 v0.3.0：保留积压触发、WriteOutcome、统一提交、原子 checkpoint 与主体披露判定；
+  适配 WebUI 阶段日志和只读诊断，补测无模型配额、会话失败隔离及取消时消息保留。
+
+- WebUI 更新为冷蓝主题：统一浅深色 token、标题区域、统计卡、导航与详情层次；新增语义徽章配色，
+  保持 MVVM 和组件适配边界，补充桌面/手机预览，图片继续存放在独立资源分支。
+
+- 合并上游 v0.2.0 Artifact 内核；WebUI 统一使用上游提交、版本与证据链，保留 subject_id。
+  抽取按会话选择模型，checkpoint 纳入调度与卸载生命周期，Release 补充 `app/` 运行模块。
+
+- 使用 `z.looseObject()` 替换弃用的 `.passthrough()`，保持头部扩展字段；新增弃用 API 的 lint 拦截。
+
+- 新增 OpenAPI 3.1 管理契约与生成传输类型，连接 Zod、Mock、真实后端响应及 CI 漂移检查；
+  生成器独立使用 TS 5 编译器 API，应用保持 TS 7 严格检查，开发依赖不进入发布包。
+
+- 开发与发布说明沿用中文，统一新增代码注释、业务日志和管理提示的语言，保留接口标识及英文版指南。
+
+- 日志新增真实模块/文件/函数/行号、业务阶段、耗时、结构化字段和脱敏异常位置；
+  任务 ID 自动贯穿阶段，前端支持级别/模块/业务字段筛选，兼容旧日志。
+- 补齐九种记忆类型和诊断命中/空结果预览；预览图片迁至独立资源分支，代码 PR 仅引用图片。
+
+- 新增宿主原生 WebUI：记忆库、运行与任务、召回诊断、生命周期日志；独立 Mock 无需启动 AstrBot。
+- 记忆库覆盖六种 Artifact 家族、三种 scope/状态、来源会话筛选、版本/blob、证据与账本。
+- 支持 JSON 内容修订、范围调整、遗忘/恢复与旧内容载入；版本冲突检测和账本写入使用同一事务。
+- 手动抽取、每周整理和取消与定时任务共用单任务执行器；持久化生命周期、异常中断和脱敏错误。
+- 修正抽取失败/取消、会话数量限制和抽取期间新消息的缓冲保留；热重载时清理任务、路由、数据库。
+- 默认数据库路径使用 AstrBot 数据目录 API，兼容 Windows 与自定义部署路径。
+- 前端采用 TypeScript 7 严格检查、Oxlint、Oxfmt 与 Zod，隔离业务状态和 UI 适配层。
+- 工作台筛选与任务确认收敛到 ViewModel；写入后刷新覆盖旧请求，取消操作固定目标任务。
+  新增实际 React hook 回归测试及 Oxlint 分层规则的正反向测试，防止视图绕过适配层。
+- 新增 Release 打包：发布时构建前端，只分发后端运行文件、静态产物及许可证。
+- 安装入口从源码克隆调整为 Release 的 `astrbot_plugin_seekmemory.zip` 附件；
+  源码 ZIP/tar.gz 和 Git 克隆保留开发源码，不含前端产物。详见 README 的安装说明。
+- 入口映射：原“插件配置”继续用于配置；记忆操作改从“插件卡片 → 插件视图”进入。
+  页面与截图见 [WebUI 使用说明](docs/webui/README.md)。
+
+
 ## 0.3.1 - 2026-10-21
 
 Topic buffer and attribution hardening.
@@ -28,7 +74,6 @@ Artifact kernel foundation and online cutover.
 - Artifact writes use CAS commits, append-only versions and version-level evidence.
 - Added subject_id, state_events, 30-minute checkpoints and universal disclosure.
 - Added the ChatModel boundary and wired extraction through the new commit path.
-
 
 ## 0.1.9 — 2026-10-21
 

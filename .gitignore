@@ -7,3 +7,11 @@ __pycache__/
 .env
 *.log
 .pytest_cache/
+
+# Generated plugin view assets; include them in release packages.
+/pages/memory/
+/dist/
+/data/
+
+# Legacy local build output.
+/views/memory/

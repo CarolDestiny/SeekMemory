@@ -635,3 +635,16 @@ evidence(node, source)
   额外调用与不确定性，暂时用规则更可控。
 - 抽取的成本结构已量过：单次约 600~2700 prompt tokens（其中三到六成命中缓存）
   加 0~300 completion tokens；夜间一次批量是主力，白天即时抽取是补充。
+
+## 15. 开发与分发
+
+WebUI 的 TypeScript 源码保存在 `dashboard/`，发版 CI 构建 `pages/memory/`，
+再与必要 Python/SQL 文件组成 Release ZIP。构建产物不进 Git；源码归档用于开发，
+安装附件用于部署。后端无需编译或绑定平台环境。
+生产页通过 AstrBotPluginPage 桥接器调用经过宿主认证的插件路由；Mock 仅用于开发。
+前端划分领域契约、状态/hooks、视图和组件适配层；替换 shadcn 主要调整 `src/ui/`。
+后端复用运行中的 DB、Cache、Graph。人工修订在一个事务内校验 revision、写入新版本和账本，
+不修改 Source；任务执行器串行处理手动/定时维护，卸载时先取消任务再释放数据库。
+生命周期日志保存最近 500 条，1 MiB 轮转并保留一个备份；重启把未结束任务标记为 interrupted。
+界面不改变已有 scope 语义：shared/shadow 进入跨会话候选，private 按归属过滤；shadow 正文仍由组装层遮蔽。
+详情和限制见 [WebUI 使用说明](webui/README.md)、[管理接口](CONTRACT.md#webui-管理接口)。

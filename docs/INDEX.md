@@ -1,12 +1,11 @@
 # Code Index
 
-> Start here. Read this file, then docs/ARCHITECTURE.md, docs/CONTRACT.md and CONTRIBUTING.md.
-> External contributors and agents must also read ../AGENTS.md.
+> Start here. Then read docs/ARCHITECTURE.md, docs/CONTRACT.md, CONTRIBUTING.md and AGENTS.md.
 
 ## Current version
 
 ```text
-v0.3.1
+v0.3.1 + WebUI branch
 ```
 
 ## Directory map
@@ -19,8 +18,12 @@ v0.3.1
 | perceive/ | Extraction prompt, ChatModel adapter, topic buffer | perceive/README.md |
 | recall/ | Candidate retrieval, scoring, disclosure-aware assembly | recall/README.md |
 | maintain/ | Decay, merge, persona and reflection policies | maintain/README.md |
-| tests/ | Unit, integration and kernel end-to-end tests | tests/test_kernel.py |
-| docs/ | Architecture, contracts, issues, proposals | docs/BM25-PROPOSAL.md |
+| webui/ | Host routes, management service, task mutex, lifecycle journal | docs/CONTRACT.md |
+| dashboard/ | WebUI source, standalone mock and strict frontend checks | dashboard/README.md |
+| docs/webui/ | Plugin WebUI guide and screenshots | docs/webui/README.md |
+| scripts/package_plugin.py | Runtime whitelist and Release ZIP packaging | CONTRIBUTING.md |
+| tests/ | Unit, integration, kernel and WebUI tests | tests/test_kernel.py |
+| docs/ | Architecture, contracts, issues and proposals | docs/BM25-PROPOSAL.md |
 | main.py | AstrBot event mapping and composition only | main.py |
 
 ## Dependency direction
@@ -41,10 +44,12 @@ store/ perceive/ recall/ maintain/ adapters
 Rules:
 
 - core/ imports no storage, SDK, plugin or app code.
-- app/ imports core/ only; external systems are behind ports.
+- app/ imports core/ only; external systems stay behind ports.
 - store/ is the only place that writes SQL.
+- webui/routes.py adapts the host. webui/service.py calls core/store/recall.
+- webui/jobs.py and webui/journal.py stay independent of the host.
+- Business modules do not import main.py at runtime. WebUI routes may use type-only references.
 - recall/ and maintain/ are migration zones; do not add new cross-layer dependencies.
-- No module imports main.py.
 
 ## Write path
 
@@ -83,9 +88,23 @@ AstrBot on_llm_request
 
 Recall does not write. Reinforcement is queued and flushed by app/checkpoint.py.
 
+## WebUI path
+
+```text
+AstrBot plugin page
+  -> webui/routes.py
+  -> webui/service.py
+  -> store/db.py + cache + recall pipeline
+  -> JSON response or SSE lifecycle event
+```
+
+Management writes reuse Artifact commit with expected revision. Recall diagnostics do not consume
+one-time delivery state.
+
 ## Active design work
 
 - BM25 hybrid retrieval: docs/BM25-PROPOSAL.md, ISSUE-0024.
+- WebUI follow-up: server-side pagination, editable source view, and release download_url.
 - Future: reflection wiring, RBAC, capacity governance, persona source policy.
 
 ## Hard rules
