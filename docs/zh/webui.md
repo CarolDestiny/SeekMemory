@@ -11,6 +11,8 @@
 - 支持关键词、类型、状态、scope、精确来源会话筛选；分页、版本对比、关联跳转、手机抽屉与深浅主题。
 - 详情的“编辑与审计”提供原始 JSON、当前 header/lineage、历史 blob、原始来源证据和实际账本。
   来源或账本缺失时显示空集合，不补造历史。
+- “主体与时间”区分记忆主体 ID、说话人标记和主体类型，并显示事件/创建时间与有效期。
+  新版抽取优先采用事件时间；旧记录缺失时显示“未记录”，不会从说话人或更新日期推算。
 
 | scope | 当前召回规则 |
 |---|---|
@@ -20,7 +22,8 @@
 
 管理员可以检查全部数据。“来源会话”是溯源和筛选维度，不代表 shared 被限制在来源群。
 召回沿用上游 v0.3.0 的披露判定：检索选中的记忆还会根据主体和场景决定全文、改述、提示或静默。
-scope 候选可见不等于一定注入全文；可在诊断决策中的 disclosure 查看逐条结果。
+scope 候选可见不等于一定注入全文；诊断页的“逐条披露结果”显示 ID 与全文、改述、提示或静默结果。
+该列表仅覆盖后端返回的检索选中项，不包含所有常驻或指定交付记录；最终注入还受预算限制。
 本次没有另行修改群聊识别或跨群共享政策；可用召回诊断核对具体 UMO 和说话人。
 
 ## 修订、遗忘与恢复
@@ -34,7 +37,7 @@ scope 候选可见不等于一定注入全文；可在诊断决策中的 disclos
 保存携带读取时的 revision。其他写入已改变该记录时返回冲突并保留草稿；重新加载后再核对保存。
 遗忘可恢复为 active；merged 不能独立恢复，也不能用状态编辑伪造合并，避免破坏派生关系。
 “载入该版本内容到修订草稿”只加载 payload，需返回修订页检查当前 scope/状态并显式保存为新版本。
-人工编辑不自动重算既有 similar/temporal 图边；需要结合关联与诊断检查，后续整理沿用原有维护行为。
+人工编辑不自动重算头部主体 ID、时间或既有 similar/temporal 图边；需要结合关联与诊断检查，后续整理沿用原有维护行为。
 
 ## 运行与任务
 
@@ -52,7 +55,10 @@ scope 候选可见不等于一定注入全文；可在诊断决策中的 disclos
 批次结束后仍标记失败以便排查。积压触发沿用上游 backlog_flush_at 和安静窗口规则，运行页显示对应配置。
 抽取中已有的逐条容错仍保留：任务完成不保证每条模型输出都写入，需同时查看 warning、written 和 skipped 计数。
 v0.3.1 沿用上游话题分段与 TTL；`max_sessions_per_flush` 保留原配置名，当前按话题限制批次数量。
-运行页仍按会话汇总待处理消息；抽取阶段日志含 session/topic，记忆主体与事件时间采用上游解析规则。
+运行页展示每个待抽取话题的会话、消息数和最早消息时间，并保留会话汇总。
+“抽取策略”显示实际积压阈值、话题 TTL 和每批话题上限；TTL 是抽取触发条件，不是自动删除期限。
+“待提交强化记忆”是 checkpoint 尚未持久化的记忆数量，与待抽取消息分开计数。
+抽取阶段日志含 session/topic，记忆主体与事件时间采用上游解析规则。
 定时任务包含夜间抽取、每周整理、空闲抽取和 checkpoint 四个循环。
 插件卸载/热重载会取消并等待任务、清理本实例路由、保存缓冲，提交待处理的召回强化 checkpoint 后关闭数据库。
 
@@ -75,7 +81,7 @@ cancelled/interrupted 状态，可按类型、状态、级别、模块、任务 
 ## 开发与截图
 
 `cd dashboard && pnpm dev` 可独立运行全部页面，Mock 编辑只存在内存，任务不会调用模型。
-Mock 诊断是简化的文本匹配，不能用于验证真实召回质量。源码、Mock、测试和截图不进入安装包。
+Mock 诊断仅演示文本匹配和不同披露级别，不能用于验证真实召回规则。源码、Mock、测试和截图不进入安装包。
 完整工程说明见 [dashboard/README](../../dashboard/README.md)。
 
 当前主题使用冷蓝主色、浅蓝辅助色和少量淡粉装饰；实色导航、统计卡和浅蓝标题区形成层次。
@@ -87,12 +93,12 @@ Mock 诊断是简化的文本匹配，不能用于验证真实召回质量。源
 九种类型为四个 memory level 加五个独立 family，均复用统一列表和详情，不是九套专用编辑器。
 
 ![记忆库](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-memory-light.png)
-![手动修订](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-editor-dark.png)
-![运行检测和任务](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-runtime-light.png)
+![手动修订](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/95812b0d36ebb76e859ebd2c4033fe784f87b923/images/memory-attribution.png)
+![运行检测和任务](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/95812b0d36ebb76e859ebd2c4033fe784f87b923/images/topic-runtime.png)
 ![生命周期日志](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-logs-light.png)
 ![手机深色布局](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-mobile-dark.png)
 
-![召回诊断命中与 scope](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/cbb1d2597e237da49560f28694df8affb77c588c/images/theme-diagnostics-light.png)
+![召回诊断命中与 scope](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/95812b0d36ebb76e859ebd2c4033fe784f87b923/images/recall-disclosure.png)
 旧主题功能参考（当前配色见上图）：
 
 ![无命中诊断](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-empty.png)

@@ -193,6 +193,17 @@ export interface components {
             revision: number;
             state: components["schemas"]["MemoryState"];
             scope: components["schemas"]["Scope"];
+            subject_id?: string;
+            said_by?: string;
+            time?: {
+                created?: string;
+                updated?: string;
+                valid_from?: string | null;
+                valid_to?: string | null;
+                expires?: string | null;
+            } & {
+                [key: string]: unknown;
+            };
         } & {
             [key: string]: unknown;
         };
@@ -205,6 +216,14 @@ export interface components {
             versions: components["schemas"]["JsonObject"][];
             sources: components["schemas"]["JsonObject"][];
             ledger: components["schemas"]["JsonObject"][];
+        };
+        /** @description 按上游话题分组的待处理消息，仅提供计数和时间，不返回对话正文。 */
+        PendingTopic: {
+            id: string;
+            session: string;
+            count: number;
+            /** Format: date-time */
+            oldestAt: string | null;
         };
         RuntimeStatus: {
             ready: boolean;
@@ -221,6 +240,13 @@ export interface components {
                 session: string;
                 count: number;
             }[];
+            pendingTopics: components["schemas"]["PendingTopic"][];
+            extractionPolicy: {
+                backlogThreshold: number;
+                topicTtlSeconds: number;
+                maxTopicsPerBatch: number;
+            };
+            checkpointPending: number | null;
             schedulerCount: number;
             config: components["schemas"]["JsonObject"];
         };

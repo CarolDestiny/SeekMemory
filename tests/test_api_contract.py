@@ -28,10 +28,39 @@ Cache = importlib.import_module("_seekmemory_contract.store.cache").Cache
 Graph = importlib.import_module("_seekmemory_contract.core.graph").Graph
 Journal = importlib.import_module("_seekmemory_contract.webui.journal").Journal
 Jobs = importlib.import_module("_seekmemory_contract.webui.jobs").Jobs
+Buffer = importlib.import_module("_seekmemory_contract.perceive.buffer").Buffer
 WebRoutes = importlib.import_module("_seekmemory_contract.webui.routes").WebRoutes
 
 
 class ApiContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_status_topics_exposes_counts_and_times_without_message_text(
+        self,
+    ) -> None:
+        self.plugin.buffer.add(
+            "bot:FriendMessage:alice", "另一话题", "alice", at="invalid"
+        )
+        result = await self.routes._status()
+        validate_contract("status", result)
+        self.assertEqual(sum(item["count"] for item in result["pendingTopics"]), 2)
+        self.assertEqual(len(result["pendingTopics"]), 2)
+        self.assertIsNotNone(result["pendingTopics"][0]["oldestAt"])
+        self.assertIsNone(result["pendingTopics"][1]["oldestAt"])
+        self.assertEqual(
+            result["extractionPolicy"],
+            {
+                "backlogThreshold": 30,
+                "topicTtlSeconds": 86400.0,
+                "maxTopicsPerBatch": 6,
+            },
+        )
+        self.assertIsNone(result["checkpointPending"])
+        self.assertNotIn("契约测试消息", json.dumps(result, ensure_ascii=False))
+        self.plugin.cfg["topic_ttl_seconds"] = 0
+        self.plugin._c = self.plugin.cfg.get
+        self.assertEqual(
+            (await self.routes._status())["extractionPolicy"]["topicTtlSeconds"], 0
+        )
+
     async def asyncSetUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -51,14 +80,19 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             cfg={},
             _c={}.get,
             _schedulers=[],
-            buffer=SimpleNamespace(
-                items=[SimpleNamespace(session_id="bot:FriendMessage:alice")]
-            ),
+            buffer=Buffer(),
+            checkpoint=None,
             context=SimpleNamespace(
                 get_using_provider_async=AsyncMock(return_value=None)
             ),
             _nightly=asyncio.Event().wait,
             _weekly=asyncio.Event().wait,
+        )
+        self.plugin.buffer.add(
+            "bot:FriendMessage:alice",
+            "契约测试消息",
+            "alice",
+            at="2026-10-21T12:00:00+08:00",
         )
         self.routes = WebRoutes(self.plugin)
         self.ids = []

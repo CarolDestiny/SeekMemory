@@ -11,6 +11,7 @@ export function RuntimePanel({
   onAction: (action: "extract" | "weekly" | "cancel") => void
 }) {
   const task = status?.activeTask
+  const policy = status?.extractionPolicy
   return (
     <section className="mx-auto w-full max-w-6xl space-y-6 p-5 sm:p-8">
       <div className="workspace-intro">
@@ -19,7 +20,7 @@ export function RuntimePanel({
           检查引擎、账本、模型配置与持久化状态，查看待处理会话。
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           ["定时任务", String(status?.schedulerCount ?? "—")],
           [
@@ -30,6 +31,7 @@ export function RuntimePanel({
             ),
           ],
           ["当前操作", task?.kind ?? "空闲"],
+          ["待提交强化记忆", String(status?.checkpointPending ?? "—")],
         ].map(([label, value]) => (
           <div key={label} className="surface-panel p-6">
             <p className="text-xs text-muted-foreground">{label}</p>
@@ -102,10 +104,75 @@ export function RuntimePanel({
           </p>
         )}
       </div>
+      {policy && (
+        <section className="surface-panel space-y-3 p-6">
+          <h2 className="font-semibold">抽取策略</h2>
+          <dl className="grid gap-4 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-muted-foreground">积压触发阈值</dt>
+              <dd>
+                {policy.backlogThreshold > 0
+                  ? `${policy.backlogThreshold} 条消息`
+                  : "已关闭"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">话题 TTL</dt>
+              <dd>
+                {policy.topicTtlSeconds > 0
+                  ? `${policy.topicTtlSeconds / 3600} 小时`
+                  : "已关闭"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">每批话题上限</dt>
+              <dd>{policy.maxTopicsPerBatch} 个</dd>
+            </div>
+          </dl>
+          <p className="text-xs leading-6 text-muted-foreground">
+            积压触发需等待安静窗口；话题超期会触发抽取，不会自动删除消息。策略由后端执行，实际抽取仍需可用模型。
+            待提交强化表示尚未通过 checkpoint 持久化的记忆数量，不是抽取队列。
+          </p>
+        </section>
+      )}
+      <section className="surface-panel space-y-4 p-6">
+        <h2 className="font-semibold">
+          待抽取话题 · {status?.pendingTopics.length ?? "—"}
+        </h2>
+        {!status && (
+          <p className="text-sm text-muted-foreground">暂无运行数据。</p>
+        )}
+        {status?.pendingTopics.length === 0 && (
+          <p className="text-sm text-muted-foreground">没有待抽取的话题。</p>
+        )}
+        <ul className="divide-y">
+          {status?.pendingTopics.map((topic) => (
+            <li key={`${topic.session}:${topic.id}`} className="space-y-2 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <code className="text-xs wrap-anywhere">{topic.id}</code>
+                <Badge variant="outline">{topic.count} 条消息</Badge>
+              </div>
+              <p className="text-xs wrap-anywhere text-muted-foreground">
+                会话：{topic.session}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                最早消息：{topic.oldestAt ?? "时间未记录"}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </section>
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="space-y-3">
-          <h2 className="font-semibold">待处理会话</h2>
-          <JsonView value={status?.pending ?? []} />
+          <h2 className="font-semibold">会话汇总</h2>
+          <ul className="space-y-2 text-sm">
+            {status?.pending.map((item) => (
+              <li key={item.session} className="flex justify-between gap-3">
+                <span className="wrap-anywhere">{item.session}</span>
+                <span className="shrink-0">{item.count} 条</span>
+              </li>
+            ))}
+          </ul>
         </section>
         <section className="space-y-3">
           <h2 className="font-semibold">当前配置</h2>

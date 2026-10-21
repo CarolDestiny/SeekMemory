@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import {
   updateSchema,
+  selectAttribution,
   type ArtifactDetail,
   type ManagementClient,
   type UpdateCommand,
@@ -73,6 +74,7 @@ export function useEditor(
     }
   }
   return {
+    attribution: detail ? selectAttribution(detail) : null,
     detail,
     payload,
     setPayload,

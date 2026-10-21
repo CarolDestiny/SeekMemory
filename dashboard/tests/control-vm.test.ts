@@ -23,6 +23,13 @@ const idle: RuntimeStatus = {
   activeTask: null,
   checks: [],
   pending: [],
+  pendingTopics: [],
+  extractionPolicy: {
+    backlogThreshold: 30,
+    topicTtlSeconds: 86400,
+    maxTopicsPerBatch: 6,
+  },
+  checkpointPending: null,
   schedulerCount: 3,
   config: {},
 }

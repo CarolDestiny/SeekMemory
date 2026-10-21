@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .service import ManagementService
@@ -80,6 +81,23 @@ class WebRoutes:
             if plugin.buffer is not None
             else Counter()
         )
+        topics = []
+        if plugin.buffer is not None:
+            for session, topic_id, turns in plugin.buffer.topics():
+                timestamps = []
+                for turn in turns:
+                    try:
+                        timestamps.append(datetime.fromisoformat(turn.at).astimezone())
+                    except (TypeError, ValueError):
+                        continue
+                topics.append(
+                    {
+                        "id": topic_id,
+                        "session": session,
+                        "count": len(turns),
+                        "oldestAt": min(timestamps).isoformat() if timestamps else None,
+                    }
+                )
         active = plugin.jobs.task is not None and not plugin.jobs.task.done()
         return {
             "ready": plugin.ready,
@@ -93,6 +111,15 @@ class WebRoutes:
             "pending": [
                 {"session": key, "count": value} for key, value in pending.items()
             ],
+            "pendingTopics": topics,
+            "extractionPolicy": {
+                "backlogThreshold": plugin._c("backlog_flush_at", 30),
+                "topicTtlSeconds": plugin._c("topic_ttl_seconds", 86400.0),
+                "maxTopicsPerBatch": max(1, plugin._c("max_sessions_per_flush", 6)),
+            },
+            "checkpointPending": plugin.checkpoint.pending()
+            if plugin.checkpoint
+            else None,
             "schedulerCount": sum(not task.done() for task in plugin._schedulers),
             "config": {
                 key: plugin.cfg.get(key)

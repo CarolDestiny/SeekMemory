@@ -244,7 +244,7 @@ def signals(prev_user: str, cur_user: str) -> dict: ...
 |---|---|---|
 | GET records | 无 | `{records}`：六个家族、三种状态/scope，完整管理目录 |
 | GET detail | query `id` | `{artifact, versions, sources, ledger}`，包含原始快照和证据 |
-| GET status | 无 | `{ready, checks, activeTask, pending, schedulerCount, config}` |
+| GET status | 无 | `{ready, checks, activeTask, pending, pendingTopics, extractionPolicy, checkpointPending, schedulerCount, config}` |
 | GET events | 可选 kind/status/search | `{events, capacity:500}`，新事件在前 |
 | POST update | id/expectedRevision/payload/scope/state/reason/confirmed | `{id}`，追加修订；禁止更改来源或任意头字段 |
 | POST diagnose | query/umo/speaker | `{block, info, visible, excluded}`；无数据库写入 |
@@ -257,6 +257,7 @@ update 拒绝多余字段，reason 为 1–300 字符，payload 为对象且序�
 遗忘使用 `forget`，其他人工修订（含恢复）使用 `revise`；账本 before_hash/after_hash
 沿用上游语义，记录修订号字符串。内容哈希从版本的 blob 字段查看。
 detail 从 artifact_versions 读取历史，联合旧 evidence 和新版 artifact_evidence 读取来源。
+detail 的 header 可选包含 subject_id、said_by 和 time；前端保留缺失字段，不推断旧记录归属。
 detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整目录后由前端分页，不提供大库流式加载。
 
 无认证 401，方法错误 405，记录不存在 404，输入错误 400，版本冲突/任务繁忙 409，
@@ -276,7 +277,9 @@ detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整�
 重启恢复只根据无 stage 的任务生命周期事件判定终态；中间阶段成功不代表整个任务成功。
 抽取通过注入的 context-manager 回调记录 provider.call、response.parse、memory.deduplicate、
 artifact.validate、artifact.persist 和 impression.revise，不导入 WebUI 或宿主模块。
-缓冲沿用上游 `DialogueTurn` 与话题划分；status 按 session_id 汇总，日志记录 topic.extract 与话题 ID。
+缓冲沿用上游 `DialogueTurn` 与话题划分；status 同时返回会话汇总和话题摘要（ID、会话、条数、最早时间），不包含对话正文。
+extractionPolicy 返回后端采用的积压阈值、TTL 秒数与批次话题上限；checkpointPending 为待强化记忆数，未初始化为 null。
+话题全部时间无效时 oldestAt 为 null。日志记录 topic.extract 与话题 ID。
 抽取返回上游 `WriteOutcome`，阶段日志记录 written/skipped；模型失败保留会话缓冲。
 没有可用模型不消耗批次次数；单个会话失败后继续其他可用会话，批次结束再传播首个失败。
 成功后才移除该会话快照中的消息，保留取消、失败以及调用期间新增的消息。
