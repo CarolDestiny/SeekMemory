@@ -1,35 +1,4 @@
 # 变更记录
-## 0.3.1 - 2026-10-21
-
-Topic buffer and attribution hardening.
-
-- Group chat sources continue to be captured and extracted as shared memories.
-- Typed DialogueTurn buffer with topic segmentation and 24h TTL trigger.
-- Extractor now records subject_kind/subject_id and event_at.
-- Artifact created time uses event time with Source timestamp fallback.
-- Added validity date normalization and owner-id resolution.
-
-## 0.3.0 - 2026-10-21
-
-Backlog hardening and retrieval boundary.
-
-- Backlog flush ignores the worth_now gate after a quiet window.
-- Session-safe draining prevents unprocessed sessions from being dropped.
-- All production writes now use CAS commit with versions and audit.
-- Checkpoint state events commit atomically with their revision.
-- Recall applies subject-aware disclosure before assembly.
-- RetrievalCandidate reserves a lexical signal for future BM25.
-
-## 0.2.0 - 2026-10-21
-
-Artifact kernel foundation and online cutover.
-
-- Source is the immutable truth; user and assistant replies are persisted.
-- Artifact writes use CAS commits, append-only versions and version-level evidence.
-- Added subject_id, state_events, 30-minute checkpoints and universal disclosure.
-- Added the ChatModel boundary and wired extraction through the new commit path.
-
-
 ## 未发布
 
 - 简化 WebUI 日志、路由状态查询、前端筛选/页面状态、Mock 数据及发布资源检查的控制流；
@@ -71,6 +40,37 @@ Artifact kernel foundation and online cutover.
   源码 ZIP/tar.gz 和 Git 克隆保留开发源码，不含前端产物。详见 README 的安装说明。
 - 入口映射：原“插件配置”继续用于配置；记忆操作改从“插件卡片 → 插件视图”进入。
   页面与截图见 [中文指南](docs/zh/webui.md) / [English guide](docs/en/webui.md)。
+
+
+## 0.3.1 - 2026-10-21
+
+Topic buffer and attribution hardening.
+
+- Group chat sources continue to be captured and extracted as shared memories.
+- Typed DialogueTurn buffer with topic segmentation and 24h TTL trigger.
+- Extractor now records subject_kind/subject_id and event_at.
+- Artifact created time uses event time with Source timestamp fallback.
+- Added validity date normalization and owner-id resolution.
+
+## 0.3.0 - 2026-10-21
+
+Backlog hardening and retrieval boundary.
+
+- Backlog flush ignores the worth_now gate after a quiet window.
+- Session-safe draining prevents unprocessed sessions from being dropped.
+- All production writes now use CAS commit with versions and audit.
+- Checkpoint state events commit atomically with their revision.
+- Recall applies subject-aware disclosure before assembly.
+- RetrievalCandidate reserves a lexical signal for future BM25.
+
+## 0.2.0 - 2026-10-21
+
+Artifact kernel foundation and online cutover.
+
+- Source is the immutable truth; user and assistant replies are persisted.
+- Artifact writes use CAS commits, append-only versions and version-level evidence.
+- Added subject_id, state_events, 30-minute checkpoints and universal disclosure.
+- Added the ChatModel boundary and wired extraction through the new commit path.
 
 ## 0.1.9 — 2026-10-21
 
