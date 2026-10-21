@@ -149,7 +149,7 @@ gh pr create --base main --head fix/issue-0001-paraphrase-recall \
 4. 独立任务使用已有标签发布 `astrbot_plugin_seekmemory.zip` 和 `SHA256SUMS`。
    预发布标签对应预发布版本；已有 Release 不会被覆盖，重复发布会失败，需检查原因。
 
-安装包包含 Git 跟踪的 `core`、`store`、`recall`、`perceive`、`maintain`、`webui` 下的 `.py`，
+安装包包含 Git 跟踪的 `app`、`core`、`store`、`recall`、`perceive`、`maintain`、`webui` 下的 `.py`，
 以及 `main.py`、元数据、配置定义、`store/schema.sql`、许可证和 `pages/memory` 生产资源。
 新增运行资源或包时，应同步修改 `scripts/package_plugin.py` 和打包测试。
 构建产物不提交到 Git，源码归档保持源码形态。后端无需编译，分发 `.py` 以保持 Python 和平台兼容性。

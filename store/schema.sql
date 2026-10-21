@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     created_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT '',
     revision   INTEGER NOT NULL DEFAULT 1,
-    lineage    TEXT NOT NULL DEFAULT '{}'
+    lineage    TEXT NOT NULL DEFAULT '{}',
+    subject_id TEXT NOT NULL DEFAULT ''
 );
 
 -- 版本链：每次落库都把自己的 revision 存一份，旧版本不丢。
@@ -78,3 +79,34 @@ CREATE INDEX IF NOT EXISTS idx_nodes_level ON nodes(level);
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent);
 CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src);
 CREATE INDEX IF NOT EXISTS idx_evidence_node ON evidence(node);
+
+CREATE TABLE IF NOT EXISTS artifact_versions (
+    seq      INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity   TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    op       TEXT NOT NULL DEFAULT 'create',
+    blob     TEXT NOT NULL,
+    header   TEXT NOT NULL,
+    at       TEXT NOT NULL,
+    UNIQUE(entity, revision)
+);
+
+CREATE TABLE IF NOT EXISTS state_events (
+    id            TEXT PRIMARY KEY,
+    entity        TEXT NOT NULL,
+    revision_seen INTEGER NOT NULL,
+    op            TEXT NOT NULL,
+    delta         TEXT NOT NULL DEFAULT '{}',
+    at            TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_versions_entity ON artifact_versions(entity, revision);
+CREATE INDEX IF NOT EXISTS idx_state_entity ON state_events(entity, at);
+
+CREATE TABLE IF NOT EXISTS artifact_evidence (
+    entity   TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    source   TEXT NOT NULL,
+    PRIMARY KEY (entity, revision, source)
+);
+CREATE INDEX IF NOT EXISTS idx_artifact_evidence_entity ON artifact_evidence(entity, revision);

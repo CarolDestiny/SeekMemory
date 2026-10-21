@@ -36,7 +36,15 @@ class PackageTests(unittest.TestCase):
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
-        for directory in ("core", "store", "recall", "perceive", "maintain", "webui"):
+        for directory in (
+            "app",
+            "core",
+            "store",
+            "recall",
+            "perceive",
+            "maintain",
+            "webui",
+        ):
             for source in (ROOT / directory).rglob("*.py"):
                 target = self.root / source.relative_to(ROOT)
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -87,7 +95,14 @@ class PackageTests(unittest.TestCase):
         with ZipFile(archive) as bundle:
             names = set(bundle.namelist())
             self.assertTrue(
-                {"main.py", "store/schema.sql", "pages/memory/index.html"} <= names
+                {
+                    "main.py",
+                    "app/checkpoint.py",
+                    "app/contracts.py",
+                    "store/schema.sql",
+                    "pages/memory/index.html",
+                }
+                <= names
             )
             self.assertTrue(
                 {"LICENSE-MIT", "LICENSE-APACHE", "pages/memory/LICENSES.md"} <= names

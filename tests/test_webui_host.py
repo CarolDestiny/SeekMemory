@@ -33,11 +33,13 @@ class HostContext:
     def __init__(self) -> None:
         self.registered_web_apis = []
         self.provider = None
+        self.provider_sessions = []
 
     def register_web_api(self, route, handler, methods, description) -> None:
         self.registered_web_apis.append((route, handler, methods, description))
 
-    async def get_using_provider_async(self):
+    async def get_using_provider_async(self, umo=None):
+        self.provider_sessions.append(umo)
         return self.provider
 
 
@@ -151,7 +153,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.plugin.initialize()
         await self.plugin.start_jobs()
-        self.assertEqual(len(self.plugin._schedulers), 3)
+        self.assertEqual(len(self.plugin._schedulers), 4)
         tasks = list(self.plugin._schedulers)
         await self.plugin.terminate()
         self.assertTrue(all(task.done() for task in tasks))
@@ -171,6 +173,23 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         persisted = json.loads((Path(self.temp.name) / "pending.json").read_text())
         self.assertEqual(len(persisted["items"]), 1)
 
+    async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
+        artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
+        store = importlib.import_module(f"{ROOT.name}.store.db")
+        art = artifact.make("memory", {"text": "需要保留强化次数", "level": "fact"})
+        self.plugin.db.commit(art, expected_revision=0, op="create")
+        self.plugin.cache.put(art)
+        self.plugin.checkpoint.record(art)
+        await self.plugin.terminate()
+        db = store.DB(str(Path(self.temp.name) / "memory.db"))
+        try:
+            saved = db.get(art.header.id)
+            self.assertEqual(saved.header.revision, 2)
+            self.assertEqual(saved.header.strength.hits, 1)
+            self.assertEqual(db.history(art.header.id)[-1]["op"], "reinforce")
+        finally:
+            db.close()
+
     async def test_session_cap_and_new_messages_survive_success(self) -> None:
         plugin = self.plugin
 
@@ -185,6 +204,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
         plugin.buffer.add("bot:FriendMessage:bob", "Plan B", "bob")
         await plugin._nightly()
+        self.assertEqual(self.context.provider_sessions, ["bot:FriendMessage:alice"])
         self.assertEqual(
             [row[3] for row in plugin.buffer.items],
             ["Plan B", "Arrived during model call"],

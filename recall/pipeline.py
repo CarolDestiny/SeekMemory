@@ -149,5 +149,7 @@ def build_block(
         "pinned": len(pinned_arts),
         "chars": len(block),
         "drift": bool(picked) and not designated,
+        "picked_ids": tuple(a.header.id for a in picked),
+        "pinned_ids": tuple(a.header.id for a in pinned_arts),
     }
     return block, info

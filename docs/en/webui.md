@@ -10,6 +10,8 @@ The workspace provides all six artifact families, scope/session/state filters,
 version comparison, related records, raw evidence, blob hashes and ledger entries.
 Edit JSON, scope or active/forgotten state with an audit reason and confirmation.
 Every save appends a revision and ledger entry atomically; stale revisions conflict.
+Saves use the upstream Artifact kernel and preserve subject IDs and version-level evidence.
+New ledger entries store before/after revision numbers; content hashes are in version blobs.
 Loading an older payload creates an editable draft, not an immediate rollback.
 Merged records cannot be independently restored. Editing does not rebuild graph edges.
 
@@ -25,6 +27,9 @@ cancellation share the scheduled-task runner. Editing is blocked during maintena
 Cancellation preserves unfinished messages but never undoes completed writes;
 synchronous weekly work may finish before cancellation is processed. Existing
 per-item extraction warnings still require inspection even when a task succeeds.
+Extraction resolves the model per session. Four scheduler loops cover nightly extraction,
+weekly maintenance, idle extraction and checkpoints. Shutdown awaits tasks, saves pending
+messages and flushes recall reinforcement checkpoints before closing the database.
 
 Business logs expose severity, stage, module, relative file, function, line,
 duration, explicit scalar context and exception frame locations. Filters compose

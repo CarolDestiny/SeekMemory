@@ -111,10 +111,10 @@ for (const record of records) {
               {
                 seq: 1,
                 at: record.updatedAt,
-                op: "admin_revise",
+                op: "revise",
                 entity: record.id,
-                before_hash: "demo-content-hash-v2",
-                after_hash: "demo-content-hash-v3",
+                before_hash: "2",
+                after_hash: "3",
                 reason: "虚构预览：补充晚间低咖啡因偏好",
                 prev_hash: "",
                 self_hash: "demo-ledger-hash",
@@ -237,12 +237,13 @@ export const mockClient: ManagementClient = {
       })),
       activeTask: null,
       pending: [{ session: "napcat:GroupMessage:10001", count: 8 }],
-      schedulerCount: 3,
+      schedulerCount: 4,
       config: {
         owner_umo: "napcat:FriendMessage:10001",
         observe_groups: true,
         summary_time: "23:50",
         weekly_day: 6,
+        checkpoint_seconds: 1800,
         budget_chars: 600,
       },
     }
@@ -281,7 +282,13 @@ export const mockClient: ManagementClient = {
       blob: "demo-new-hash",
       content: JSON.stringify(command.payload),
     })
-    detail.ledger.push({ op: "admin_revise", at, reason: command.reason })
+    detail.ledger.push({
+      op: command.state === "forgotten" ? "forget" : "revise",
+      at,
+      reason: command.reason,
+      before_hash: String(command.expectedRevision),
+      after_hash: String(detail.artifact.header.revision),
+    })
     records = memoryCollectionSchema.parse(
       records.map((record): MemoryRecord =>
         record.id !== command.id
