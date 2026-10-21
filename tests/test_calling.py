@@ -92,7 +92,7 @@ class ImpressionTest(unittest.TestCase):
         got = revise_impression(db, cache, new)
         self.assertIsNotNone(got)
         self.assertEqual(got.header.id, old.header.id)
-        self.assertEqual(got.header.revision, old.header.revision)
+        self.assertEqual(got.header.revision, old.header.revision + 1)
         self.assertGreater(got.header.strength.weight, 1.6)
         self.assertEqual(got.header.strength.hits, 1)
 

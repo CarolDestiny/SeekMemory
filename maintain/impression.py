@@ -119,19 +119,16 @@ def revise_impression(db: DB, cache: Cache, art: Artifact) -> Artifact | None:
 def _reinforce(db: DB, cache: Cache, art: Artifact, old: Artifact,
                weight: float, hits: int) -> Artifact:
     """同一句话再出现一次：只加权重与命中数，不产生新版本。"""
-    new = revise(old, revision=old.header.revision,
-                 strength=replace(old.header.strength, weight=weight, hits=hits))
-    db.upsert(new)
+    new = revise(old, strength=replace(old.header.strength, weight=weight, hits=hits))
+    db.commit(new, expected_revision=old.header.revision, op="reinforce",
+              reason="impression reinforced", source_ids=tuple(art.header.lineage.sources))
     cache.put(new)
-    db.ledger_append("reinforce", new.header.id, old.header.id, new.header.id,
-                     f"同一印象再次出现，权重 {old.header.strength.weight:.2f}→{weight:.2f}")
     _retire(db, cache, art)
     return new
 
 
 def _reword(db: DB, cache: Cache, art: Artifact, old: Artifact,
             weight: float, hits: int, score: float) -> Artifact:
-    """说法变了：出新 revision，正文换成更准的那句。"""
     text = _text(art)
     payload = {**old.payload, **art.payload, "text": text}
     lineage = replace(old.header.lineage,
@@ -144,23 +141,25 @@ def _reword(db: DB, cache: Cache, art: Artifact, old: Artifact,
         lineage=lineage,
         scope=art.header.scope,
     )
-    db.upsert(new)
+    db.commit(new, expected_revision=old.header.revision, op="merge",
+              reason=f"impression revised: {score:.2f}",
+              source_ids=tuple(art.header.lineage.sources))
     cache.put(new)
     _retire(db, cache, art)
-    db.ledger_append("merge", new.header.id, old.header.id, new.header.id,
-                     f"印象修订（重合 {score:.2f}）：{_text(old)} → {text}")
     return new
 
 
 def _retire(db: DB, cache: Cache, art: Artifact) -> None:
-    """把刚写进来的那条标成 merged 并移出缓存：它已经并进旧印象了。"""
     if art.header.id == "":
         return
     try:
-        db.upsert(revise(art, state="merged"))
-    except Exception:  # noqa: BLE001
+        updated = revise(art, state="merged")
+        db.commit(updated, expected_revision=art.header.revision, op="merge",
+                  reason="impression merged",
+                  source_ids=tuple(art.header.lineage.sources))
+    except Exception:
         pass
     try:
         cache.remove(art.header.id)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass

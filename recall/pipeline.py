@@ -110,5 +110,7 @@ def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
     )
     mark_given(db, cache, designated + picked, block)
     info = {"mode": mode, "picked": len(picked), "pinned": len(pinned_arts),
-            "chars": len(block), "drift": bool(picked) and not designated}
+            "chars": len(block), "drift": bool(picked) and not designated,
+            "picked_ids": tuple(a.header.id for a in picked),
+            "pinned_ids": tuple(a.header.id for a in pinned_arts)}
     return block, info
