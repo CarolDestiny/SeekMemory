@@ -49,15 +49,26 @@ def fresh():
 
 
 class GroupWriteTest(unittest.TestCase):
-    def test_group_memory_is_session_private(self):
+    def test_group_memory_is_shared_by_person(self):
         db, cache, graph = fresh()
         n = asyncio.run(absorb(
             [(GROUP_A, "10086", "user", "周末有人去爬山吗")], db, cache, graph,
             FakeProvider()))
         self.assertEqual(n, 1)
         art = cache.active("memory")[0]
-        self.assertEqual(art.header.scope, "private")
-        self.assertEqual(art.payload.get("owner_umo"), GROUP_A)
+        # 群聊不是隐私边界：写 shared，归属记说话人
+        self.assertEqual(art.header.scope, "shared")
+        self.assertEqual(art.header.said_by, "10086")
+
+    def test_multi_speaker_records_all(self):
+        db, cache, graph = fresh()
+        asyncio.run(absorb(
+            [(GROUP_A, "10086", "user", "周末有人去爬山吗"),
+             (GROUP_A, "10087", "user", "我也想去")], db, cache, graph,
+            FakeProvider()))
+        art = cache.active("memory")[0]
+        self.assertEqual(art.payload.get("speakers"), ["10086", "10087"])
+        self.assertEqual(art.header.said_by, "group")
 
     def test_owner_of_single_session(self):
         self.assertEqual(owner_of([(GROUP_A, "1", "user", "a")]), GROUP_A)
@@ -68,16 +79,15 @@ class GroupWriteTest(unittest.TestCase):
 class GroupIsolationTest(unittest.TestCase):
     def _pool(self):
         art = make("memory",
-                   {"text": "群里有人说周末去爬山", "level": "fact",
-                    "owner_umo": GROUP_A},
-                   scope="private")
+                   {"text": "10086 说周末去爬山", "level": "fact"},
+                   scope="shared", said_by="10086")
         return [art]
 
-    def test_visible_in_own_group_only(self):
+    def test_group_memory_visible_everywhere(self):
+        # 群聊不是隐私边界：任何会话都能看到群里的记忆
         pool = self._pool()
-        self.assertEqual(len(visible(pool, GROUP_A, OWNER)), 1)
-        self.assertEqual(len(visible(pool, GROUP_B, OWNER)), 0)
-        self.assertEqual(len(visible(pool, OWNER, OWNER)), 0)
+        for umo in (GROUP_A, GROUP_B, OWNER):
+            self.assertEqual(len(visible(pool, umo, OWNER)), 1, umo)
 
 
 class PersonaSourceTest(unittest.TestCase):

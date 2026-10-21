@@ -136,14 +136,23 @@ async def absorb(
 
     owner = owner_of(items)
     group = ":GroupMessage:" in owner
+    senders = {item[1] for item in items if item[1]}
+    said_by = "owner"
+    if group:
+        said_by = next(iter(senders)) if len(senders) == 1 else "group"
     written = 0
     for item in parsed[:MAX_ITEMS]:
         try:
             if owner:
                 item = {**item, "owner_umo": owner}
-            # 群里看到的事只在该群可见：scope=private + 会话归属，跨群与私聊都看不到
-            art = make("memory", item, strength=strength_of(item),
-                       scope="private" if owner else "shared")
+            # 按人归属：群聊不是隐私边界，群里发生的写 shared；
+            # 私聊写 private，只归那个会话。说话人记录在 said_by / speakers。
+            payload = item
+            if group and len(senders) > 1:
+                payload = {**item, "speakers": sorted(senders)}
+            art = make("memory", payload, strength=strength_of(item),
+                       scope="shared" if group or not owner else "private",
+                       said_by=said_by)
             validate(art)
         except Exception as exc:  # noqa: BLE001 - 单条坏数据跳过
             log(f"构造记忆失败：{exc}")
