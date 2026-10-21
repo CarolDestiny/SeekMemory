@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from core.artifact import Artifact
-from core.source import Source
-from core.versioning import StateEvent
-from app.contracts import ChatRequest, ChatResponse
+try:
+    from ..core.artifact import Artifact
+    from ..core.source import Source
+    from ..core.versioning import StateEvent
+    from .contracts import ChatRequest, ChatResponse
+except ImportError:
+    from core.artifact import Artifact
+    from core.source import Source
+    from core.versioning import StateEvent
+    from app.contracts import ChatRequest, ChatResponse
 
 
 class ChatModel(Protocol):

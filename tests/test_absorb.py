@@ -62,6 +62,8 @@ class BufferTest(unittest.TestCase):
         self.assertEqual(len(buf.items), 2)
         self.assertEqual(len(buf.take()), 2)
         self.assertEqual(buf.items, [])
+        buf.add("umo:a", "third", "1", "s_third")
+        self.assertEqual(buf.items[0][4], "s_third")
 
     def test_persist_and_reload(self):
         path = os.path.join(tempfile.mkdtemp(prefix="seekmem_buf_"), "pending.json")
