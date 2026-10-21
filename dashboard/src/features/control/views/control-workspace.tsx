@@ -22,6 +22,12 @@ const sections = [
   { id: "logs", label: "生命周期日志", icon: ScrollText },
 ] as const
 
+const actionLabels = {
+  extract: "立即抽取",
+  weekly: "每周整理",
+  cancel: "取消任务",
+}
+
 export function ControlWorkspace({ client }: { client: ManagementClient }) {
   const vm = useControl(client)
   const [section, setSection] =
@@ -132,11 +138,7 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
         <div className="space-y-5 p-6">
           <h2 className="text-xl font-semibold">
             确认
-            {vm.action === "extract"
-              ? "立即抽取"
-              : vm.action === "weekly"
-                ? "每周整理"
-                : "取消任务"}
+            {actionLabels[vm.action ?? "cancel"]}
           </h2>
           <p className="text-sm leading-7 text-muted-foreground">
             {vm.action === "cancel"

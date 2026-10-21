@@ -49,19 +49,16 @@ export function useControl(client: ManagementClient) {
           if (runtime.status === "fulfilled") setStatus(runtime.value)
           else setStatus(null)
           if (log.status === "fulfilled") setEvents(log.value)
-          setError(
-            Array.from(
-              new Set(
-                [records, runtime, log]
-                  .filter((item) => item.status === "rejected")
-                  .map((item) =>
-                    item.reason instanceof Error
-                      ? item.reason.message
-                      : "读取失败"
-                  )
-              )
-            ).join("；")
-          )
+          const messages = new Set<string>()
+          for (const result of [records, runtime, log]) {
+            if (result.status !== "rejected") continue
+            messages.add(
+              result.reason instanceof Error
+                ? result.reason.message
+                : "读取失败"
+            )
+          }
+          setError([...messages].join("；"))
         })
         .finally(() => {
           if (version === requestVersion.current) loading.current = null
@@ -108,23 +105,21 @@ export function useControl(client: ManagementClient) {
       if (mounted.current) setBusy(false)
     }
   }
-  const filteredSource: MemorySource =
-    source.status === "ready"
-      ? {
-          ...source,
-          records: source.records.filter(
-            (record) =>
-              (scope === "all" || record.scope === scope) &&
-              (session === "all" || record.session === session)
-          ),
-        }
-      : source
-  const sessions =
-    source.status === "ready"
-      ? Array.from(
-          new Set(source.records.map((record) => record.session))
-        ).sort()
-      : []
+  let filteredSource = source
+  let sessions: string[] = []
+  if (source.status === "ready") {
+    filteredSource = {
+      ...source,
+      records: source.records.filter(
+        (record) =>
+          (scope === "all" || record.scope === scope) &&
+          (session === "all" || record.session === session)
+      ),
+    }
+    sessions = [
+      ...new Set(source.records.map((record) => record.session)),
+    ].sort()
+  }
   return {
     source: filteredSource,
     status,

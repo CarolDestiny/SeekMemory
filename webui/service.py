@@ -161,9 +161,9 @@ class ManagementService:
             raise ValueError("请先确认操作")
         if type(body["expectedRevision"]) is not int or not isinstance(body["id"], str):
             raise ValueError("版本号或 ID 无效")
-        if body["scope"] not in ("private", "shared", "shadow") or body[
-            "state"
-        ] not in ("active", "forgotten", "merged"):
+        valid_scope = body["scope"] in ("private", "shared", "shadow")
+        valid_state = body["state"] in ("active", "forgotten", "merged")
+        if not valid_scope or not valid_state:
             raise ValueError("状态或 scope 无效")
         if (
             not isinstance(body["reason"], str)

@@ -32,6 +32,9 @@ Artifact kernel foundation and online cutover.
 
 ## 未发布
 
+- 简化 WebUI 日志、路由状态查询、前端筛选/页面状态、Mock 数据及发布资源检查的控制流；
+  启用嵌套三元表达式 lint 拦截与正反例验证，保持接口和运行行为不变。
+
 - 同步上游 v0.3.1 的话题缓冲、主体归属和事件时间，适配运行页计数及话题抽取日志，保留取消时缓冲。
 
 - 同步上游 v0.3.0：保留积压触发、WriteOutcome、统一提交、原子 checkpoint 与主体披露判定；

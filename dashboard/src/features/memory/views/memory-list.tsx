@@ -40,6 +40,9 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
     resultCount,
   } = vm
   const status = source.status
+  let summary = `共 ${resultCount} 条记忆`
+  if (status === "loading") summary = "加载中…"
+  else if (status === "error") summary = "加载失败"
   return (
     <section
       aria-label="记忆列表"
@@ -97,7 +100,7 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
         </div>
       </div>
 
-      {status === "loading" ? (
+      {status === "loading" && (
         <div role="status" aria-label="正在加载记忆" className="divide-y">
           {Array.from({ length: 4 }, (_, index) => (
             <div key={index} className="space-y-3 p-5">
@@ -107,18 +110,20 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
             </div>
           ))}
         </div>
-      ) : status === "error" ? (
+      )}
+      {source.status === "error" && (
         <div role="alert" className="px-6 py-20 text-center">
           <TriangleAlert className="mx-auto mb-4 size-8 text-destructive" />
           <h2 className="font-medium">暂时无法加载记忆</h2>
           <p className="mt-2 mb-5 text-sm text-muted-foreground">
-            {source.status === "error" ? source.message : ""}
+            {source.message}
           </p>
           <Button variant="outline" onClick={onRetry}>
             重试加载
           </Button>
         </div>
-      ) : pageRecords.length === 0 ? (
+      )}
+      {status === "ready" && pageRecords.length === 0 && (
         <div role="status" className="px-6 py-20 text-center">
           <Search className="mx-auto mb-4 size-8 text-muted-foreground/40" />
           <h2 className="font-medium">
@@ -130,7 +135,8 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
               : "新的记忆形成后，会出现在这个位置。"}
           </p>
         </div>
-      ) : (
+      )}
+      {status === "ready" && pageRecords.length > 0 && (
         <ul className="divide-y">
           {pageRecords.map((record) => {
             const Icon = categoryIcons[record.category]
@@ -196,11 +202,7 @@ export function MemoryList({ vm, onSelect, onRetry }: MemoryListProps) {
       )}
       <footer className="flex items-center justify-between gap-3 border-t px-4 py-3">
         <p aria-live="polite" className="text-[11px] text-muted-foreground">
-          {status === "loading"
-            ? "加载中…"
-            : status === "error"
-              ? "加载失败"
-              : "共 " + resultCount + " 条记忆"}
+          {summary}
         </p>
         <div className="flex items-center gap-2">
           <Button

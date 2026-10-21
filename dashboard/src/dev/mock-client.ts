@@ -42,25 +42,41 @@ for (const record of records) {
   )
     ? "memory"
     : record.category
-  const payload: ArtifactDetail["artifact"]["payload"] = {
+  let familyPayload: ArtifactDetail["artifact"]["payload"]
+  switch (family) {
+    case "example":
+      familyPayload = {
+        user: "事情好多，不知道从哪里开始",
+        assistant: record.text,
+      }
+      break
+    case "media":
+      familyPayload = {
+        type: "web",
+        title: record.title,
+        summary: record.text,
+        url: "https://example.com/walk",
+      }
+      break
+    case "secret":
+      familyPayload = {
+        ref: "demo-private-reference",
+        shadow_text: record.text,
+      }
+      break
+    case "designated":
+      familyPayload = { text: record.text, trigger: "计划" }
+      break
+    case "memory":
+      familyPayload = { text: record.text, level: record.category }
+      break
+    default:
+      familyPayload = { text: record.text }
+  }
+  const payload = {
     owner_umo: record.session,
     tags: [...record.tags],
-    ...(family === "example"
-      ? { user: "事情好多，不知道从哪里开始", assistant: record.text }
-      : family === "media"
-        ? {
-            type: "web",
-            title: record.title,
-            summary: record.text,
-            url: "https://example.com/walk",
-          }
-        : family === "secret"
-          ? { ref: "demo-private-reference", shadow_text: record.text }
-          : family === "designated"
-            ? { text: record.text, trigger: "计划" }
-            : family === "memory"
-              ? { text: record.text, level: record.category }
-              : { text: record.text }),
+    ...familyPayload,
   }
   details.set(
     record.id,

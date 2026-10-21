@@ -15,9 +15,11 @@ import { z } from "zod"
 
 const scenarios = [
   {
-    name: "architecture rules reject imports across model, VM, view, UI and transport boundaries",
+    name: "架构与可读性规则拒绝跨层依赖和嵌套三元表达式",
     rejected: true,
     files: {
+      "features/control/nested.ts":
+        'export const label = (a: boolean, b: boolean) => a ? "a" : b ? "b" : "c"',
       "features/control/model.ts": 'export { useState } from "react"',
       "features/control/use-probe.ts":
         'export { astrbotClient } from "@/infrastructure/astrbot-client"',
@@ -34,9 +36,11 @@ const scenarios = [
     },
   },
   {
-    name: "architecture rules allow injected ports and the public UI adapter",
+    name: "架构与可读性规则允许依赖注入、公共组件适配和顺序分支",
     rejected: false,
     files: {
+      "features/control/flat.ts":
+        'export function label(a: boolean, b: boolean) { if (a) return "a"; if (b) return "b"; return "c" }',
       "features/control/use-probe.ts":
         'export type { ManagementClient } from "./model"',
       "features/control/views/probe.ts": 'export { Button } from "@/ui"',
@@ -89,7 +93,8 @@ for (const scenario of scenarios) {
               (item) =>
                 item.filename.replaceAll("\\", "/") === `src/${file}` &&
                 (item.code === "eslint(no-restricted-imports)" ||
-                  item.code === "eslint(no-restricted-globals)")
+                  item.code === "eslint(no-restricted-globals)" ||
+                  item.code === "eslint(no-nested-ternary)")
             ),
             file
           )

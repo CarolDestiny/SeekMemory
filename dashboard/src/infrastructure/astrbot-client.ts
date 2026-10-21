@@ -48,43 +48,47 @@ const idResponseSchema = z.object({ id: z.string() }) satisfies z.ZodType<
 
 export const astrbotClient: ManagementClient = {
   async records() {
-    const data = await (await bridge()).apiGet("manage/records")
+    const host = await bridge()
+    const data = await host.apiGet("manage/records")
     return z.object({ records: memoryCollectionSchema }).parse(data).records
   },
   async status() {
-    return statusSchema.parse(await (await bridge()).apiGet("manage/status"))
+    const host = await bridge()
+    const data = await host.apiGet("manage/status")
+    return statusSchema.parse(data)
   },
   async detail(id) {
-    return detailSchema.parse(
-      await (await bridge()).apiGet("manage/detail", { id })
-    )
+    const host = await bridge()
+    const data = await host.apiGet("manage/detail", { id })
+    return detailSchema.parse(data)
   },
   async events() {
-    return eventsSchema.parse(await (await bridge()).apiGet("manage/events"))
-      .events
+    const host = await bridge()
+    const data = await host.apiGet("manage/events")
+    return eventsSchema.parse(data).events
   },
   async update(command) {
     const body = updateSchema.parse(command) satisfies ApiRequest<"update">
-    idResponseSchema.parse(
-      await (await bridge()).apiPost("manage/update", body)
-    )
+    const host = await bridge()
+    const data = await host.apiPost("manage/update", body)
+    idResponseSchema.parse(data)
   },
   async diagnose(query) {
     const body: ApiRequest<"diagnose"> = query
-    return diagnosticSchema.parse(
-      await (await bridge()).apiPost("manage/diagnose", body)
-    )
+    const host = await bridge()
+    const data = await host.apiPost("manage/diagnose", body)
+    return diagnosticSchema.parse(data)
   },
   async task(kind) {
     const body = { kind, confirmed: true } satisfies ApiRequest<"task">
-    return idResponseSchema.parse(
-      await (await bridge()).apiPost("manage/task", body)
-    ).id
+    const host = await bridge()
+    const data = await host.apiPost("manage/task", body)
+    return idResponseSchema.parse(data).id
   },
   async cancel(id) {
     const body = { id, confirmed: true } satisfies ApiRequest<"cancel">
-    idResponseSchema.parse(
-      await (await bridge()).apiPost("manage/cancel", body)
-    )
+    const host = await bridge()
+    const data = await host.apiPost("manage/cancel", body)
+    idResponseSchema.parse(data)
   },
 }

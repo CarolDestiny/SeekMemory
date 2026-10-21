@@ -1,4 +1,4 @@
-import { Badge, Input, JsonView, Select } from "@/ui"
+import { Badge, Input, JsonView, Select, type BadgeProps } from "@/ui"
 import type { OperationEvent } from "../model"
 import { useLogs } from "../use-logs"
 
@@ -15,6 +15,13 @@ const labels: Record<string, string> = {
   info: "信息",
   warning: "警告",
 }
+
+const levelTones = {
+  ERROR: "danger",
+  WARNING: "warning",
+  INFO: "info",
+  DEBUG: "info",
+} satisfies Record<OperationEvent["level"], BadgeProps["tone"]>
 
 export function LogView({ events }: { events: readonly OperationEvent[] }) {
   const vm = useLogs(events)
@@ -91,16 +98,7 @@ export function LogView({ events }: { events: readonly OperationEvent[] }) {
           <article key={event.id} className="space-y-3 p-4 sm:px-6">
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <time className="text-muted-foreground">{event.at}</time>
-              <Badge
-                variant="outline"
-                tone={
-                  event.level === "ERROR"
-                    ? "danger"
-                    : event.level === "WARNING"
-                      ? "warning"
-                      : "info"
-                }
-              >
+              <Badge variant="outline" tone={levelTones[event.level]}>
                 {event.level}
               </Badge>
               <Badge variant="secondary">{event.kind}</Badge>

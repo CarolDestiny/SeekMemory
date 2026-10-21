@@ -41,18 +41,13 @@ export default function MockApp() {
     }
   else if (!parsedMock.success)
     source = { status: "error", message: "示例数据校验失败，请检查开发数据。" }
-  else
-    source = {
-      status: "ready",
-      records:
-        scenario === "empty"
-          ? []
-          : scenario === "long"
-            ? parsedMock.data.filter(
-                (record) => record.id === "mock_memory_010"
-              )
-            : parsedMock.data,
-    }
+  else {
+    let records = parsedMock.data
+    if (scenario === "empty") records = []
+    else if (scenario === "long")
+      records = records.filter((record) => record.id === "mock_memory_010")
+    source = { status: "ready", records }
+  }
 
   return (
     <div className="flex min-h-svh flex-col">

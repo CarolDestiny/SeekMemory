@@ -32,7 +32,7 @@ class Jobs:
         Raises:
             RuntimeError: 执行器忙碌或正在停止。
         """
-        if self.closed or self.task is not None and not self.task.done():
+        if self.closed or (self.task is not None and not self.task.done()):
             raise RuntimeError("维护任务正在运行或停止")
         task_id = uuid4().hex
         self.task_id, self.kind = task_id, kind
