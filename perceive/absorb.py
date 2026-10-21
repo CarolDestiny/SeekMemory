@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
@@ -127,6 +128,9 @@ async def absorb(
     log: Log = lambda _msg: None,
     *,
     strict: bool = False,
+    stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
+        nullcontext()
+    ),
 ) -> int:
     """Extract and persist artifacts with per-item fault tolerance.
 
@@ -138,6 +142,7 @@ async def absorb(
         provider: Model provider implementing text_chat.
         log: Callback for operational warnings.
         strict: Propagate provider exceptions so task owners retain pending input.
+        stage: Injected business-stage context manager; defaults to no instrumentation.
 
     Returns:
         Number of persisted artifacts; empty or rejected output yields zero.
@@ -148,18 +153,21 @@ async def absorb(
     if not items or db is None or provider is None:
         return 0
     try:
-        resp = await provider.text_chat(
-            system_prompt=build_prompt([]), prompt=dialogue_of(items)
-        )
-        raw = getattr(resp, "completion_text", "") or ""
+        with stage("provider.call"):
+            resp = await provider.text_chat(
+                system_prompt=build_prompt([]), prompt=dialogue_of(items)
+            )
+            raw = getattr(resp, "completion_text", "") or ""
     except Exception as exc:  # noqa: BLE001 - 抽取失败不抛给上层
         if strict:
             raise
-        log(f"抽取调用失败：{exc}")
+        log(f"Provider call failed: {type(exc).__name__}")
         return 0
 
-    parsed = parse_response(raw)
-    parsed = filter_duplicates(parsed, existing_texts(cache))
+    with stage("response.parse"):
+        parsed = parse_response(raw)
+    with stage("memory.deduplicate"):
+        parsed = filter_duplicates(parsed, existing_texts(cache))
     if not parsed:
         return 0
 
@@ -179,27 +187,30 @@ async def absorb(
             payload = item
             if group and len(senders) > 1:
                 payload = {**item, "speakers": sorted(senders)}
-            art = make(
-                "memory",
-                payload,
-                strength=strength_of(item),
-                scope="shared" if group or not owner else "private",
-                said_by=said_by,
-            )
-            validate(art)
+            with stage("artifact.validate"):
+                art = make(
+                    "memory",
+                    payload,
+                    strength=strength_of(item),
+                    scope="shared" if group or not owner else "private",
+                    said_by=said_by,
+                )
+                validate(art)
         except Exception as exc:  # noqa: BLE001 - 单条坏数据跳过
-            log(f"构造记忆失败：{exc}")
+            log(f"Artifact validation failed: {type(exc).__name__}")
             continue
         try:
-            persist(art, db, cache, graph)
+            with stage("artifact.persist"):
+                persist(art, db, cache, graph)
             written += 1
         except Exception as exc:  # noqa: BLE001
-            log(f"写入失败：{exc}")
+            log(f"Artifact persistence failed: {type(exc).__name__}")
             continue
         # 印象不是只增不减：新证据到了就改旧印象，而不是再堆一条。
         try:
             if cache is not None and str(item.get("level") or "") == "impression":
-                revise_impression(db, cache, art)
+                with stage("impression.revise"):
+                    revise_impression(db, cache, art)
         except Exception as exc:  # noqa: BLE001 - 修订失败不影响已写入的记忆
-            log(f"印象修订失败：{exc}")
+            log(f"Impression revision failed: {type(exc).__name__}")
     return written

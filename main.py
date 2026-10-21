@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+from functools import partial
 from pathlib import Path
 
 from astrbot.api import logger, star
@@ -93,7 +94,9 @@ class Main(star.Star):
                 f"待抽取 {len(self.buffer.items)} 条"
             )
         except Exception as e:  # noqa: BLE001
-            self.journal.record("plugin", "failed", type(e).__name__)
+            self.journal.record(
+                "plugin", "failed", "Engine initialization failed", error=e
+            )
             logger.error(f"[seekmemory] 初始化失败，记忆功能降级：{e}")
 
     # ---------------- 权限 ----------------
@@ -145,14 +148,16 @@ class Main(star.Star):
             self.journal.record(
                 "recall",
                 "info",
-                f"mode={info['mode']} picked={info['picked']} chars={info['chars']}",
+                "Recall assembled",
+                stage="assemble",
+                context={key: info[key] for key in ("mode", "picked", "chars")},
             )
             if block:
                 req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
                 if self._c("debug_log", False):
                     logger.info(f"[seekmemory] 注入 {len(block)} 字")
         except Exception as e:  # noqa: BLE001
-            self.journal.record("recall", "failed", type(e).__name__)
+            self.journal.record("recall", "failed", "Recall failed", error=e)
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
 
     def _calls_path(self) -> str:
@@ -229,6 +234,9 @@ class Main(star.Star):
                 self.jobs.submit("nightly", self._nightly)
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 夜间整理失败：{e}")
+                self.journal.record(
+                    "scheduler", "failed", "Schedule submission failed", error=e
+                )
 
     async def _weekly_loop(self) -> None:
         while True:
@@ -239,6 +247,9 @@ class Main(star.Star):
                 self.jobs.submit("weekly", self._weekly)
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 每周整理失败：{e}")
+                self.journal.record(
+                    "scheduler", "failed", "Schedule submission failed", error=e
+                )
 
     @staticmethod
     def _seconds_until(hhmm: str, weekday: int | None = None) -> float:
@@ -284,6 +295,9 @@ class Main(star.Star):
                     self.jobs.submit("idle", lambda: self._flush("idle"))
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 空闲抽取失败：{e}")
+                self.journal.record(
+                    "scheduler", "failed", "Schedule submission failed", error=e
+                )
 
     async def _nightly(self) -> None:
         """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
@@ -309,28 +323,29 @@ class Main(star.Star):
             return
         self._flushing = True
         try:
-            prov = await self.context.get_using_provider_async()
-            if not prov:
-                raise RuntimeError("No model provider is configured")
+            with self.journal.span("extract", "provider.resolve"):
+                prov = await self.context.get_using_provider_async()
+                if not prov:
+                    raise RuntimeError("No model provider is configured")
             items = list(self.buffer.items)
             sessions = self._split_sessions(items)
             self._flush_count += 1
             written = 0
             for umo, part in sessions:
-                got = await absorb(
-                    part,
-                    self.db,
-                    self.cache,
-                    self.graph,
-                    prov,
-                    log=lambda _msg: self.journal.record(
-                        "extract",
-                        "warning",
-                        "Extraction reported a warning",
-                        self.jobs.task_id,
-                    ),
-                    strict=True,
-                )
+                with self.journal.span(
+                    "extract", "session.extract", session=umo, messages=len(part)
+                ) as metrics:
+                    got = await absorb(
+                        part,
+                        self.db,
+                        self.cache,
+                        self.graph,
+                        prov,
+                        log=partial(self.journal.record, "extract", "warning"),
+                        strict=True,
+                        stage=partial(self.journal.span, "extract"),
+                    )
+                    metrics["written"] = got
                 # Keep in-flight messages persisted until processing succeeds.
                 # Identity preserves identical messages arriving during the await.
                 processed = {id(row) for row in part}
@@ -351,7 +366,8 @@ class Main(star.Star):
                 "extract",
                 "info",
                 f"sessions={len(sessions)} written={written}",
-                self.jobs.task_id,
+                context={"sessions": len(sessions), "written": written},
+                stage="batch.complete",
             )
         finally:
             self._flushing = False
@@ -364,9 +380,15 @@ class Main(star.Star):
         if self.db is None or self.cache is None:
             return
         today = datetime.date.today().isoformat()
-        dropped = decay_all(self.db, self.cache, today)
-        merged = merge_similar(self.db, self.cache, threshold=0.6)
-        persona = distill_persona(self.db, self.cache, today, self.owner_umo)
+        with self.journal.span("weekly", "decay") as metrics:
+            dropped = decay_all(self.db, self.cache, today)
+            metrics["forgotten"] = dropped
+        with self.journal.span("weekly", "merge", threshold=0.6) as metrics:
+            merged = merge_similar(self.db, self.cache, threshold=0.6)
+            metrics["merged"] = merged
+        with self.journal.span("weekly", "persona") as metrics:
+            persona = distill_persona(self.db, self.cache, today, self.owner_umo)
+            metrics["updated"] = bool(persona)
         self.journal.record(
             "weekly",
             "info",
