@@ -26,6 +26,12 @@ Cancellation preserves unfinished messages but never undoes completed writes;
 synchronous weekly work may finish before cancellation is processed. Existing
 per-item extraction warnings still require inspection even when a task succeeds.
 
+Business logs expose severity, stage, module, relative file, function, line,
+duration, explicit scalar context and exception frame locations. Filters compose
+across kind, status, severity, module and text. Extraction stages include provider
+calls, parsing, deduplication, validation, persistence and impression revision.
+Task IDs propagate through ContextVar; stage completion does not finish a task.
+Legacy entries show an unknown source; exception text and locals are omitted.
 Lifecycle logs retain 500 events in memory and rotate at 1 MiB with one backup.
 They record task states, IDs, counters and error types, not chat/model content.
 Retained unfinished tasks are marked interrupted after restart. Active tasks poll
@@ -38,6 +44,15 @@ Production uses the host bridge and never falls back to mock data. See the
 
 Screenshots use fictional mock data and the shared production components:
 
-![Memory library](../images/webui-memory.png)
-![Runtime and tasks](../images/webui-runtime.png)
-![Lifecycle logs](../images/webui-logs.png)
+![Memory library](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-memory.png)
+![Runtime and tasks](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-runtime.png)
+![Lifecycle logs](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/webui-logs.png)
+
+Preview images live on the separate [webui-previews branch](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews),
+not in the code PR or release ZIP. The [25-image gallery](https://github.com/SXP-Simon/SeekMemory/tree/webui-previews#readme)
+covers all nine category filters, versions, evidence, ledger, tasks, diagnostics
+and structured logs. Categories share the same library/detail UI; they are not
+nine specialized editors. Mock diagnostics do not verify real recall quality.
+
+![Recall diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-result.png)
+![No-match diagnostics](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-empty.png)
