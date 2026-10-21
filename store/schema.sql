@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS nodes (
     lineage    TEXT NOT NULL DEFAULT '{}'
 );
 
+-- 版本链：每次落库都把自己的 revision 存一份，旧版本不丢。
+-- 印象修订、记忆改正都能翻回"以前是怎么想的"。
+CREATE TABLE IF NOT EXISTS versions (
+    entity   TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    blob     TEXT NOT NULL,
+    header   TEXT NOT NULL,
+    at       TEXT NOT NULL,
+    PRIMARY KEY (entity, revision)
+);
+
 CREATE TABLE IF NOT EXISTS edges (
     src    TEXT NOT NULL,
     dst    TEXT NOT NULL,

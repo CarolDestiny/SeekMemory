@@ -12,6 +12,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.assemble import build as assemble_text
     from ..recall.designated import deliverable, mark_given
     from ..recall.drift import best_of as drift_best, should_drift
+    from ..recall.history import trajectory
     from ..recall.gate import pinned
     from ..recall.intent import intent_of
     from ..recall.scope import visible
@@ -25,6 +26,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from recall.assemble import build as assemble_text
     from recall.designated import deliverable, mark_given
     from recall.drift import best_of as drift_best, should_drift
+    from recall.history import trajectory
     from recall.gate import pinned
     from recall.intent import intent_of
     from recall.scope import visible
@@ -87,11 +89,21 @@ def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
             log(f"主动想起：{one.header.id}")
 
     budget = int(conf("budget_chars", 600))
+    notes = {}
+    for art in pinned_arts + picked:
+        try:
+            if str(art.payload.get("level") or "") == "impression":
+                note = trajectory(cache, art)
+                if note:
+                    notes[art.header.id] = note
+        except Exception:  # noqa: BLE001 - 轨迹算不出来就只给当前印象
+            continue
     block = assemble_text(
         pinned_arts + designated + picked,
         budget=int(budget * (1.4 if mode == "loose" else 1.0)),
         text=text,
         is_private=private,
+        notes=notes,
     )
     mark_given(db, cache, designated + picked, block)
     return block
