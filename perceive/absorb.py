@@ -165,7 +165,10 @@ async def absorb(
             payload = item
             if group and len(senders) > 1:
                 payload = {**item, "speakers": sorted(senders)}
-            art = make("memory", payload, strength=strength_of(item),
+            strength = strength_of(item)
+            if not source_ids:
+                strength["confidence"] = min(float(strength.get("confidence", 1.0)), 0.5)
+            art = make("memory", payload, strength=strength,
                        scope="shared" if group or not owner else "private",
                        said_by=said_by, subject_id=str(item.get("subject_id") or default_subject),
                        lineage=Lineage(sources=source_ids))

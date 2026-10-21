@@ -112,6 +112,7 @@ class AbsorbTest(unittest.TestCase):
         self.assertTrue(any("杭州" in t for t in texts))
         arts = cache.active("memory")
         self.assertTrue(all(a.payload.get("tags") for a in arts))
+        self.assertTrue(all(a.header.strength.confidence == 0.5 for a in arts))
 
     def test_provider_failure_returns_zero(self):
         db, cache, graph = make_db()

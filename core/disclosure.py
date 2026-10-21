@@ -6,7 +6,7 @@ from typing import Iterable
 
 from .artifact import Artifact, content_of
 
-FULL_MIN = 0.50
+FULL_MIN = 0.55
 PARAPHRASE_MIN = 0.18
 HINT_MIN = 0.03
 
@@ -47,7 +47,7 @@ def audience_overlap(art: Artifact, scene: RecallScene,
         return 1.0
     subject = str(art.header.subject_id or "")
     if subject and subject == scene.speaker_id:
-        return 0.60
+        return 0.50
     if subject and subject in scene.present_ids:
         return 0.25
     return 0.05
