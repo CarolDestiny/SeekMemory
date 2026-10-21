@@ -134,6 +134,42 @@ gh pr create --base main --head fix/issue-0001-paraphrase-recall \
 - 同步后，GitHub 的 review/CI 结论回写到 PR 文件的「评审记录」。
 - 在 gh 登录前，不要为了"先占号"去创建空 issue；本地文件就是正式记录。
 
+## Release packaging
+
+`.github/workflows/release.yml` builds and tests an installable distribution on
+pull requests and manual runs. These runs upload a seven-day Actions artifact
+containing the plugin ZIP and checksum; they do not create a Release.
+
+To publish after review and merge:
+
+1. Prepare `metadata.yaml` and `CHANGELOG.md` on a short-lived `release/X.Y.Z`
+   branch, review it, and merge it before tagging.
+2. Push a `vX.Y.Z` tag on the reviewed commit. The tag must exactly match the
+   metadata version; prerelease versions such as `1.2.3-rc.1` are supported.
+3. CI installs locked frontend dependencies, runs strict frontend checks and
+   Python tests, builds production assets, and packages the runtime allowlist.
+4. A separate job publishes `astrbot_plugin_seekmemory.zip` and `SHA256SUMS`
+   using the existing tag. Prerelease tags create prereleases. Existing Releases
+   are not overwritten; a rerun against an existing Release fails for review.
+
+The archive contains tracked `.py` files from `core`, `store`, `recall`,
+`perceive`, and `maintain`, plus `main.py`, metadata, config schema,
+`store/schema.sql`, licenses, and the production `views/memory` assets.
+When adding runtime resources or packages, update `scripts/package_plugin.py`
+and its archive tests. Do not add compiled assets to Git or alter source archives
+to masquerade as installation packages. The backend needs no compilation;
+shipping `.py` preserves Python/platform compatibility.
+
+For a local package, follow the root README's build commands. Run
+`python -m unittest discover -s tests -p 'test_*.py'` and
+`python tests/test_smoke.py` before publishing. The archive test extracts the
+ZIP and runs the backend smoke test in an isolated Python process.
+
+Installation uses the Release attachment, not the automatically generated
+GitHub source archives. Configure a custom plugin source's `download_url` to
+the Release asset URL when automatic installation/update through that source
+is desired; a repository URL alone does not select release assets.
+
 ## 参考
 
 - 目录与调用链：[docs/INDEX.md](docs/INDEX.md)

@@ -10,3 +10,4 @@ __pycache__/
 
 # Generated plugin view assets; include them in release packages.
 /views/memory/
+/dist/

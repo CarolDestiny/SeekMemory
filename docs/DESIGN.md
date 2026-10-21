@@ -635,3 +635,10 @@ evidence(node, source)
   额外调用与不确定性，暂时用规则更可控。
 - 抽取的成本结构已量过：单次约 600~2700 prompt tokens（其中三到六成命中缓存）
   加 0~300 completion tokens；夜间一次批量是主力，白天即时抽取是补充。
+
+## 15. 开发与分发
+
+WebUI 的 TypeScript 源码保存在 `dashboard/`，发版 CI 构建 `views/memory/`，
+再与必要 Python/SQL 文件组成 Release ZIP。构建产物不进 Git；源码归档用于开发，
+安装附件用于部署。后端无需编译或绑定平台环境。
+当前可视化业务仍在独立 Mock 阶段，生产页仅提供 API 接入占位提示。

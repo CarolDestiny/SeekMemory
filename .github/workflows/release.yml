@@ -1,0 +1,90 @@
+name: Build plugin distribution
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distribution-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.13.1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.7.0"
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        working-directory: dashboard
+        run: pnpm install --frozen-lockfile
+      - name: Check and build production frontend
+        working-directory: dashboard
+        run: |
+          pnpm check
+          pnpm build
+      - name: Test backend and archive contents
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py'
+          python tests/test_smoke.py
+      - name: Package runtime files
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: python scripts/package_plugin.py --tag "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seekmemory-distribution
+          path: |
+            dist/astrbot_plugin_seekmemory.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: seekmemory-distribution
+          path: dist
+      - name: Publish installable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          cd dist
+          sha256sum --check SHA256SUMS
+          cat > release-notes.md <<'EOF'
+          Install **astrbot_plugin_seekmemory.zip** from the assets below using AstrBot's ZIP installation.
+          This package includes the Python runtime and the prebuilt plugin view; Node.js is not needed for installation.
+          GitHub's **Source code (zip/tar.gz)** downloads are development sources, not installation packages.
+          The current view is an API-integration placeholder; the interactive mock is development-only.
+          EOF
+          prerelease=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$RELEASE_TAG" \
+            astrbot_plugin_seekmemory.zip SHA256SUMS \
+            --verify-tag --title "SeekMemory $RELEASE_TAG" \
+            --generate-notes --notes-file release-notes.md "${prerelease[@]}"

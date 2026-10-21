@@ -12,6 +12,8 @@
 | `perceive/` | **抽取**：从对话里提炼印象 | [perceive/README](perceive/README.md) |
 | `maintain/` | **维护**：衰减、合并、晋升、反思 | [maintain/README](maintain/README.md) |
 | `tests/` | 单元测试 | — |
+| `dashboard/` | WebUI 源码、独立 Mock 与严格前端检查 | [dashboard/README](../dashboard/README.md) |
+| `scripts/package_plugin.py` | 运行文件白名单与 Release ZIP 打包 | [发布说明](../CONTRIBUTING.md#release-packaging) |
 | `docs/` | 设计文档 | [DESIGN](DESIGN.md) · [CONTRACT](CONTRACT.md) |
 
 ## 依赖方向（单向，不许反向）
