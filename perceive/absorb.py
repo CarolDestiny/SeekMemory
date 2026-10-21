@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Strength, content_of, make, validate
     from ..core.graph import Graph
+    from ..maintain.impression import revise_impression
     from ..maintain.link import persist
     from ..perceive.extract import (
         build_prompt,
@@ -22,6 +23,7 @@ try:  # 作为 astrbot 插件包的一部分导入
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Strength, content_of, make, validate
     from core.graph import Graph
+    from maintain.impression import revise_impression
     from maintain.link import persist
     from perceive.extract import build_prompt, filter_duplicates, parse_response
     from store.cache import Cache
@@ -121,4 +123,11 @@ async def absorb(
             written += 1
         except Exception as exc:  # noqa: BLE001
             log(f"写入失败：{exc}")
+            continue
+        # 印象不是只增不减：新证据到了就改旧印象，而不是再堆一条。
+        try:
+            if cache is not None and str(item.get("level") or "") == "impression":
+                revise_impression(db, cache, art)
+        except Exception as exc:  # noqa: BLE001 - 修订失败不影响已写入的记忆
+            log(f"印象修订失败：{exc}")
     return written
