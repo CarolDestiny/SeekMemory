@@ -1,4 +1,15 @@
 # 变更记录
+## 0.3.0 - 2026-10-21
+
+Backlog hardening and retrieval boundary.
+
+- Backlog flush ignores the worth_now gate after a quiet window.
+- Session-safe draining prevents unprocessed sessions from being dropped.
+- All production writes now use CAS commit with versions and audit.
+- Checkpoint state events commit atomically with their revision.
+- Recall applies subject-aware disclosure before assembly.
+- RetrievalCandidate reserves a lexical signal for future BM25.
+
 ## 0.2.0 - 2026-10-21
 
 Artifact kernel foundation and online cutover.
