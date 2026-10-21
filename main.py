@@ -15,11 +15,14 @@ import os
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 
+from .app.checkpoint import CheckpointManager
 from .core.graph import Graph
+from .core.source import Source, make_source_id
 from .core.tree import Tree
 from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
 from .perceive.calls import log_call
+from .perceive.model import ProviderChatModel
 from .perceive.compress import build_compress_prompt, parse_compress
 from .recall.designated import is_private
 from .recall.pipeline import build_block
@@ -37,6 +40,7 @@ class Main(star.Star):
         self.tree: Tree | None = None
         self.graph: Graph | None = None
         self.buffer: Buffer | None = None
+        self.checkpoint: CheckpointManager | None = None
         self._flushing = False
         self._flush_day = ""
         self._flush_count = 0
@@ -75,6 +79,8 @@ class Main(star.Star):
             self.graph = Graph(self.db, self.cache)
             self.ready = True
             self.buffer = Buffer(os.path.join(os.path.dirname(path), "pending.json"))
+            self.checkpoint = CheckpointManager(self.db, self.cache,
+                                                int(self._c("checkpoint_seconds", 1800)))
             logger.info(
                 f"[seekmemory] 已加载 {self.cache.size()} 条记忆，"
                 f"待抽取 {len(self.buffer.items)} 条"
@@ -127,6 +133,11 @@ class Main(star.Star):
             block, info = self._recall_block(text, umo, is_private(event),
                                             str(event.get_sender_id()))
             log_call(self._calls_path(), umo, info)
+            if self.checkpoint is not None:
+                for art_id in info.get("picked_ids", ()):
+                    art = self.cache.get(str(art_id))
+                    if art is not None:
+                        self.checkpoint.record(art)
             if block:
                 req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
                 if self._c("debug_log", False):
@@ -154,18 +165,66 @@ class Main(star.Star):
             if not self._may_observe(event):
                 return
             text = (event.message_str or "").strip()
-            if text and self.buffer is not None:
-                umo = str(getattr(event, "unified_msg_origin", "") or "")
-                self.buffer.add(umo, text, str(event.get_sender_id()))
-        except Exception:  # noqa: BLE001
+            if not text or self.buffer is None:
+                return
+            umo = str(getattr(event, "unified_msg_origin", "") or "")
+            sender = str(event.get_sender_id())
+            event_id = str(getattr(getattr(event, "message_obj", None), "message_id", "") or "")
+            now = datetime.datetime.now().isoformat(timespec="seconds")
+            source_id = make_source_id(event_id=event_id, session_id=umo,
+                                       speaker_id=sender, role="user", text=text, at=now)
+            turn_id = event_id or source_id
+            source = Source(source_id, turn_id, umo, sender, "user", text, now)
+            if self.db is not None:
+                self.db.append_sources([source])
+            self.buffer.add(umo, text, sender, source_id)
+            event.set_extra("_seekmemory_turn_id", turn_id)
+            event.set_extra("_seekmemory_source_id", source_id)
+        except Exception:
             pass
 
-    # ---------------- 定时 ----------------
+    @filter.on_llm_response()
+    async def capture_reply(self, event: AstrMessageEvent, response) -> None:
+        try:
+            if not self._may_observe(event) or self.db is None:
+                return
+            if str(getattr(response, "role", "assistant")) == "err":
+                return
+            text = str(getattr(response, "completion_text", "") or "").strip()
+            if not text:
+                return
+            umo = str(getattr(event, "unified_msg_origin", "") or "")
+            turn_id = str(event.get_extra("_seekmemory_turn_id", "") or "")
+            if not turn_id:
+                turn_id = make_source_id(session_id=umo, speaker_id=str(event.get_sender_id()),
+                                          role="assistant", text=text)
+            source_id = make_source_id(event_id=f"{turn_id}:assistant", session_id=umo,
+                                       speaker_id=str(event.get_self_id()), role="assistant",
+                                       text=text)
+            now = datetime.datetime.now().isoformat(timespec="seconds")
+            source = Source(source_id, turn_id, umo, str(event.get_self_id()),
+                            "assistant", text, now,
+                            reply_to=str(event.get_extra("_seekmemory_source_id", "") or ""))
+            self.db.append_sources([source])
+        except Exception:
+            pass
+
     @filter.on_astrbot_loaded()
     async def start_jobs(self) -> None:
         asyncio.create_task(self._nightly_loop())
         asyncio.create_task(self._weekly_loop())
         asyncio.create_task(self._idle_loop())
+        asyncio.create_task(self._checkpoint_loop())
+
+    async def _checkpoint_loop(self) -> None:
+        while True:
+            interval = max(60, int(self._c("checkpoint_seconds", 1800)))
+            await asyncio.sleep(interval)
+            try:
+                if self.checkpoint is not None:
+                    self.checkpoint.flush()
+            except Exception as e:
+                logger.error(f"[seekmemory] checkpoint failed: {e}")
 
     async def _nightly_loop(self) -> None:
         while True:
@@ -244,16 +303,18 @@ class Main(star.Star):
             return
         self._flushing = True
         try:
-            prov = await self.context.get_using_provider_async()
-            if not prov:
-                return
             items = self.buffer.take()
             self._flush_count += 1
             sessions = self._split_sessions(items)
             written = 0
             for umo, part in sessions:
+                prov = await self.context.get_using_provider_async(umo or None)
+                if not prov:
+                    logger.warning(f"[seekmemory] no provider for session {umo}")
+                    continue
+                model = ProviderChatModel(prov)
                 got = await absorb(
-                    part, self.db, self.cache, self.graph, prov,
+                    part, self.db, self.cache, self.graph, model,
                     log=lambda msg: logger.warning(f"[seekmemory] {msg}"),
                 )
                 written += got

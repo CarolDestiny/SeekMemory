@@ -15,21 +15,26 @@ from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, Header, Lineage, Strength, TimeSpan
+    from ..core.source import Source
+    from ..core.versioning import StateEvent, VersionError, assert_next_revision
 except ImportError:  # 作为顶层 store 包导入（脚本 / 测试）
     from core.artifact import Artifact, Header, Lineage, Strength, TimeSpan
+    from core.source import Source
+    from core.versioning import StateEvent, VersionError, assert_next_revision
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 _SELECT = ("SELECT n.*, b.content AS blob_content FROM nodes n "
            "LEFT JOIN blobs b ON b.hash = n.blob")
 _UPSERT = (
     "INSERT INTO nodes(id, family, level, parent, blob, state, scope, strength, time, "
-    "said_by, shareable, created_at, updated_at, revision, lineage) "
-    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+    "said_by, shareable, created_at, updated_at, revision, lineage, subject_id) "
+    "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
     "family=excluded.family, level=excluded.level, "
     "parent=COALESCE(excluded.parent, nodes.parent), blob=excluded.blob, "
     "state=excluded.state, scope=excluded.scope, strength=excluded.strength, "
     "time=excluded.time, said_by=excluded.said_by, shareable=excluded.shareable, "
-    "revision=excluded.revision, lineage=excluded.lineage, updated_at=excluded.updated_at, "
+    "revision=excluded.revision, lineage=excluded.lineage, subject_id=excluded.subject_id, "
+    "updated_at=excluded.updated_at, "
     "created_at=CASE WHEN nodes.created_at = '' THEN excluded.created_at "
     "ELSE nodes.created_at END"
 )
@@ -84,9 +89,16 @@ class DB:
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
         self.conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(nodes)")}
+        with self.conn:
+            if "subject_id" not in cols:
+                self.conn.execute("ALTER TABLE nodes ADD COLUMN subject_id TEXT NOT NULL DEFAULT ''")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_subject ON nodes(subject_id)")
 
     def upsert(self, art: Artifact) -> None:
-        """写入或更新一条记忆；payload 按内容寻址存入 blobs。"""
         h, now = art.header, _now()
         content = _dump(art.payload)
         blob = hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -96,37 +108,48 @@ class DB:
             parent if isinstance(parent, str) else None, blob, h.state, h.scope,
             _dump(h.strength), _dump(h.time), h.said_by, h.shareable,
             h.time.created or now, h.time.updated or now, int(h.revision),
-            _dump(h.lineage),
+            _dump(h.lineage), h.subject_id,
         )
         header = _dump({
             "state": h.state, "scope": h.scope, "strength": _dump(h.strength),
             "time": _dump(h.time), "said_by": h.said_by,
             "revision": int(h.revision), "lineage": _dump(h.lineage),
+            "subject_id": h.subject_id,
         })
         with self.conn:
             self.conn.execute(
                 "INSERT OR IGNORE INTO blobs(hash, content, at) VALUES(?, ?, ?)",
                 (blob, content, now))
             self.conn.execute(_UPSERT, args)
-            # 版本链：每次写入都留一份，旧 revision 不会被覆盖掉
             self.conn.execute(
-                "INSERT OR REPLACE INTO versions(entity, revision, blob, header, at) "
+                "INSERT OR IGNORE INTO versions(entity, revision, blob, header, at) "
                 "VALUES(?, ?, ?, ?, ?)",
                 (h.id, int(h.revision), blob, header, now))
+            self.conn.execute(
+                "INSERT OR IGNORE INTO artifact_versions(entity, revision, op, blob, header, at) "
+                "VALUES(?, ?, ?, ?, ?, ?)",
+                (h.id, int(h.revision), "upsert", blob, header, now))
+
+    def commit(self, art: Artifact, *, expected_revision: int, op: str,
+               reason: str = "", source_ids: tuple[str, ...] = ()) -> None:
+        if op not in ("create", "revise", "reinforce", "deliver", "merge", "forget", "promote"):
+            raise ValueError(f"unknown commit op: {op}")
+        self._commit_conn(art, expected_revision=expected_revision, op=op,
+                          reason=reason, source_ids=source_ids)
 
     def history(self, node_id: str) -> list[dict]:
         """返回一条记忆的版本链（旧→新）：revision / at / payload。"""
         rows = self.conn.execute(
-            "SELECT v.revision, v.at, b.content FROM versions v "
+            "SELECT v.revision, v.op, v.at, b.content FROM artifact_versions v "
             "JOIN blobs b ON v.blob = b.hash WHERE v.entity = ? "
             "ORDER BY v.revision ASC", (node_id,)).fetchall()
         out = []
-        for revision, at, content in rows:
+        for revision, op, at, content in rows:
             try:
                 payload = json.loads(content)
             except Exception:  # noqa: BLE001 - 坏内容跳过，不拖垮整条链
                 continue
-            out.append({"revision": int(revision), "at": str(at), "payload": payload})
+            out.append({"revision": int(revision), "op": str(op), "at": str(at), "payload": payload})
         return out
 
     def get(self, node_id: str) -> Artifact | None:
@@ -201,6 +224,35 @@ class DB:
                 "INSERT OR IGNORE INTO evidence(node, source) VALUES(?, ?)",
                 (node_id, source_id))
 
+    def append_sources(self, sources: list[Source]) -> int:
+        written = 0
+        with self.conn:
+            for src in sources:
+                src.validate()
+                blob = src.content_hash
+                flags = {
+                    "turn_id": src.turn_id, "speaker_id": src.speaker_id,
+                    "reply_to": src.reply_to, "metadata": src.metadata,
+                }
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO blobs(hash, content, at) VALUES(?, ?, ?)",
+                    (blob, src.text, src.at or _now()))
+                cur = self.conn.execute(
+                    "INSERT OR IGNORE INTO sources(id, umo, at, role, blob, flags) "
+                    "VALUES(?, ?, ?, ?, ?, ?)",
+                    (src.id, src.session_id, src.at or _now(), src.role, blob, _dump(flags)))
+                written += int(cur.rowcount or 0)
+        return written
+
+    def append_state_event(self, event: StateEvent) -> None:
+        event.validate()
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO state_events(id, entity, revision_seen, op, delta, at) "
+                "VALUES(?, ?, ?, ?, ?, ?)",
+                (event.id, event.entity_id, event.revision_seen, event.op,
+                 _dump(event.delta), event.at or _now()))
+
     def ledger_last_hash(self) -> str:
         """返回日志链尾的 self_hash；空链返回空串。"""
         row = self.conn.execute(
@@ -229,6 +281,62 @@ class DB:
         """关闭连接。"""
         self.conn.close()
 
+    def _commit_conn(self, art: Artifact, *, expected_revision: int, op: str,
+                     reason: str, source_ids: tuple[str, ...] = ()) -> None:
+        h, now = art.header, _now()
+        with self.conn:
+            row = self.conn.execute(
+                "SELECT revision FROM nodes WHERE id = ?", (h.id,)).fetchone()
+            current = int(row["revision"]) if row is not None else 0
+            if current != int(expected_revision):
+                raise VersionError(f"revision conflict: expected {expected_revision}, current {current}")
+            prev = self.get(h.id) if current else None
+            assert_next_revision(prev, art)
+            content = _dump(art.payload)
+            blob = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            level, parent = art.payload.get("level"), art.payload.get("parent")
+            args = (
+                h.id, h.family, level if isinstance(level, str) else None,
+                parent if isinstance(parent, str) else None, blob, h.state, h.scope,
+                _dump(h.strength), _dump(h.time), h.said_by, h.shareable,
+                h.time.created or now, h.time.updated or now, int(h.revision),
+                _dump(h.lineage), h.subject_id,
+            )
+            header = _dump({
+                "state": h.state, "scope": h.scope, "strength": _dump(h.strength),
+                "time": _dump(h.time), "said_by": h.said_by,
+                "revision": int(h.revision), "lineage": _dump(h.lineage),
+                "subject_id": h.subject_id,
+            })
+            self.conn.execute(
+                "INSERT OR IGNORE INTO blobs(hash, content, at) VALUES(?, ?, ?)",
+                (blob, content, now))
+            self.conn.execute(_UPSERT, args)
+            self.conn.execute(
+                "INSERT INTO versions(entity, revision, blob, header, at) VALUES(?, ?, ?, ?, ?)",
+                (h.id, int(h.revision), blob, header, now))
+            self.conn.execute(
+                "INSERT INTO artifact_versions(entity, revision, op, blob, header, at) "
+                "VALUES(?, ?, ?, ?, ?, ?)",
+                (h.id, int(h.revision), op, blob, header, now))
+            for source_id in source_ids:
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO artifact_evidence(entity, revision, source) "
+                    "VALUES(?, ?, ?)", (h.id, int(h.revision), str(source_id)))
+            before = str(current) if current else None
+            self._ledger_append_conn(op, h.id, before, str(h.revision), reason, now)
+    def _ledger_append_conn(self, op: str, entity: str, before: str | None,
+                            after: str | None, reason: str, at: str | None = None) -> None:
+        at = at or _now()
+        row = self.conn.execute(
+            "SELECT self_hash FROM ledger ORDER BY seq DESC LIMIT 1").fetchone()
+        prev = str(row["self_hash"]) if row is not None else ""
+        payload = chain_payload(at, op, entity, before, after, reason)
+        self.conn.execute(
+            "INSERT INTO ledger(at, op, entity, before_hash, after_hash, reason, "
+            "prev_hash, self_hash) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            (at, op, entity, before, after, reason, prev, chain_hash(prev, payload)))
+
     @staticmethod
     def _to_artifact(row: sqlite3.Row | None) -> Artifact | None:
         """把查询行还原成 Artifact；损坏行返回 None（fail-open）。"""
@@ -244,7 +352,8 @@ class DB:
                 scope=str(row["scope"]), lineage=Lineage(**lineage),
                 strength=Strength(**_pick(Strength, _loads(row["strength"]))),
                 time=TimeSpan(**_pick(TimeSpan, _loads(row["time"]))),
-                said_by=str(row["said_by"]), shareable=str(row["shareable"]))
+                said_by=str(row["said_by"]), shareable=str(row["shareable"]),
+                subject_id=str(row["subject_id"] or ""))
             payload = json.loads(row["blob_content"])
         except (TypeError, ValueError, KeyError):
             return None

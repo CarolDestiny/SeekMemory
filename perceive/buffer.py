@@ -16,16 +16,16 @@ KEEP = 200
 class Buffer:
     def __init__(self, path: str = "") -> None:
         self.path = str(path or "")
-        self.items: list[tuple[str, str, str, str]] = []  # (umo, sender, role, text)
+        self.items: list[tuple[str, str, str, str, str]] = []  # (umo, sender, role, text, source_id)
         self.last_ts = 0.0
         self.load()
 
-    def add(self, umo: str, text: str, sender: str = "") -> None:
+    def add(self, umo: str, text: str, sender: str = "", source_id: str = "") -> None:
         """收一条用户消息，立刻落盘。sender 用于区分群里是谁说的。"""
         text = str(text or "").strip()
         if not text:
             return
-        self.items.append((str(umo or ""), str(sender or ""), "user", text))
+        self.items.append((str(umo or ""), str(sender or ""), "user", text, str(source_id or "")))
         self.items = self.items[-KEEP:]
         self.last_ts = time.time()
         self.save()
@@ -38,7 +38,7 @@ class Buffer:
             time.time() - self.last_ts >= idle_seconds
         )
 
-    def take(self) -> list[tuple[str, str, str, str]]:
+    def take(self) -> list[tuple[str, str, str, str, str]]:
         """取走全部待抽取内容并清空（已落盘）。"""
         items = self.items
         self.items = []
@@ -74,10 +74,12 @@ class Buffer:
             for row in raw:
                 if not isinstance(row, (list, tuple)):
                     continue
-                if len(row) == 4:
-                    kept.append((str(row[0]), str(row[1]), str(row[2]), str(row[3])))
+                if len(row) == 5:
+                    kept.append((str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4])))
+                elif len(row) == 4:
+                    kept.append((str(row[0]), str(row[1]), str(row[2]), str(row[3]), ""))
                 elif len(row) == 3:  # 兼容旧存档
-                    kept.append((str(row[0]), "", str(row[1]), str(row[2])))
+                    kept.append((str(row[0]), "", str(row[1]), str(row[2]), ""))
             self.items = kept[-KEEP:]
         try:
             self.last_ts = float(data.get("last") or 0.0)

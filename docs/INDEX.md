@@ -12,7 +12,7 @@
 | `perceive/` | **抽取**：从对话里提炼印象 | [perceive/README](perceive/README.md) |
 | `maintain/` | **维护**：衰减、合并、晋升、反思 | [maintain/README](maintain/README.md) |
 | `tests/` | 单元测试 | — |
-| `docs/` | 设计文档 | [DESIGN](DESIGN.md) · [CONTRACT](CONTRACT.md) |
+| `docs/` | 设计文档 | [ARCHITECTURE](ARCHITECTURE.md) / [DESIGN](DESIGN.md) · [CONTRACT](CONTRACT.md) |
 
 ## 依赖方向（单向，不许反向）
 
