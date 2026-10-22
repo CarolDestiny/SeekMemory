@@ -1,6 +1,6 @@
 # Code Index
 
-> Start here. Then read docs/ARCHITECTURE.md, docs/CONTRACT.md, CONTRIBUTING.md and AGENTS.md.
+> Start here: [docs/README.md](README.md). Then read docs/ARCHITECTURE.md, docs/INVARIANTS.md, docs/TESTING.md, CONTRIBUTING.md and AGENTS.md.
 
 ## Current version
 
@@ -22,10 +22,14 @@ v0.3.1 + WebUI branch
 | dashboard/ | WebUI source, standalone mock and strict frontend checks | dashboard/README.md |
 | docs/webui/ | Plugin WebUI guide and screenshots | docs/webui/README.md |
 | scripts/package_plugin.py | Runtime whitelist and Release ZIP packaging | CONTRIBUTING.md |
-| tests/ | Unit, integration, kernel and WebUI tests | tests/test_kernel.py |
+| tests/ | Unit, contract, integration, host and smoke tests; layer map in tests/layers.py | docs/TESTING.md |
 | docs/ | Architecture, contracts and issues | docs/issues/INDEX.md |
 | docs/INTERFACES.md | Public protocols, DTOs and contract tests | docs/INTERFACES.md |
+| docs/README.md | Documentation entry point and status legend | docs/README.md |
+| docs/INVARIANTS.md | Non-negotiable identity, privacy, recovery and reinforcement rules | docs/INVARIANTS.md |
+| docs/TESTING.md | Test layers, commands and known coverage gaps | docs/TESTING.md |
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |
+| scripts/run_tests.py | Run one test layer locally or in CI | docs/TESTING.md |
 | main.py | AstrBot event mapping and composition only | main.py |
 
 ## Dependency direction

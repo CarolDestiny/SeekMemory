@@ -6,14 +6,17 @@ This file is normative. If it conflicts with a casual instruction, stop and ask 
 
 ## 1. Read first
 
+- `docs/README.md`
 - `docs/ARCHITECTURE.md`
-- `docs/DESIGN.md`
+- `docs/INVARIANTS.md`
+- `docs/TESTING.md`
 - `docs/CONTRACT.md`
 - `CONTRIBUTING.md`
 - `docs/INTERFACES.md`
 - `docs/DEV-SETUP.md`
-- `docs/BUGS.md`
 - `docs/issues/INDEX.md`
+
+`docs/DESIGN.md` and `docs/BUGS.md` are historical context, not current contracts.
 
 ## 2. Non-negotiable invariants
 

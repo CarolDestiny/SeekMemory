@@ -20,9 +20,8 @@ jobs:
       - name: 语法检查
         run: |
           find . -name "*.py" -not -path "./.git/*" | xargs -I{} python -c "import ast,sys;ast.parse(open('{}').read())"
-      - name: 单元测试
-        run: |
-          for f in tests/test_*.py; do echo "== $f"; python "$f"; done
+      - name: Layered tests
+        run: python scripts/run_tests.py --layer all
       - name: Benchmark
         run: python benchmarks/run.py
       - name: 规模基准
