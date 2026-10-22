@@ -1,157 +1,83 @@
-# BM25 Retrieval Proposal
+# BM25 字面检索方案与实现约定
 
-Status: proposal only, no implementation in this document.
+状态：ISSUE-0024 的可选实现，默认关闭；生产启用仍需 Lead 评审与 staging 对照。
+GitHub 跟踪：[#4](https://github.com/NeverENG/SeekMemory/issues/4)。
 
-Goal: add a cheap lexical retriever that improves Chinese recall without introducing an embedding
-service, while keeping the existing cognitive score, evidence gate and privacy rules intact.
+## 目标与边界
 
-## 1. Current state
+在现有字符 Dice、图激活、认知评分之外增加 BM25 词面证据。整个 BM25 检索在本地计算，
+不增加运行依赖、模型文件、下载器、网络请求或按次服务费用。它可独立使用，
+不依赖未来的[本地向量提案](LOCAL-VECTOR-PROPOSAL.md)是否获批。
 
-- `recall/seed.py` finds seeds from character bigrams and tags.
-- `recall/spread.py` adds graph activation.
-- `recall/retriever.py` returns RetrievalCandidate(artifact, activation, lexical=0).
-- `recall/score.py` already accepts a normalized lexical signal, but no retriever fills it.
-- The evidence gate counts lexical evidence, so BM25 can integrate without changing the read model.
+本次改善有共享词项时的召回与排序。`我是干什么的` 与 `量化交易项目开发`
+没有共享 bigram，继续由 ISSUE-0001 跟踪；旧黄金集期望保持不变。
 
-Primary gap: a query must share literal bigrams or tags with a memory. Synonyms and reordered
-Chinese phrases still fail (ISSUE-0001).
+## 分词、索引与评分
 
-## 2. Proposed components
+- `tokenize(text) -> list[str]` 先小写化，再保留 Unicode 字母数字。
+  相邻字符组成 bigram，重复词项保留；单字符返回自身，空输入和纯标点返回空列表。
+- 本次不维护中文停词表，以 IDF 降低常见词项贡献。标签独立分词，不制造跨标签 bigram。
+- `BM25Index` 维护正文、标签两组倒排表、词频与长度，
+  支持 `rebuild`、`put`（新增或替换）、`remove`、`search`。
+- 固定参数 `k1=1.2`、`b=0.75`。只在本次可见候选池中计算文档数、df 和平均长度；
+  不可见记忆不会改变该查询的 BM25 分数。
 
-### 2.1 Tokenizer boundary
+```text
+normalize(s) = s / (s + C)
+lexical = 0.75 × normalize(bm25_text) + 0.25 × normalize(bm25_tags)
+```
 
-Add `recall/tokenizer.py` with a small protocol:
+当前冻结 `C=8`。固定映射避免唯一弱匹配因逐查询 `raw/max` 归一化而获得满分。
+正文和标签无命中时词面证据为零；BM25 不查数据库、不调用网络。
 
-    tokenize(text: str) -> list[str]
+## 接入与索引生命周期
 
-Default implementation: Unicode character bigrams after lowercasing and stripping punctuation.
-This keeps the current zero-dependency behavior. A later Jieba or external tokenizer can implement
-the same protocol without changing the index or scoring code.
+`HybridRetriever` 保留图激活，按 Artifact ID 去重，填充现有 `RetrievalCandidate.lexical`。
+沿用 `app.ports.Retriever` 协议，不加 `semantic` 占位字段；未来语义分不能当成词面证据。
 
-### 2.2 BM25 index
+插件入口持有长生命周期的 `HybridRetriever`，聊天与 WebUI 诊断共用该实例。
+首次使用时从活跃缓存建索引；`Cache.version` 在加载、修改、移除后单调递增，
+版本变化后重建。该版本不是数据库修订号，不要求每个操作只加一次。
 
-Add `recall/bm25.py`:
+`build_block(..., hybrid_retriever: Retriever | None = None)` 在开关启用时使用注入的检索器；
+未注入时可构造同样的适配器供脚本使用。可见性、指定交付、证据闸门、披露与组装顺序保持。
+图邻居、归属和历史路径仍可能查询 SQLite；BM25 无 SQL 不代表整个召回管线已实现零 SQL。
 
-- Document fields: `content_for(artifact)` and `tags`.
-- Inverted index: token -> postings of (doc_id, term_frequency).
-- Track document length and average length.
-- Support `add`, `remove`, `search`.
-- Default parameters: k1=1.2, b=0.75.
-- Score text field and tag field separately:
+## 配置与兼容
 
-    lexical = 0.75 * normalize(bm25_text) + 0.25 * normalize(bm25_tags)
+| 配置 | 默认值 | 含义 |
+|---|---:|---|
+| `bm25_enabled` | `false` | 开启混合词面检索；关闭时沿用 GraphRetriever |
+| `bm25_weight` | `1.0` | BM25 对排序和证据闸门的权重 |
 
-Normalization is per query: divide by the maximum raw score so lexical is in [0, 1].
+`select(..., lexical_weight=2.0)` 保留函数默认值以兼容旧调用；启用时管线显式传入配置中的 1.0。
+关闭或省略开关时不读取 BM25 权重，残留的无效权重不会阻止恢复原检索路径。
+权重先验、新鲜度与近期使用惩罚仍仅参与排序，不能独立构成相关性证据。
 
-### 2.3 Hybrid retriever
+## 校准与验收
 
-Extend `recall/retriever.py` with a HybridRetriever:
+比较 `C={1,2,4,8}` 与权重 `{0.5,1,1.5,2}` 的 16 组组合。旧消融集约束回归，
+五条合成字面题用于选参；独立验收结果不参与调参。固定权重 2.0 曾使旧集 17/18 降至
+16/18，经用户确认扩大权重校准后冻结 C=8、权重 1.0，保留原证据闸门。
 
-1. GraphRetriever produces activation scores.
-2. BM25 search produces lexical scores.
-3. Union candidates by artifact id.
-4. Return RetrievalCandidate(artifact, activation, lexical).
+| 指标 | 原路径 | BM25 开启 |
+|---|---:|---:|
+| 旧消融集命中 | 17/18 | 17/18 |
+| 旧集检索层噪声 | 40.0% | 37.2% |
+| 五条字面校准题命中 | 0/5 | 3/5 |
+| 五条独立验收题命中 | 1/5 | 2/5 |
+| 独立题候选噪声 | 97.5% | 95.0% |
 
-No retrieval logic moves into main.py.
+命令：`python benchmarks/bm25.py --calibrate --output benchmarks/results/bm25.json`。
+数据在 `benchmarks/bm25_cases.py`、`benchmarks/bm25_holdout.py`。
+探索中看过结果的末五条案例不再称为独立 holdout；新验收集由另一代理在未运行检索时冻结。
+独立集仍有三题漏召、噪声较高；这些小样本结果不构成开放域或长期生产效果保证。
 
-## 3. Scoring and evidence gate
+验收须同时保留旧命中、噪声不增加及隐私边界。空输入/纯标点、增删修订、
+遗忘/恢复/合并、图激活、开关关闭兼容、跨会话披露和只读诊断均需回归；
+报告同时给出注入字数、延迟及 5k/20k 文档的构建/重建开销。
 
-`recall/score.py` already adds `2.0 * lexical` to both score and evidence. Make this configurable:
+## 启用与回滚
 
-    select(..., lexical_weight=2.0)
-
-Recommended initial weight: 1.5 to 2.0. It must be calibrated against the existing evidence gate;
-BM25 must not become a new prior that lets unrelated high-frequency documents pass.
-
-Rules:
-
-- lexical evidence counts only when the query has at least one non-stopword token;
-- empty or punctuation-only queries produce zero lexical evidence;
-- BM25 is a ranking and evidence source, never a privacy decision;
-- disclosure still runs after selection.
-
-## 4. Index lifecycle and I/O
-
-- Build from the active cache at startup; no SQL read during recall.
-- Add a monotonically increasing `Cache.version`, bumped on put/remove/load.
-- `HybridRetriever` rebuilds the index when the cache version changes.
-- Rebuild cost is O(active nodes  average tokens). At the current scale this is negligible; measure
-  at 5k and 20k nodes before considering a persistent index.
-- No network calls. No DB transaction is held during retrieval.
-- Future upgrades: SQLite FTS5 shadow table, Tantivy, or an embedding retriever behind the same
-  Retriever protocol.
-
-## 5. Config
-
-Add only two config keys:
-
-- `bm25_enabled` (bool, default false during shadow rollout)
-- `bm25_weight` (float, default 2.0)
-
-The tokenizer, k1 and b remain code constants until benchmark data justifies exposing them.
-
-## 6. Change footprint estimate
-
-New files:
-
-- `recall/tokenizer.py`: about 50-80 lines
-- `recall/bm25.py`: about 140-200 lines
-- `tests/test_bm25.py`: about 150-220 lines
-
-Modified files:
-
-- `recall/retriever.py`: about 50-90 lines
-- `recall/pipeline.py`: 10-20 lines
-- `recall/score.py`: 10-20 lines
-- `store/cache.py`: 5-10 lines for version tracking
-- `app/flush_policy.py` or config schema: only if extraction gating changes (not required)
-- `docs/ARCHITECTURE.md`, `docs/index`, `CHANGELOG.md`, `metadata.yaml`: release changes
-
-Total estimate: 350-600 lines including tests and docs, excluding benchmark tuning.
-
-## 7. Test plan
-
-Unit tests:
-
-- tokenizer normalization and empty input;
-- BM25 idf and score monotonicity;
-- field weighting text vs tags;
-- add/remove/reindex behavior;
-- hybrid union and duplicate elimination;
-- normalized lexical range [0, 1];
-- empty query returns zero lexical evidence.
-
-Integration tests:
-
-- a memory that current bigram seeds miss but BM25 finds through token overlap;
-- disclosure still downgrades cross-session matches;
-- evidence gate rejects unrelated high-frequency text.
-
-Benchmarks:
-
-- `benchmarks/run.py`, `benchmarks/scale.py`, `benchmarks/ablation.py`;
-- compare hit rate, noise ratio, injected chars and latency with bm25 on/off;
-- attach numbers to the PR before changing defaults.
-
-## 8. Rollout
-
-1. Land tokenizer + BM25 index + tests only.
-2. Run HybridRetriever in shadow mode: log lexical scores but do not change selection.
-3. Enable bm25 in staging and compare benchmark deltas.
-4. Enable in production only if noise does not regress and hit rate improves.
-5. Keep bm25_enabled as a rollback switch.
-
-## 9. Risks and decisions
-
-- Chinese bigrams can over-match common character pairs; IDF and length normalization mitigate this.
-- BM25 and the existing literal feature can double-count evidence; tune weights against the gate.
-- Rebuilding on every cache mutation can be expensive at large scale; measure before adding a persistent index.
-- A future embedding retriever must implement the same Retriever protocol and produce a calibrated
-  lexical-equivalent signal, not bypass disclosure or the evidence gate.
-
-## 10. Out of scope
-
-- Vector embeddings, rerankers and external search services.
-- Changing persona or impression extraction.
-- Changing privacy/disclosure levels.
-- Replacing the current cognitive scoring model in one step.
+保持默认关闭，在 staging 显式启用并比较效果和延迟；Lead 决定是否进入生产。
+关闭 `bm25_enabled` 即恢复原检索路径，不需要数据库迁移、向量索引或模型服务。

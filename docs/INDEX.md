@@ -79,7 +79,7 @@ assistant reply
 AstrBot on_llm_request
   -> recall.pipeline.build_block
   -> visible scope filter
-  -> GraphRetriever (activation)
+  -> GraphRetriever (activation), or optional HybridRetriever (+ BM25 lexical)
   -> select / evidence gate
   -> disclosure (full / paraphrase / hint / silence)
   -> assemble safe text
@@ -87,6 +87,11 @@ AstrBot on_llm_request
 ```
 
 Recall does not write. Reinforcement is queued and flushed by app/checkpoint.py.
+
+BM25 默认关闭（`bm25_enabled=false`），配置权重默认为 1.0。插件入口与管理诊断共用
+长生命周期 HybridRetriever；Cache.version 变化后重建索引，查询统计只使用可见候选池。
+`recall/tokenizer.py` 提供无依赖字符 bigram；`recall/bm25.py` 提供正文/标签倒排表。
+校准与独立验收入口为 `benchmarks/bm25.py`，限制和启用流程见 [BM25 方案](BM25-PROPOSAL.md)。
 
 ## WebUI path
 
@@ -103,7 +108,8 @@ one-time delivery state.
 
 ## Active design work
 
-- BM25 hybrid retrieval: docs/BM25-PROPOSAL.md, ISSUE-0024.
+- BM25 hybrid retrieval（默认关闭）：[方案与校准](BM25-PROPOSAL.md)，ISSUE-0024。
+- [本地向量检索提案](LOCAL-VECTOR-PROPOSAL.md)：用户预装模型、运行时离线，仅文档设计。
 - WebUI follow-up: server-side pagination, editable source view, and release download_url.
 - Future: reflection wiring, RBAC, capacity governance, persona source policy.
 
