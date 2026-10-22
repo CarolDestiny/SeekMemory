@@ -1,3 +1,4 @@
+> Status: historical benchmark notes. Current test commands are in TESTING.md.
 # 回归基线
 
 > **本文件是 PR-0003 时代的快照（代码基线 `b55e6a5`）。PR-0018 之后的数字已变，以

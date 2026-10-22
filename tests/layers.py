@@ -1,0 +1,60 @@
+"""Test-layer map for local runs and CI.
+
+The test files stay flat for unittest compatibility. This map gives each file one
+primary responsibility so reviewers can run only the layer they changed.
+"""
+
+from __future__ import annotations
+
+LAYERS: dict[str, tuple[str, ...]] = {
+    "unit": (
+        "test_artifact.py",
+        "test_bm25.py",
+        "test_calling.py",
+        "test_capacity.py",
+        "test_flush_batches.py",
+        "test_gate.py",
+        "test_journal.py",
+        "test_layers.py",
+        "test_lifecycle.py",
+        "test_link.py",
+        "test_maintain.py",
+        "test_persona.py",
+        "test_scope.py",
+        "test_store.py",
+        "test_strength.py",
+        "test_trace.py",
+    ),
+    "contract": (
+        "test_api_contract.py",
+        "test_public_interfaces.py",
+    ),
+    "integration": (
+        "test_absorb.py",
+        "test_e2e_kernel.py",
+        "test_group_memory.py",
+        "test_kernel.py",
+        "test_recall.py",
+        "test_recall_feel.py",
+        "test_recall_pipeline.py",
+        "test_webui.py",
+    ),
+    "host": (
+        "test_webui_host.py",
+    ),
+    "smoke": (
+        "test_package.py",
+        "test_smoke.py",
+    ),
+}
+
+ALL_LAYERS = ("unit", "contract", "integration", "host", "smoke")
+
+
+def files_for(layer: str) -> tuple[str, ...]:
+    """Return test file names for one layer; all means every mapped test."""
+    if layer == "all":
+        return tuple(sorted({name for names in LAYERS.values() for name in names}))
+    if layer not in LAYERS:
+        raise ValueError(f"unknown test layer: {layer}")
+    return LAYERS[layer]

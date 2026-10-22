@@ -2,7 +2,7 @@
 
 > AI agents and external contributors must also read [AGENTS.md](AGENTS.md).
 
-> Developer interfaces: [docs/INTERFACES.md](docs/INTERFACES.md) | [docs/DEV-SETUP.md](docs/DEV-SETUP.md).
+> Documentation map: [docs/README.md](docs/README.md) | Developer interfaces: [docs/INTERFACES.md](docs/INTERFACES.md) | Test layers: [docs/TESTING.md](docs/TESTING.md) | Setup: [docs/DEV-SETUP.md](docs/DEV-SETUP.md).
 
 
 > 背景：v0.1 的所有改动都直接进了 `main`，没有 issue、PR 和评审。从这份文件开始，

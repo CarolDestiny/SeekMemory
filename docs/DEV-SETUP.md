@@ -6,7 +6,17 @@ This is the first contribution layer: enough to run tests and the dashboard loca
 
 Use Python 3.10 or newer.
 
+Run one layer while developing:
+
+    python3 scripts/run_tests.py --layer unit
+    python3 scripts/run_tests.py --layer contract
+    python3 scripts/run_tests.py --layer integration
+
+Run every backend test file through the compatibility command:
+
     python3 -m unittest discover -s tests -p 'test_*.py' -q
+
+See [TESTING.md](TESTING.md) for the layer map and known gaps.
 
 Some contract tests need:
 
