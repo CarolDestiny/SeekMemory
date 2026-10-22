@@ -23,7 +23,9 @@ from recall.spread import activate  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store.db import DB  # noqa: E402
 
-KEY = os.environ.get("DEEPSEEK_API_KEY") or "REDACTED_DEEPSEEK_KEY"
+KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+if not KEY:
+    raise SystemExit("缺少 DEEPSEEK_API_KEY。用法：export DEEPSEEK_API_KEY=sk-...")
 URL, MODEL = "https://api.deepseek.com/v1/chat/completions", "deepseek-flash"
 SYSTEM = "你是大肥鱼，一只圆滚滚的蓝色小鲸鱼。用一句话回答，简短、口语，不要列举。"
 TODAY, DAYS = dt.date.today(), 60
