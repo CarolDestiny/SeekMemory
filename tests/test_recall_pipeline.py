@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -105,29 +107,33 @@ class OptionalBM25PipelineTest(unittest.TestCase):
         self.conf["recall_k"] = 6
         return case.query, target
 
-    def test_disabled_and_absent_bm25_keep_legacy_selection(self):
+    def test_disabled_bm25_keeps_legacy_selection(self):
         query, target = self.save_tagged_case()
         disabled = {**self.conf, "bm25_enabled": False}
+        block, info = self.recall(query, disabled)
+        self.assertNotIn(target.header.id, info["picked_ids"])
+        self.assertNotIn("第二格抽屉", block)
+
+    def test_default_bm25_recovers_tagged_memory_through_real_pipeline(self):
+        query, target = self.save_tagged_case()
+        schema_path = Path(__file__).resolve().parents[1] / "_conf_schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        defaults = {**self.conf, "bm25_enabled": schema["bm25_enabled"]["default"]}
         absent = {key: value for key, value in self.conf.items() if key != "bm25_enabled"}
-        for config in (disabled, absent):
+        for config in (defaults, absent):
             with self.subTest(config=config):
                 block, info = self.recall(query, config)
-                self.assertNotIn(target.header.id, info["picked_ids"])
-                self.assertNotIn("第二格抽屉", block)
+                self.assertIn(target.header.id, info["picked_ids"])
+                self.assertIn("第二格抽屉", block)
 
     def test_disabled_bm25_ignores_invalid_lexical_weight(self):
         target = self.save("memory", {"text": "最近在复习量化交易", "level": "fact"})
-        for enabled in (False, None):
-            for weight in (float("nan"), float("inf"), "invalid", None):
-                config = {**self.conf, "bm25_weight": weight}
-                if enabled is None:
-                    config.pop("bm25_enabled")
-                else:
-                    config["bm25_enabled"] = enabled
-                with self.subTest(enabled=enabled, weight=weight):
-                    block, info = self.recall("还记得量化交易吗", config)
-                    self.assertIn(target.header.id, info["picked_ids"])
-                    self.assertIn("最近在复习量化交易", block)
+        for weight in (float("nan"), float("inf"), "invalid", None):
+            config = {**self.conf, "bm25_enabled": False, "bm25_weight": weight}
+            with self.subTest(weight=weight):
+                block, info = self.recall("还记得量化交易吗", config)
+                self.assertIn(target.header.id, info["picked_ids"])
+                self.assertIn("最近在复习量化交易", block)
 
     def test_shadow_and_secret_never_inject_bodies_with_bm25(self):
         self.save("memory", {"text": "影子中不能公开的量化密码", "level": "fact"}, "shadow")

@@ -369,7 +369,7 @@ class RetrievalCandidate:
 ```
 
 `lexical` is reserved for normalized BM25 or another pluggable lexical retriever.
-语义相似度不得填入 lexical。未来本地向量检索仅为待审提案，不新增占位字段。
+语义相似度不得填入 lexical。本次不实现本地向量检索，不新增占位字段。
 
 ## store/db.py
 
@@ -458,7 +458,8 @@ def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
 ```
 
 `bm25_enabled=false` 时继续使用 GraphRetriever；启用时使用注入检索器，缺省可构造 HybridRetriever。
+配置默认开启；未提供 bm25_enabled 时也使用混合检索，显式 false 可恢复原检索路径。
 插件入口与 ManagementService 传递同一长生命周期实例。WebUI 诊断仍 dry_run，不消耗指定交付状态。
 新配置 bm25_weight 默认 1.0，由管线显式传入 select 的 lexical_weight；函数默认 2.0 保留旧调用兼容。
-关闭或未配置 bm25_enabled 时不读取 bm25_weight，忽略残留的无效权重配置。
-不改变已存在的 scope、披露、证据阈值或预算规则。完整设计与限制见 [BM25 方案](BM25-PROPOSAL.md)。
+显式关闭 bm25_enabled 时不读取 bm25_weight，忽略残留的无效权重配置。
+不改变已存在的 scope、披露、证据阈值或预算规则。实现决策与限制见 [ISSUE-0024](issues/ISSUE-0024.md)。

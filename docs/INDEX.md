@@ -23,7 +23,7 @@ v0.3.1 + WebUI branch
 | docs/webui/ | Plugin WebUI guide and screenshots | docs/webui/README.md |
 | scripts/package_plugin.py | Runtime whitelist and Release ZIP packaging | CONTRIBUTING.md |
 | tests/ | Unit, integration, kernel and WebUI tests | tests/test_kernel.py |
-| docs/ | Architecture, contracts, issues and proposals | docs/BM25-PROPOSAL.md |
+| docs/ | Architecture, contracts and issues | docs/issues/INDEX.md |
 | main.py | AstrBot event mapping and composition only | main.py |
 
 ## Dependency direction
@@ -88,10 +88,10 @@ AstrBot on_llm_request
 
 Recall does not write. Reinforcement is queued and flushed by app/checkpoint.py.
 
-BM25 默认关闭（`bm25_enabled=false`），配置权重默认为 1.0。插件入口与管理诊断共用
+BM25 默认开启（`bm25_enabled=true`），配置权重默认为 1.0。插件入口与管理诊断共用
 长生命周期 HybridRetriever；Cache.version 变化后重建索引，查询统计只使用可见候选池。
 `recall/tokenizer.py` 提供无依赖字符 bigram；`recall/bm25.py` 提供正文/标签倒排表。
-校准与独立验收入口为 `benchmarks/bm25.py`，限制和启用流程见 [BM25 方案](BM25-PROPOSAL.md)。
+校准与独立验收入口为 `benchmarks/bm25.py`，限制和回滚方式见 [ISSUE-0024](issues/ISSUE-0024.md)。
 
 ## WebUI path
 
@@ -108,8 +108,8 @@ one-time delivery state.
 
 ## Active design work
 
-- BM25 hybrid retrieval（默认关闭）：[方案与校准](BM25-PROPOSAL.md)，ISSUE-0024。
-- [本地向量检索提案](LOCAL-VECTOR-PROPOSAL.md)：用户预装模型、运行时离线，仅文档设计。
+- BM25 hybrid retrieval（默认开启）：[实现与验收](issues/ISSUE-0024.md)。
+- 本地向量的后续约束同样记录在 ISSUE-0024：用户预装模型、运行时离线，本次不实现。
 - WebUI follow-up: server-side pagination, editable source view, and release download_url.
 - Future: reflection wiring, RBAC, capacity governance, persona source policy.
 

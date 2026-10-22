@@ -57,9 +57,9 @@
     "default": 0.3
   },
   "bm25_enabled": {
-    "description": "启用本地 BM25 字面检索；离线对照与 staging 验证通过后再启用",
+    "description": "启用本地 BM25 字面检索；默认开启，关闭可恢复原图检索",
     "type": "bool",
-    "default": false
+    "default": true
   },
   "bm25_weight": {
     "description": "BM25 词面分数对排序与证据闸门的权重",
