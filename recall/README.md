@@ -54,9 +54,8 @@ pipeline    → app.ports (Retriever), core/store/recall
 
 ## 可选 BM25
 
-配置 `bm25_enabled` 默认 false，`bm25_weight` 默认 1.0；`select()` 的函数默认 lexical_weight
+配置 `bm25_enabled` 默认 true，未提供配置时同样开启；`bm25_weight` 默认 1.0，`select()` 的函数默认 lexical_weight
 仍为 2.0，以兼容旧调用。BM25 的 k1=1.2、b=0.75，正文/标签分别经 `s/(s+8)` 后按 0.75/0.25 融合。
 插件组合入口持有 HybridRetriever，聊天和诊断共用；缓存 version 变化时重建，IDF 与长度统计仅取本次可见池。
-关闭开关保留旧行为，向量提案不通过也不影响 BM25。语义分数不可填入 lexical。
-校准、已知漏题与后续离线向量提案见 [BM25 方案](../docs/BM25-PROPOSAL.md) 和
-[本地向量提案](../docs/LOCAL-VECTOR-PROPOSAL.md)。
+显式关闭开关恢复旧行为，BM25 可独立运行。语义分数不可填入 lexical。
+校准、已知漏题、回滚方式与后续边界见 [ISSUE-0024](../docs/issues/ISSUE-0024.md)。

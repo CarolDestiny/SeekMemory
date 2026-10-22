@@ -68,9 +68,9 @@ BM25 使用标准库字符 bigram 倒排索引，不调用模型或网络。正�
 固定 `s/(s+8)` 归一化；仅以本次可见池计算 N、df 和平均长度。
 插件入口持有长生命周期检索器，聊天与诊断共用；Cache.version 变化后重建派生索引。
 `build_block(..., hybrid_retriever: Retriever | None = None)` 支持接口注入。
-`bm25_enabled=false`，新配置 `bm25_weight=1.0`；select 函数默认权重 2.0 保留旧调用兼容。
+`bm25_enabled=true`，新配置 `bm25_weight=1.0`；select 函数默认权重 2.0 保留旧调用兼容。
 BM25 本身无 SQL，现有 graph/source/history 路径仍可能查询 SQLite。
-本地向量只在 [提案](LOCAL-VECTOR-PROPOSAL.md) 中保留设计，不新增 semantic 字段或依赖。
+本次不包含本地向量实现，不新增 semantic 字段或依赖；后续边界记录在 ISSUE-0024。
 
 All production writes now use `DB.commit()` with expected revision, version snapshots, evidence
 links and ledger entries. `DB.upsert()` remains only as a legacy compatibility primitive.
@@ -91,5 +91,5 @@ The extractor returns `subject_kind`, `subject_id`, `event_at` and validity date
 - Recall applies disclosure before assembly; cross-session text is never injected raw.
 - Live validation: group sources and group Artifacts are being produced. A matching query selected
   two live Artifacts and applied paraphrase/silence disclosure.
-- 可选 BM25 已接入，默认关闭；实现及验收限制见 [BM25 约定](BM25-PROPOSAL.md)。
+- BM25 已接入，默认开启；实现及验收限制见 [ISSUE-0024](issues/ISSUE-0024.md)。
 - Not implemented yet: local vector retrieval, reflection wiring, RBAC, capacity governance and persona source policy.

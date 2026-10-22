@@ -117,7 +117,7 @@ def build_block(
     picked: list = []
     if mode != "none" and pool:
         lexical_weight = 2.0
-        if bool(conf("bm25_enabled", False)):
+        if bool(conf("bm25_enabled", True)):
             retriever = hybrid_retriever or HybridRetriever(graph, cache)
             lexical_weight = float(conf("bm25_weight", 1.0))
         else:
