@@ -14,6 +14,29 @@ assignees: ""
 
 描述最小的一致实现。
 
+## Priority / 优先级
+
+P0 / P1 / P2
+
+## Scope / 要做什么
+
+- [ ] 本次要做：
+- [ ] 不做就不会影响验收：
+
+## Non-goals / 不做什么
+
+- [ ] 本次明确不做：
+- [ ] 不接受的隐含扩展：
+
+## Later / 以后再做
+
+- [ ] 下一个版本或更后的事：
+
+## Acceptance criteria / 验收标准
+
+- [ ] 可验证的行为变化：
+- [ ] 回归测试：
+
 ## Architecture impact / 架构影响
 
 - 这是否会添加或更改 Artifact 字段？
