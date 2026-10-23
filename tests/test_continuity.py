@@ -12,7 +12,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.contracts import DialogueTurn  # noqa: E402
-from core.artifact import TimeSpan, revise  # noqa: E402
+from core.artifact import Lineage, Strength, TimeSpan, make, revise  # noqa: E402
+from recall.temporal import valid_at  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
 from perceive.absorb import absorb  # noqa: E402
@@ -61,6 +62,32 @@ class ContinuityTest(unittest.TestCase):
             {"bm25_enabled": True, "explore_rate": 0.0}.get,
             self.owner, "u1", dry_run=True, hybrid_retriever=self.retriever,
         )
+
+    def test_supersedes_expires_the_old_fact(self) -> None:
+        old = make(
+            "memory", {"text": "The owner lives in Hangzhou", "level": "fact"},
+            scope="private", subject_id="u1", strength=Strength(weight=1.0),
+            lineage=Lineage(sources=("s1",)),
+        )
+        self.db.commit(old, expected_revision=0, op="create")
+        self.cache.put(old)
+        outcome = asyncio.run(absorb(
+            [DialogueTurn(self.session, "u1", "user", "I moved to Shanghai",
+                          "2026-10-22T12:00:00", "s1")],
+            self.db, self.cache, self.graph,
+            Provider(json.dumps([{
+                "level": "fact",
+                "text": "The owner lives in Shanghai",
+                "subject_kind": "speaker",
+                "subject_id": "u1",
+                "supersedes": "The owner lives in Hangzhou",
+            }])),
+        ))
+        self.assertEqual(outcome.written, 1)
+        expired = self.cache.get(old.header.id)
+        self.assertIsNotNone(expired)
+        self.assertIsNotNone(expired.header.time.valid_to)
+        self.assertFalse(valid_at(expired))
 
     def test_correction_revises_the_current_answer(self) -> None:
         original = self.extract(

@@ -54,6 +54,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
     ),
     "smoke": (
         "test_package.py",
+        "test_eval_harness.py",
         "test_smoke.py",
     ),
 }

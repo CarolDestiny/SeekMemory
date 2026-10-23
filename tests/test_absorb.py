@@ -207,6 +207,7 @@ class PromptTest(unittest.TestCase):
         self.assertIn("subject_kind", prompt)
         self.assertIn("subject_id", prompt)
         self.assertIn("event_at", prompt)
+        self.assertIn("supersedes", prompt)
         self.assertIn("2026-10-20T23:14:00", prompt)
 
     def test_parse_keeps_tags(self):

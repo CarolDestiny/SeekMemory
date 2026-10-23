@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import datetime
 import re
+from dataclasses import replace
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
-    from ..core.artifact import Lineage, Strength, TimeSpan, content_of, make, validate
+    from ..core.artifact import Lineage, Strength, TimeSpan, content_of, make, revise, validate
     from ..core.graph import Graph
     from ..maintain.impression import revise_impression
     from ..maintain.link import link_new
@@ -28,7 +29,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..store.db import DB
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
-    from core.artifact import Lineage, Strength, TimeSpan, content_of, make, validate
+    from core.artifact import Lineage, Strength, TimeSpan, content_of, make, revise, validate
     from core.graph import Graph
     from maintain.impression import revise_impression
     from maintain.link import link_new
@@ -189,6 +190,34 @@ def existing_texts_by_subject(cache: Cache | None) -> dict[str, list[str]]:
     return out
 
 
+def _supersede(db: DB, cache: Cache, new_art) -> int:
+    """Expire an explicitly superseded old memory without deleting its Source."""
+    payload = new_art.payload if isinstance(new_art.payload, dict) else {}
+    old_text = str(payload.get("supersedes") or "").strip()
+    if not old_text:
+        return 0
+    key = re.sub(r"\s+", "", old_text).lower()
+    cutoff = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    changed = 0
+    for old in list(cache.active("memory")):
+        if old.header.id == new_art.header.id:
+            continue
+        if old.header.subject_id != new_art.header.subject_id:
+            continue
+        if old.header.scope != new_art.header.scope:
+            continue
+        body = re.sub(r"\s+", "", content_of(old) or "").lower()
+        if not key or not body or (key not in body and body not in key):
+            continue
+        updated = revise(old, time=replace(old.header.time, valid_to=cutoff))
+        db.commit(updated, expected_revision=old.header.revision, op="revise",
+                  reason="superseded by extraction",
+                  source_ids=tuple(old.header.lineage.sources))
+        cache.put(updated)
+        changed += 1
+    return changed
+
+
 def owner_of(items: list[DialogueTurn]) -> str:
     sessions = {turn.session_id for turn in items if turn.session_id}
     return next(iter(sessions)) if len(sessions) == 1 else ""
@@ -333,6 +362,10 @@ async def absorb(
                     cache.put(art)
                 link_new(art, graph, cache)
                 written_ids.append(art.header.id)
+                try:
+                    _supersede(db, cache, art)
+                except Exception as exc:  # noqa: BLE001 - supersede is best effort
+                    errors.append(f"supersede: {exc}")
         except Exception as exc:
             skipped += 1
             errors.append(f"commit: {exc}")

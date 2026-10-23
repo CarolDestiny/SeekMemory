@@ -42,3 +42,14 @@ Use the AstrBot plugin page for live data. For a local browser against a remote 
     cd dashboard && pnpm test
 
 Add a regression test for every behavior change. P0/P1 changes need an issue and a PR record.
+
+
+## Read-only live probe
+
+    python3 scripts/live_probe.py --db /path/to/memory.db --label live --json
+
+## Real model extraction probe
+
+    python3 benchmarks/real_eval.py --cases benchmarks/data/extraction_smoke.jsonl --dry-run
+
+Set `SEEKMEMORY_EVAL_BASE_URL`, `SEEKMEMORY_EVAL_API_KEY` and `SEEKMEMORY_EVAL_MODEL` for a real run.
