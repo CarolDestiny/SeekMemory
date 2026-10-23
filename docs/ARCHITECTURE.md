@@ -105,3 +105,13 @@ The extractor returns `subject_kind`, `subject_id`, `event_at` and validity date
   bounded `webui/trace.py` ring for capacity samples, separate from the
   business Journal event log.
 - Not implemented yet: local vector retrieval, reflection wiring, RBAC and persona source policy.
+
+## Agent Runtime boundary
+
+`app/runtime/` is host-agnostic. It owns `WakePolicy`, `SocialState`, and observe-only
+`AgentRuntime` decisions. AstrBot remains the transport/provider/platform host; `main.py`
+maps events into `RuntimeInput` and must not move AstrBot types into the runtime package.
+
+Phase 1 is observe-only: runtime decisions and trace are recorded, but reply behavior is
+unchanged. Future phases may gate `event.should_call_llm`, add wait/proactive actions and
+record complete runtime episodes.
