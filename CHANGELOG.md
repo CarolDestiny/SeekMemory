@@ -16,6 +16,11 @@
 
 ## 未发布
 
+- Invariant hardening: scoped identity dedupe, source identity, failure recovery, oversized topics,
+  privacy output, reinforcement truth, lineage/cache consistency, temporal validity, migration and continuity.
+- Assistant replies now enter the extraction projection; repeated bot behavior creates self-impressions and
+  the weekly/dream path composes persona only from bot:self artifacts with a stable id.
+- Batch merge and lifecycle expiry now use atomic multi-artifact transactions.
 - 新增 Source-backed pending 投影与容量治理：旧 `pending.json` 可无损迁移到
   `extraction_state`，重启后按 Source 重建且不再按 200 行静默截断；纯 Governor
   统一输出 normal/pressured/saturated/protective 及抽取、降级、过期清理和告警动作。
