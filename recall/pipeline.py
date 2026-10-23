@@ -13,6 +13,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..app.ports import Retriever
     from ..core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
     from ..core.graph import Graph
+    from ..core.bot_behavior import trusted_self_persona
     from ..recall.assemble import build_with_meta as assemble_text_meta
     from ..recall.designated import deliverable, mark_given
     from ..recall.drift import best_of as drift_best
@@ -30,6 +31,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from app.ports import Retriever
     from core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
     from core.graph import Graph
+    from core.bot_behavior import trusted_self_persona
     from store.cache import Cache
     from store.db import DB
 
@@ -197,8 +199,10 @@ def build_block(
         for art in arts:
             try:
                 if art.header.family == "persona":
-                    disclosure_info[art.header.id] = "full"
-                    safe_arts.append(art)
+                    safe = trusted_self_persona(art)
+                    disclosure_info[art.header.id] = "full" if safe else "silence"
+                    if safe:
+                        safe_arts.append(art)
                     continue
                 source_ids = list(art.header.lineage.sources)
                 origins = (

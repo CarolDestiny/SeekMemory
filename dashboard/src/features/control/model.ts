@@ -32,6 +32,14 @@ export const detailSchema = z.object({
   sources: z.array(z.record(z.string(), z.json())),
   ledger: z.array(z.record(z.string(), z.json())),
 }) satisfies z.ZodType<ApiResponse<"detail">>
+export const personaRevisionSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  at: z.string(),
+  op: z.string(),
+  text: z.string(),
+  derivedFrom: z.array(z.string()).default([]),
+  sourceIds: z.array(z.string()).default([]),
+})
 export const statusSchema = z.object({
   ready: z.boolean(),
   checks: z.array(
@@ -80,14 +88,7 @@ export const statusSchema = z.object({
       id: z.string(),
       revision: z.number().int().nonnegative(),
       text: z.string(),
-      revisions: z.array(
-        z.object({
-          revision: z.number().int().nonnegative(),
-          at: z.string(),
-          op: z.string(),
-          text: z.string(),
-        })
-      ),
+      revisions: z.array(personaRevisionSchema),
     })
     .nullable()
     .default(null),

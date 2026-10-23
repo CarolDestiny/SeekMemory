@@ -14,10 +14,33 @@ class FlushDecision:
     reason: str
 
 
+def _is_pair(parent: DialogueTurn, reply: DialogueTurn) -> bool:
+    """True when ``reply`` is the assistant answer to ``parent``."""
+    if reply.role != "assistant" or parent.role != "user":
+        return False
+    if reply.session_id != parent.session_id:
+        return False
+    if reply.reply_to and reply.source_id:
+        return str(reply.reply_to) == str(parent.source_id)
+    return bool(reply.turn_id) and str(reply.turn_id) == str(parent.turn_id)
+
+
 def chunk_turns(items: list[DialogueTurn], limit: int = MAX_TOPIC_TURNS) -> list[list[DialogueTurn]]:
-    """Split one oversized topic without dropping its tail."""
+    """Split one oversized topic without dropping its tail or splitting a pair.
+
+    A user turn and the assistant reply that references it stay in the same
+    chunk when there is room. ``limit=1`` still returns every turn exactly once.
+    """
     size = max(1, int(limit))
-    return [items[index:index + size] for index in range(0, len(items), size)]
+    chunks: list[list[DialogueTurn]] = []
+    index, total = 0, len(items)
+    while index < total:
+        end = min(total, index + size)
+        if end < total and end - index > 1 and _is_pair(items[end - 1], items[end]):
+            end -= 1
+        chunks.append(items[index:end])
+        index = end
+    return chunks
 
 
 def select_topic_batches(

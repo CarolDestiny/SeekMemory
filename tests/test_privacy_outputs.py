@@ -61,15 +61,16 @@ class PrivacyOutputTest(unittest.TestCase):
         self.assertNotEqual(info["disclosure"].get(art.header.id), "full")
         self.assertIn(art.header.id, info["pinned_ids"])
 
-    def test_persona_is_still_global_and_full(self):
+    def test_unverified_persona_cannot_bypass_disclosure(self):
         art = self.save(
             "persona", {"text": "global persona phrase"},
             scope="shared", subject="bot:self", said_by="inferred",
             source_umo="g1",
         )
         block, info = self.recall("g2", "hello", "u1", private=False)
-        self.assertIn("global persona phrase", block)
-        self.assertEqual(info["disclosure"].get(art.header.id), "full")
+        # #15：任意旧人格文字不再自动获得全局全文许可。
+        self.assertNotIn("global persona phrase", block)
+        self.assertEqual(info["disclosure"].get(art.header.id), "silence")
 
     def test_cross_session_designated_is_not_delivered(self):
         art = self.save(

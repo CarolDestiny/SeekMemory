@@ -64,6 +64,7 @@ deletes either row. Deferred rows wait for capacity headroom, and retries honor
 ## Shared DTOs in app/contracts.py
 
 - DialogueTurn: one buffered turn; session_id, speaker_id, role and text are required.
+- DialogueTurn also has trailing optional `turn_id=""`, `reply_to=None`; old positional calls remain valid.
 - ChatRequest: provider-neutral request. max_tokens defaults to 800; temperature defaults to 0.0.
 - ChatResponse: provider-neutral response with text required and usage fields optional.
 - WriteOutcome: extraction result; distinguishes written, skipped, errors and model_failed.
@@ -88,3 +89,24 @@ The contract tests check built-in implementations against runtime-checkable prot
 ## Scope
 
 This is the first contribution layer. It does not yet cover a plugin marketplace, third-party adapter certification or a public benchmark leaderboard.
+
+## Two-sided evidence and self persona (GitHub #15)
+
+`DB.sources_by_ids(ids) -> dict[str, Source]` bulk-reads immutable originals,
+including session, speaker and reply links. Missing ids are omitted. Read errors
+propagate so extraction can retain retryable input. It never updates queue state.
+
+Extraction optionally returns `bot_behavior` (six values in `core/bot_behavior.py`),
+`confidence` and `evidence_source_ids`. Behavior evidence must be exactly a valid
+user/reply pair from the input. Its lineage and committed evidence use those same ids.
+The four descriptive behavior fields remain optional and individually preserved.
+
+Both `promote_candidates` and `distill_persona` keep their signatures but now use
+only evidence-backed self-impressions. User traits are deliberately no longer
+accepted as personality candidates. Three distinct observed replies at confidence
+>= 0.9 bootstrap; age, recall hits and text repetition cannot replace evidence.
+
+`persona.revisions[]` adds optional `derivedFrom` and `sourceIds` arrays. Each is
+read from that revision's stored header, with empty arrays for missing historical
+data. Status contains no original dialogue. The authenticated detail interface
+supplies evidence on demand; the UI filters it to the selected historical version.

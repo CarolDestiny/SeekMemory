@@ -133,5 +133,29 @@ class PendingFileRecoveryTest(unittest.TestCase):
         buf.add("umo:a", "hello")
         self.assertTrue(buf.save_error)
 
+class ChunkPairingTest(unittest.TestCase):
+    def test_chunk_turns_keeps_a_reply_pair_on_one_side(self) -> None:
+        filler = [_turn(f"message {index}") for index in range(119)]
+        parent = DialogueTurn("umo:a", "10001", "user", "boundary question",
+                              "2026-10-22T12:00:00", "s_u", "", "t1")
+        reply = DialogueTurn("umo:a", "bot", "assistant", "boundary answer",
+                             "2026-10-22T12:00:10", "s_a", "", "t1", "s_u")
+        turns = filler + [parent, reply]
+        chunks = chunk_turns(turns, 120)
+        self.assertEqual([turn for chunk in chunks for turn in chunk], turns)
+        holders = [
+            chunk for chunk in chunks
+            if any(turn.source_id == "s_a" for turn in chunk)
+        ]
+        self.assertEqual(len(holders), 1)
+        self.assertTrue(any(turn.source_id == "s_u" for turn in holders[0]))
+
+    def test_chunk_turns_with_limit_one_keeps_every_turn(self) -> None:
+        turns = [_turn(f"message {index}") for index in range(5)]
+        chunks = chunk_turns(turns, 1)
+        self.assertEqual([len(chunk) for chunk in chunks], [1, 1, 1, 1, 1])
+        self.assertEqual([turn for chunk in chunks for turn in chunk], turns)
+
+
 if __name__ == "__main__":
     unittest.main()

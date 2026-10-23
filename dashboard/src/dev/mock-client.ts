@@ -149,6 +149,111 @@ for (const record of records) {
     })
   )
 }
+const personaText = "你先回应情绪，再讨论问题。"
+const personaText2 = personaText + "你承认不确定，不编造答案。"
+const demoSources = [
+  {
+    id: "demo-user-1",
+    role: "user",
+    at: "2026-10-20T03:00:00+08:00",
+    text: "事情太多，我有些难过。",
+  },
+  {
+    id: "demo-assistant-1",
+    role: "assistant",
+    at: "2026-10-20T03:00:01+08:00",
+    text: "听起来你很难过，先缓一缓。",
+  },
+  {
+    id: "demo-user-2",
+    role: "user",
+    at: "2026-10-21T03:00:00+08:00",
+    text: "这个消息确定吗？",
+  },
+  {
+    id: "demo-assistant-2",
+    role: "assistant",
+    at: "2026-10-21T03:00:01+08:00",
+    text: "我还不能确认，需要核对来源。",
+  },
+]
+function mockVersion(
+  revision: number,
+  text: string,
+  derived: string[],
+  sources: string[]
+) {
+  return {
+    revision,
+    op: "promote",
+    at: `2026-10-${19 + revision}T03:30:00+08:00`,
+    content: JSON.stringify({ text }),
+    header: JSON.stringify({
+      lineage: JSON.stringify({ derived_from: derived, sources }),
+    }),
+  }
+}
+details.set(
+  "n_persona_mock",
+  detailSchema.parse({
+    artifact: {
+      header: {
+        id: "n_persona_mock",
+        family: "persona",
+        revision: 2,
+        state: "active",
+        scope: "shared",
+      },
+      payload: { text: personaText2 },
+    },
+    versions: [
+      mockVersion(
+        1,
+        personaText,
+        ["self-emotion"],
+        demoSources.slice(0, 2).map((s) => s.id)
+      ),
+      mockVersion(
+        2,
+        personaText2,
+        ["self-emotion", "self-uncertain"],
+        demoSources.map((s) => s.id)
+      ),
+    ],
+    sources: demoSources,
+    ledger: [],
+  })
+)
+for (const [id, text, sources] of [
+  ["self-emotion", "她先回应情绪，再讨论问题。", demoSources.slice(0, 2)],
+  ["self-uncertain", "她承认不确定，不编造答案。", demoSources.slice(2)],
+] as const) {
+  details.set(
+    id,
+    detailSchema.parse({
+      artifact: {
+        header: {
+          id,
+          family: "memory",
+          revision: 1,
+          state: "active",
+          scope: "shared",
+        },
+        payload: { text, level: "impression" },
+      },
+      versions: [
+        mockVersion(
+          1,
+          text,
+          [],
+          sources.map((s) => s.id)
+        ),
+      ],
+      sources,
+      ledger: [],
+    })
+  )
+}
 let events: OperationEvent[] = [
   {
     id: "boot",
@@ -303,19 +408,28 @@ export const mockClient: ManagementClient = {
       persona: {
         id: "n_persona_mock",
         revision: 2,
-        text: "You first receive emotion, then ask for facts.",
+        text: "你先回应情绪，再讨论问题。你承认不确定，不编造答案。",
         revisions: [
           {
             revision: 1,
             at: "2026-10-20T03:30:00+08:00",
             op: "promote",
-            text: "You first receive emotion before asking facts.",
+            text: "你先回应情绪，再讨论问题。",
+            derivedFrom: ["self-emotion"],
+            sourceIds: ["demo-user-1", "demo-assistant-1"],
           },
           {
             revision: 2,
             at: "2026-10-21T03:30:00+08:00",
             op: "promote",
-            text: "You first receive emotion, then ask for facts.",
+            text: "你先回应情绪，再讨论问题。你承认不确定，不编造答案。",
+            derivedFrom: ["self-emotion", "self-uncertain"],
+            sourceIds: [
+              "demo-user-1",
+              "demo-assistant-1",
+              "demo-user-2",
+              "demo-assistant-2",
+            ],
           },
         ],
       },

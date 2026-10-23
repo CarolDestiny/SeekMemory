@@ -52,6 +52,19 @@ class Event:
 
 
 class ActionTest(unittest.TestCase):
+    def test_episode_ids_remain_unique_when_clock_does_not_advance(self):
+        from unittest.mock import patch
+        db = DB(os.path.join(tempfile.mkdtemp(), "clock.db"))
+        self.addCleanup(db.close)
+        sink = DBEpisodeStore(db)
+        episode = RuntimeEpisode("s", "2026-10-23T10:00:00", "observe", "ambient",
+                                 "reply", True)
+        with patch("time.time_ns", return_value=123):
+            for _ in range(4):
+                sink.append(episode)
+        self.assertEqual(sink.last_error, "")
+        self.assertEqual(len(db.list_runtime_episodes("s")), 4)
+
     def test_send_proactive_and_wait(self) -> None:
         context = Context()
         actions = AstrBotActionPort(context, message_factory=lambda text: text)

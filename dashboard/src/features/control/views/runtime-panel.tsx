@@ -1,5 +1,6 @@
 import { Badge, Button, JsonView } from "@/ui"
-import type { RuntimeStatus } from "../model"
+import type { ManagementClient, RuntimeStatus } from "../model"
+import { PersonaEvidence } from "./persona-evidence"
 
 function toneForCapacity(state: string): "success" | "warning" | "info" {
   if (state === "normal") return "success"
@@ -11,10 +12,12 @@ export function RuntimePanel({
   status,
   busy,
   onAction,
+  client,
 }: {
   status: RuntimeStatus | null
   busy: boolean
   onAction: (action: "extract" | "weekly" | "cancel") => void
+  client: ManagementClient
 }) {
   const task = status?.activeTask
   const policy = status?.extractionPolicy
@@ -91,7 +94,7 @@ export function RuntimePanel({
             <div>
               <h2 className="text-lg font-semibold">人格时间线</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                当前 revision {persona.revision}
+                当前第 {persona.revision} 版
               </p>
             </div>
             <Badge tone="info">{persona.id}</Badge>
@@ -110,6 +113,7 @@ export function RuntimePanel({
               </li>
             ))}
           </ol>
+          <PersonaEvidence client={client} persona={persona} />
         </section>
       )}
       <div className="grid gap-3 sm:grid-cols-2">

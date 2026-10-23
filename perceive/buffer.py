@@ -69,6 +69,23 @@ class Buffer:
                 return turn
         return None
 
+    def _paired_parent(self, turn: DialogueTurn) -> DialogueTurn | None:
+        """Find the user turn this one replies to; the session must match.
+
+        ``reply_to`` points at the parent Source id, so only an actual user
+        Source can be a parent. The scan covers the whole pending queue instead
+        of a fixed recent window, because an old parent may still be queued.
+        """
+        reply_to = str(turn.reply_to or "")
+        if not reply_to:
+            return None
+        for candidate in reversed(self.items):
+            if candidate.session_id != turn.session_id:
+                continue
+            if candidate.role == "user" and candidate.source_id == reply_to:
+                return candidate
+        return None
+
     def add(
         self,
         umo: str,
@@ -79,17 +96,25 @@ class Buffer:
         *,
         source: Source | None = None,
         turn_id: str = "",
+        reply_to: str = "",
         deferred: bool = False,
         role: str = "user",
     ) -> DialogueTurn | None:
         text = str(text or "").strip()
         if not text:
             return None
-        turn = DialogueTurn(str(umo or ""), str(sender or ""), str(role or "user"), text,
-                            str(at or ""), str(source_id or ""))
+        if source is not None:
+            source_id = source_id or source.id
+            turn_id = turn_id or source.turn_id
+            reply_to = reply_to or str(source.reply_to or "")
+        turn = DialogueTurn(
+            str(umo or ""), str(sender or ""), str(role or "user"), text,
+            str(at or ""), str(source_id or ""), "",
+            str(turn_id or ""), str(reply_to or "") or None,
+        )
         previous = self._last_for_session(turn.session_id)
-        turn = DialogueTurn(turn.session_id, turn.speaker_id, turn.role, turn.text,
-                            turn.at, turn.source_id, self._topic_for(turn, previous))
+        parent = self._paired_parent(turn)
+        turn = replace(turn, topic_id=self._topic_for(turn, previous, parent))
         if self._db is not None:
             turn = self._enqueue(turn, source=source, turn_id=turn_id, deferred=deferred)
         if not deferred:
@@ -134,15 +159,16 @@ class Buffer:
             turn = replace(turn, source_id=source_id, at=at)
         queued = source or Source(
             source_id,
-            str(turn_id or source_id),
+            str(turn.turn_id or turn_id or source_id),
             turn.session_id,
             turn.speaker_id,
             turn.role,
             turn.text,
             at,
+            turn.reply_to,
         )
         self._db.enqueue_extraction(queued, turn.topic_id, at, deferred=deferred)
-        return turn
+        return replace(turn, turn_id=queued.turn_id, reply_to=queued.reply_to)
 
     @staticmethod
     def _unique_by_source(items: list[DialogueTurn]) -> list[DialogueTurn]:
@@ -156,7 +182,11 @@ class Buffer:
             kept.append(item)
         return kept
 
-    def _topic_for(self, turn: DialogueTurn, previous: DialogueTurn | None) -> str:
+    def _topic_for(self, turn: DialogueTurn, previous: DialogueTurn | None,
+                   parent: DialogueTurn | None = None) -> str:
+        if (parent is not None and parent.session_id == turn.session_id
+                and parent.topic_id):
+            return parent.topic_id
         if previous is None or not previous.topic_id:
             return _new_topic_id(turn)
         current_at, previous_at = _parse_at(turn.at), _parse_at(previous.at)
@@ -254,6 +284,8 @@ class Buffer:
                     str(row["at"]),
                     str(row["source_id"]),
                     str(row["topic_id"]),
+                    str(row.get("turn_id") or ""),
+                    str(row.get("reply_to") or "") or None,
                 )
             )
         stamps = [_parse_at(turn.at) for turn in self.items]
@@ -335,12 +367,13 @@ class Buffer:
             )
             source = Source(
                 source_id,
-                source_id,
+                turn.turn_id or source_id,
                 turn.session_id,
                 turn.speaker_id,
                 turn.role,
                 turn.text,
                 turn.at,
+                turn.reply_to,
             )
             self._db.enqueue_extraction(source, turn.topic_id, turn.at)
             migrated += 1
@@ -358,13 +391,17 @@ class Buffer:
     def _from_row(row) -> DialogueTurn | None:
         if isinstance(row, dict):
             try:
-                turn = DialogueTurn(str(row.get("session_id") or ""),
-                                    str(row.get("speaker_id") or ""),
-                                    str(row.get("role") or "user"),
-                                    str(row.get("text") or ""),
-                                    str(row.get("at") or ""),
-                                    str(row.get("source_id") or ""),
-                                    str(row.get("topic_id") or ""))
+                turn = DialogueTurn(
+                    str(row.get("session_id") or ""),
+                    str(row.get("speaker_id") or ""),
+                    str(row.get("role") or "user"),
+                    str(row.get("text") or ""),
+                    str(row.get("at") or ""),
+                    str(row.get("source_id") or ""),
+                    str(row.get("topic_id") or ""),
+                    str(row.get("turn_id") or ""),
+                    str(row.get("reply_to") or "") or None,
+                )
             except Exception:
                 return None
         elif isinstance(row, (list, tuple)):
@@ -381,6 +418,6 @@ class Buffer:
             return None
         if not turn.text.strip():
             return None
-        return turn if turn.topic_id else DialogueTurn(
-            turn.session_id, turn.speaker_id, turn.role, turn.text,
-            turn.at, turn.source_id, _new_topic_id(turn))
+        if turn.topic_id:
+            return turn
+        return replace(turn, topic_id=_new_topic_id(turn))

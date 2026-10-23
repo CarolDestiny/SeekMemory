@@ -336,6 +336,44 @@ class DB:
         ).fetchall()
         return {str(row["id"]): str(row["umo"]) for row in rows}
 
+    def sources_by_ids(self, source_ids: list[str]) -> dict[str, Source]:
+        """Read immutable Sources by id, preserving turn and reply links.
+
+        Used to rebuild pairing context without mutating or re-queueing the
+        original rows. Missing ids are omitted; callers treat that as absent
+        evidence.
+        """
+        ids: list[str] = []
+        for value in source_ids:
+            text = str(value or "").strip()
+            if text and text not in ids:
+                ids.append(text)
+        if not ids:
+            return {}
+        marks = ",".join("?" for _ in ids)
+        rows = self.conn.execute(
+            "SELECT s.id, s.umo, s.at, s.role, s.flags, b.content AS text "
+            "FROM sources s JOIN blobs b ON b.hash = s.blob "
+            f"WHERE s.id IN ({marks})",
+            ids,
+        ).fetchall()
+        out: dict[str, Source] = {}
+        for row in rows:
+            flags = _loads(row["flags"])
+            metadata = flags.get("metadata")
+            out[str(row["id"])] = Source(
+                str(row["id"]),
+                str(flags.get("turn_id") or ""),
+                str(row["umo"]),
+                str(flags.get("speaker_id") or ""),
+                str(row["role"]),
+                str(row["text"] or ""),
+                str(row["at"] or ""),
+                str(flags.get("reply_to") or "") or None,
+                metadata if isinstance(metadata, dict) else {},
+            )
+        return out
+
     def set_parent(self, node_id: str, parent_id: str | None) -> None:
         """单独调整抽象树父子关系（CONTRACT 未列出，供 core/tree 使用）。"""
         with self.conn:
@@ -550,6 +588,7 @@ class DB:
                     "text": str(row["text"]),
                     "at": str(row["at"]),
                     "topic_id": str(row["topic_id"]),
+                    "reply_to": str(flags.get("reply_to") or ""),
                     "state": str(row["state"]),
                     "attempts": int(row["attempts"]),
                     "next_attempt_at": str(row["next_attempt_at"]),
@@ -1031,12 +1070,12 @@ class DB:
         if session_id:
             rows = self.conn.execute(
                 "SELECT * FROM runtime_episodes WHERE session_id = ? "
-                "ORDER BY at DESC, id DESC LIMIT ?",
+                "ORDER BY at DESC, rowid DESC LIMIT ?",
                 (str(session_id), size),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT * FROM runtime_episodes ORDER BY at DESC, id DESC LIMIT ?",
+                "SELECT * FROM runtime_episodes ORDER BY at DESC, rowid DESC LIMIT ?",
                 (size,),
             ).fetchall()
         return [dict(row) for row in rows]

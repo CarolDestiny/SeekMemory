@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class DialogueTurn:
+    """One buffered turn; trailing ids keep user/assistant pairing explicit."""
+
     session_id: str
     speaker_id: str
     role: str
@@ -12,6 +14,8 @@ class DialogueTurn:
     at: str = ""
     source_id: str = ""
     topic_id: str = ""
+    turn_id: str = ""
+    reply_to: str | None = None
 
 
 @dataclass(frozen=True)

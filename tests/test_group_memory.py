@@ -103,14 +103,15 @@ class PersonaSourceTest(unittest.TestCase):
                       "owner_umo": OWNER},
                      scope="private", strength=Strength(weight=2.0, hits=9))
         for art in (group, owner):
-            db.upsert(art)
+            db.commit(art, expected_revision=0, op="create")
             cache.put(art)
         picked = promote_candidates(cache, only_umo=OWNER)
-        self.assertEqual([a.header.id for a in picked], [owner.header.id])
-        self.assertIsNotNone(distill_persona(db, cache, only_umo=OWNER))
-        persona = cache.active("persona")
-        self.assertEqual(len(persona), 1)
-        self.assertIn("倔", str(persona[0].payload.get("text")))
+        # GitHub #15：主人和群友的印象都不是机器人自我人格。
+        self.assertEqual(picked, [])
+        self.assertIsNone(distill_persona(db, cache, only_umo=OWNER))
+        self.assertEqual(cache.active("persona"), [])
+        self.assertEqual(db.get(owner.header.id), owner)
+        self.assertEqual(db.get(group.header.id), group)
 
 
 if __name__ == "__main__":

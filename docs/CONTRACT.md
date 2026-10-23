@@ -198,8 +198,8 @@ def merge_similar(db: DB, cache: Cache, threshold: float = 0.6, limit: int = 50)
 
 ```python
 def promote_candidates(cache: Cache, min_hits: int = 3,
-                       today: str | None = None) -> list[Artifact]: ...
-    # active + level=impression + weight>=1.5 + (hits>=min_hits 或 age>=30 天)
+                       today: str | None = None, only_umo: str = "") -> list[Artifact]: ...
+    # 仅有真实独立助手证据的 bot:self 自我印象；不再接受用户印象或以年龄替代证据
 ```
 
 ## maintain/link.py
@@ -529,12 +529,27 @@ Opening an older database adds missing node columns and copies legacy `versions`
 
 ## Two-sided episodes
 
-Assistant replies are appended as Source rows and then enter the same extraction projection as user turns with `role=assistant`. This keeps the exact reply available for bot-behavior extraction without duplicating message text.
+Assistant replies enter the Source-backed projection with `role=assistant`, `turn_id` and `reply_to`.
+The actual parent determines the topic even if wording differs. Batches preserve adjacent pairs;
+if a parent was processed earlier, extraction reads it as context without marking it pending again.
+Rendering never silently trims original rows after parent recovery.
 
 
 ## Self-impressions and persona
 
-Assistant replies enter extraction with `role=assistant`. Optional `bot_action`, `bot_tone`, `bot_boundary` and `outcome` fields are preserved in memory payloads. The weekly maintenance job aggregates repeated behavior into `family=memory`, `level=impression`, `about=self`, `subject_id=bot:self` artifacts. `distill_self_persona()` composes persona only from those self-impressions and keeps one stable persona id across revisions.
+Optional `bot_action`, `bot_tone`, `bot_boundary` and `outcome` remain descriptive payload fields.
+Only a valid `bot_behavior`, confidence >= 0.9 and a precise immutable user/reply pair qualify
+an original scene for aggregation. The six values are defined in `core/bot_behavior.py`.
+At least three different assistant Sources create a self-impression: `family=memory`,
+`level=impression`, `about=self`, `subject_id=bot:self`, `scope=shared`, `said_by=inferred`.
+New evidence revises the same impression id; the impression itself never increases the count.
+Self-impression and persona text uses fixed generic templates, excluding user-specific free text.
+
+Both persona entry points accept only qualified self-impressions. Persona has `subject_id=bot:self`,
+one stable id and a maximum of three selected behavior traits. Text/evidence changes create a
+revision; unchanged reruns do not. Its update and duplicate-head retirement use `commit_many`
+before cache changes. Legacy user-derived persona is preserved in history but not injected.
+No additional per-chat model or network call is introduced.
 
 
 ## Atomic batch writes
@@ -547,7 +562,12 @@ Lifecycle expiry and retention decay also use one `commit_many()` transaction: e
 
 ## Persona timeline
 
-The status response exposes an optional `persona` object with the current stable persona id, revision, text, and ordered revision history. The WebUI renders it as a read-only timeline; no revision write is initiated from the panel.
+The optional `persona` status object includes stable id, current text and ordered revisions.
+Each revision optionally includes `derivedFrom` and `sourceIds`, read from its own historical
+header. Missing historical lineage yields empty lists. Raw dialogue is loaded only through
+the authenticated detail interface and filtered by the selected version's source ids.
+The read-only panel can open supporting impression snapshots whose evidence fits that version;
+missing links are explicitly shown, and late asynchronous replies cannot replace a new selection.
 
 
 ## Superseding extraction
