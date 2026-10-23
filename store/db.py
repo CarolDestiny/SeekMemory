@@ -145,15 +145,32 @@ class DB:
         state_cols = {
             r[1] for r in self.conn.execute("PRAGMA table_info(extraction_state)")
         }
+        version_cols = {
+            r[1] for r in self.conn.execute("PRAGMA table_info(versions)")
+        }
         with self.conn:
-            if "subject_id" not in cols:
-                self.conn.execute(
-                    "ALTER TABLE nodes ADD COLUMN subject_id TEXT NOT NULL DEFAULT ''"
-                )
+            additions = (
+                ("subject_id", "TEXT NOT NULL DEFAULT ''"),
+                ("revision", "INTEGER NOT NULL DEFAULT 1"),
+                ("lineage", "TEXT NOT NULL DEFAULT '{}'"),
+            )
+            for name, definition in additions:
+                if name not in cols:
+                    self.conn.execute(
+                        f"ALTER TABLE nodes ADD COLUMN {name} {definition}"
+                    )
             if state_cols and "next_attempt_at" not in state_cols:
                 self.conn.execute(
                     "ALTER TABLE extraction_state ADD COLUMN "
                     "next_attempt_at TEXT NOT NULL DEFAULT ''"
+                )
+            if version_cols:
+                header = "header" if "header" in version_cols else "'{}'"
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO artifact_versions("
+                    "entity, revision, op, blob, header, at) "
+                    "SELECT entity, revision, 'migrate', blob, "
+                    f"{header}, at FROM versions"
                 )
             self.conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_nodes_subject ON nodes(subject_id)"
