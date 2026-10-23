@@ -52,9 +52,10 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Same sentence from two users was deduplicated globally | covered by `tests/test_identity_isolation.py` |
 | Similar impressions from two users cross-revised | covered by `tests/test_identity_isolation.py` |
 | Shared impression is pinned and bypasses disclosure | privacy output: pinned cross-session |
-| Bad JSON is treated as an empty extraction | failure recovery: malformed vs empty |
-| Partial commit clears the whole batch | failure recovery: partial commit retention |
+| Bad JSON was treated as an empty extraction | covered by `tests/test_failure_recovery.py` |
+| Partial commit cleared the whole batch | covered by `tests/test_failure_recovery.py` |
 | A batch above the topic limit loses unprocessed turns | queue recovery: oversized topic |
+| Legacy buffer dropped rows above 200 | covered by `tests/test_failure_recovery.py` |
 | Cached candidate is reinforced after budget trimming | reinforcement truth: final assembled ids only |
 | Request failure still records a hit | reinforcement truth: failed delivery |
 | Same memory counts twice inside cooldown | reinforcement truth: cooldown |

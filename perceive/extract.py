@@ -120,10 +120,18 @@ def _loads(block: str) -> Any:
         return None
 
 
-def parse_response(text: str) -> list[dict]:
-    """尽力从模型输出中解析 JSON 数组；任何失败都返回空列表。"""
+class ExtractionParseError(ValueError):
+    """The model returned text that was not a recoverable JSON array."""
+
+
+def parse_response_checked(text: str) -> list[dict]:
+    """Parse one model response, distinguishing invalid output from [].
+
+    Raises:
+        ExtractionParseError: For empty text or text without any JSON array.
+    """
     if not isinstance(text, str) or not text.strip():
-        return []
+        raise ExtractionParseError("empty model response")
     blocks = [text.strip(), *_fenced_blocks(text), *_balanced_arrays(text)]
     tried: set[str] = set()
     for block in blocks:
@@ -133,7 +141,15 @@ def parse_response(text: str) -> list[dict]:
         data = _loads(block)
         if isinstance(data, list):
             return [item for item in data if isinstance(item, dict)]
-    return []
+    raise ExtractionParseError("response does not contain a JSON array")
+
+
+def parse_response(text: str) -> list[dict]:
+    """Compatibility wrapper: invalid output returns [] as before."""
+    try:
+        return parse_response_checked(text)
+    except ExtractionParseError:
+        return []
 
 
 def _normalize(text: str) -> str:

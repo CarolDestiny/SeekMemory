@@ -19,7 +19,6 @@ except ImportError:
     from core.source import Source, make_source_id
     from store.db import DB
 
-LEGACY_KEEP = 200
 TOPIC_GAP_SECONDS = 5400
 TOPIC_SIMILARITY = 0.12
 TOPIC_TTL_SECONDS = 86400
@@ -92,9 +91,7 @@ class Buffer:
             turn = self._enqueue(turn, source=source, turn_id=turn_id, deferred=deferred)
         if not deferred:
             self.items.append(turn)
-            if self._db is None:
-                self.items = self.items[-LEGACY_KEEP:]
-            else:
+            if self._db is not None:
                 self.items = self._unique_by_source(self.items)
         self.last_ts = time.time()
         self.save()
@@ -207,8 +204,6 @@ class Buffer:
         existing = set(self.items)
         restored = [row for row in rows if row not in existing]
         self.items = restored + self.items
-        if self._db is None:
-            self.items = self.items[-LEGACY_KEEP:]
         self.save()
 
     def save(self) -> None:
@@ -234,7 +229,7 @@ class Buffer:
             turn = self._from_row(row)
             if turn is not None:
                 kept.append(turn)
-        self.items = kept[-LEGACY_KEEP:]
+        self.items = kept
         try:
             self.last_ts = float(data.get("last") or 0.0)
         except (TypeError, ValueError):

@@ -725,7 +725,7 @@ class Main(star.Star):
                         )
                         metrics["written"] = outcome.written
                         metrics["skipped"] = outcome.skipped
-                        if outcome.model_failed:
+                        if outcome.model_failed or outcome.retryable:
                             raise RuntimeError("模型抽取失败，保留待处理消息")
                 except Exception as exc:
                     self.buffer.mark_failed(
