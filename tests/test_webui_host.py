@@ -520,7 +520,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.trace.rows.clear()
         await self.plugin._dispatch_deferred(session_id, now)
-        self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertGreater(state.wait_until, now)
+        self.assertGreater(state.next_retry_at, now)
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(rows[0]["outcome"], "error")
         self.assertNotIn("secret", json.dumps([row.context for row in self.plugin.trace.rows]))
@@ -550,7 +552,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = Actions()
         await self.plugin._dispatch_deferred(session_id, now)
-        self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertGreater(state.wait_until, now)
+        self.assertGreater(state.next_retry_at, now)
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(rows[0]["outcome"], "error")
         self.assertEqual(rows[0]["error"], "RuntimeError")

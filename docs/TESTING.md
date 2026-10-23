@@ -87,6 +87,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Tool guard was advisory in the request path | covered by `tests/test_webui_host.py` (host layer) |
 | Scheduler policy was not run over persisted sessions | covered by `tests/test_runtime_actions.py` DB session listing |
 | Due ambient wait had no reply dispatch | covered by `tests/test_webui_host.py` (host layer) |
+| Deferred dispatch failure duplicated or retried forever | covered by `tests/test_webui_host.py`, `tests/test_agent_runtime.py` |
+| Deferred assistant reply was not written back to memory | covered by `tests/test_webui_host.py` (host layer) |
 | Runtime DB failures could break replies | covered by `tests/test_runtime_actions.py` |
 | Runtime episode retention was unbounded | covered by `tests/test_runtime_actions.py` |
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |
