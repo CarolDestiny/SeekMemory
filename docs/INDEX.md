@@ -31,6 +31,7 @@ v0.3.1 + WebUI branch
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |
 | scripts/run_tests.py | Run one test layer locally or in CI | docs/TESTING.md |
 | main.py | AstrBot event mapping and composition only | main.py |
+| app/runtime/tracing.py + store/run_trace.py | Content-free run correlation and bounded JSONL traces | [Run Trace implementation](issues/PR-0032.md) |
 
 ## Dependency direction
 

@@ -34,6 +34,8 @@ from .app.runtime import (
     RuntimeEpisode,
     ToolPolicy,
 )
+from .app.runtime.tracing import RunTracer
+from .store.run_trace import TraceStore
 from .core.capacity import (
     NORMAL,
     PROTECTIVE,
@@ -89,6 +91,12 @@ class Main(star.Star):
         )
         self.journal = Journal(self.data_path.parent / "lifecycle.jsonl")
         self.trace = Trace()
+        self.run_traces = TraceStore(
+            self.data_path.parent / "run_traces.jsonl",
+            retention_days=self._c("trace_retention_days", 7),
+            max_rows=self._c("trace_max_rows", 5000),
+        )
+        self.run_tracer = RunTracer(self.run_traces)
         self.tool_policy = ToolPolicy(
             allowed_prefixes=("memory_", "search_memory", "query_memory")
         )
@@ -268,10 +276,14 @@ class Main(star.Star):
     # ---------------- 读路径：注入 ----------------
     @filter.on_llm_request()
     async def inject_memory(self, event: AstrMessageEvent, req) -> None:
-        if not self.ready or self.cache is None:
-            return
+        trace_allowed = False
+        trace_info = None
+        trace_status = "unknown"
         try:
             if not self._may_recall(event):
+                return
+            trace_allowed = True
+            if not self.ready or self.cache is None:
                 return
             text = (event.message_str or "").strip()
             if not text:
@@ -298,9 +310,14 @@ class Main(star.Star):
                 req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
                 if self._c("debug_log", False):
                     logger.info(f"[seekmemory] 注入 {len(block)} 字")
+            trace_info, trace_status = info, "ok"
         except Exception as e:  # noqa: BLE001
+            trace_status = "error"
             self.journal.record("recall", "failed", "召回失败", error=e)
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
+        finally:
+            if trace_allowed:
+                self.run_tracer.request(event, trace_info, trace_status)
 
     def _calls_path(self) -> str:
         """调用日志路径：和数据目录放一起。"""
@@ -397,6 +414,10 @@ class Main(star.Star):
     @filter.on_llm_response()
     async def capture_reply(self, event: AstrMessageEvent, response) -> None:
         try:
+            if self._may_observe(event):
+                self.run_tracer.response(
+                    event, "error" if getattr(response, "role", "") == "err" else "ok"
+                )
             if not self._may_observe(event) or self.db is None:
                 return
             if str(getattr(response, "role", "assistant")) == "err":
@@ -457,6 +478,8 @@ class Main(star.Star):
 
     @filter.after_message_sent()
     async def record_delivery(self, event) -> None:
+        if self._may_observe(event):
+            self.run_tracer.delivered(event)
         if not self._may_observe(event) or self.db is None:
             return
         assistant_source_id = str(
@@ -488,6 +511,8 @@ class Main(star.Star):
 
     @filter.on_agent_begin()
     async def observe_agent_begin(self, event, run_context) -> None:
+        if self._may_observe(event):
+            self.run_tracer.begin(event)
         self.trace.record(
             "runtime",
             "agent_begin",
@@ -500,6 +525,8 @@ class Main(star.Star):
     @filter.on_agent_done()
     async def observe_agent_done(self, event, run_context, response) -> None:
         role = str(getattr(response, "role", "") or "")
+        if self._may_observe(event):
+            self.run_tracer.done(event, "error" if role == "err" else "ok")
         self.trace.record("runtime", "agent_done", {"role": role})
         if role != "err":
             return
@@ -520,6 +547,8 @@ class Main(star.Star):
 
     @filter.on_using_llm_tool()
     async def observe_tool(self, event, tool, tool_args) -> None:
+        if self._may_observe(event):
+            self.run_tracer.tool_begin(event, tool)
         call = AstrBotRuntimeAdapter.observe_tool(
             event, tool, tool_args, self.tool_policy
         )
@@ -535,6 +564,8 @@ class Main(star.Star):
 
     @filter.on_llm_tool_respond()
     async def observe_tool_result(self, event, tool, tool_args, tool_result) -> None:
+        if self._may_observe(event):
+            self.run_tracer.tool_end(event, tool)
         name = str(getattr(tool, "name", tool) or "")
         self.trace.record(
             "tool",

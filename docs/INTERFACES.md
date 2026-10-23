@@ -88,3 +88,18 @@ The contract tests check built-in implementations against runtime-checkable prot
 ## Scope
 
 This is the first contribution layer. It does not yet cover a plugin marketplace, third-party adapter certification or a public benchmark leaderboard.
+
+## Agent run trace (GitHub #11)
+
+`RunTracer` in `app/runtime/tracing.py` depends only on a `TraceWriter.append(dict)` port.
+`TraceStore` implements that port at the filesystem edge; all writes and reloads pass through
+`clean_event`'s content-free whitelist. The trace is diagnostic metadata, not an Artifact write.
+
+`GET manage/traces?state=all` requires the existing administrator session. It returns bounded
+`runs`, `events`, `capacity`, `retention_days`, and `persistence_error`; see `openapi.yaml` for
+strict field types and the four optional state filters. Unknown filters return 400. The API
+remains available when the memory engine is unavailable. Run IDs are random, never session IDs.
+
+`select(..., diagnostics=dict)` optionally fills gate counts and threshold without changing its
+return value, ordering, exploration seed or privacy rules. A non-evaluated gate is distinct from
+zero candidates passing an evaluated gate.

@@ -144,6 +144,8 @@ def build_block(
             "pinned_ids": (),
             "disclosure": {},
             "fallback": "",
+            "candidates": 0,
+            "gate": {"evaluated": False, "passed": 0, "rejected": 0, "threshold": 0.0},
         }
 
     designated = [a for a in pool if a.header.family == "designated"]
@@ -151,6 +153,8 @@ def build_block(
 
     mode = intent_of(text)
     picked: list = []
+    candidates: list = []
+    gate_info = {"evaluated": False, "passed": 0, "rejected": 0, "threshold": 0.0}
     if mode != "none" and pool:
         lexical_weight = 2.0
         if bool(conf("bm25_enabled", True)):
@@ -170,6 +174,7 @@ def build_block(
             min_ev_abs=float(conf("recall_min_ev_abs", 0.5)),
             min_ev_rel=0.2 if loose else float(conf("recall_min_ev_rel", 0.3)),
             lexical_weight=lexical_weight,
+            diagnostics=gate_info,
         )
 
     # 没有线索时也可能突然想起一件事——这不走 query 打分。
@@ -269,5 +274,7 @@ def build_block(
         "disclosure": disclosure_info,
         "pinned_ids": tuple(a.header.id for a in safe_pinned),
         "fallback": fallback,
+        "candidates": len(candidates),
+        "gate": gate_info,
     }
     return block, info

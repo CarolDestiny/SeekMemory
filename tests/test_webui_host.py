@@ -302,6 +302,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
                 self.extras[key] = value
 
         event = Event()
+        await self.plugin.observe_agent_begin(event, None)
         await self.plugin.inject_memory(event, SimpleNamespace(system_prompt=""))
         self.assertTrue(event.get_extra("_seekmemory_recall_ids"))
         self.assertEqual(self.plugin.checkpoint.pending(), 0)
@@ -314,6 +315,14 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             row["role"] == "assistant" and row["text"] == "ok" for row in pending
         ))
         await self.plugin.record_delivery(event)
+        await self.plugin.observe_agent_done(event, None, SimpleNamespace(role="assistant"))
+        trace = self.plugin.run_traces.snapshot()
+        self.assertEqual(len(trace["runs"]), 1)
+        self.assertTrue(trace["runs"][0]["delivered"])
+        self.assertEqual([row["event"] for row in trace["events"]], [
+            "agent_begin", "llm_request", "llm_response", "message_sent", "agent_done"
+        ])
+        self.assertNotIn("shared recall phrase", json.dumps(trace))
         episodes = self.plugin.db.list_runtime_episodes("bot:GroupMessage:g1")
         self.assertEqual(len(episodes), 1)
         self.assertEqual(episodes[0]["delivered"], 1)

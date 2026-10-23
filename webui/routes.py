@@ -166,13 +166,15 @@ class WebRoutes:
         plugin = self.plugin
         if not request.username:
             return error_response("需要管理员登录", status_code=401)
-        read_actions = {"status", "records", "detail", "events"}
+        read_actions = {"status", "records", "detail", "events", "traces"}
         write_actions = {"update", "diagnose", "task", "cancel"}
         if action not in read_actions | write_actions:
             return error_response("未知操作", status_code=404)
         if request.method != ("GET" if action in read_actions else "POST"):
             return error_response("请求方法不支持", status_code=405)
         try:
+            if action == "traces":
+                return json_response(plugin.run_traces.snapshot(request.query.get("state", "all")))
             if action == "events":
                 kind = request.query.get("kind", "")
                 status = request.query.get("status", "")

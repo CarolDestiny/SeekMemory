@@ -140,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/astrbot_plugin_seekmemory/manage/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 仅管理员读取无正文的运行轨迹 */
+        get: operations["traces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -398,6 +415,61 @@ export interface components {
             status: "error";
             message: string;
             data: components["schemas"]["JsonValue"];
+        };
+        TraceRecall: {
+            /** @enum {string} */
+            mode: "none" | "strict" | "loose";
+            candidates: number;
+            picked_ids: string[];
+            pinned_ids: string[];
+            artifact_ids: string[];
+            dropped_ids: string[];
+            withheld_ids: string[];
+            disclosure: {
+                [key: string]: "full" | "paraphrase" | "hint" | "silence";
+            };
+            /** @enum {string} */
+            fallback: "" | "recent_profile" | "recent_topic";
+            chars: number;
+            gate: {
+                evaluated: boolean;
+                passed: number;
+                rejected: number;
+                threshold: number;
+            };
+        };
+        TraceEvent: {
+            run_id: string;
+            sequence: number;
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            event: "agent_begin" | "llm_request" | "llm_response" | "agent_done" | "message_sent" | "tool_call" | "tool_result";
+            request_index: number;
+            /** @enum {string} */
+            status: "running" | "ok" | "error" | "unknown";
+            duration_ms: number | null;
+            tool: string;
+            recall: components["schemas"]["TraceRecall"] | null;
+        };
+        TraceRun: {
+            id: string;
+            started_at: string;
+            updated_at: string;
+            /** @enum {string} */
+            status: "running" | "completed" | "error" | "interrupted";
+            delivered: boolean;
+            flags: ("not_recalled" | "recalled_but_withheld" | "recalled_and_injected" | "fallback_used")[];
+            artifact_ids: string[];
+            event_count: number;
+            partial: boolean;
+        };
+        TracesResponse: {
+            runs: components["schemas"]["TraceRun"][];
+            events: components["schemas"]["TraceEvent"][];
+            capacity: number;
+            retention_days: number;
+            persistence_error: boolean;
         };
     };
     responses: never;
@@ -1056,6 +1128,73 @@ export interface operations {
             };
             /** @description 记忆引擎不可用 */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    traces: {
+        parameters: {
+            query?: {
+                state?: "all" | "not_recalled" | "recalled_but_withheld" | "recalled_and_injected" | "fallback_used";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 操作成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TracesResponse"];
+                };
+            };
+            /** @description 请求失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求失败 */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 请求失败 */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
