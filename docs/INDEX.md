@@ -77,6 +77,7 @@ AstrBot user message
 assistant reply
   -> main.capture_reply
   -> Source(assistant, reply_to=user source)
+  -> Buffer.add(role=assistant) + extraction_state
 ```
 
 ## Read path

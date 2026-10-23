@@ -525,3 +525,8 @@ Invalid or missing dates fail open for ordinary queries, while an explicit tempo
 ## Database migration and continuity
 
 Opening an older database adds missing node columns and copies legacy `versions` rows into `artifact_versions` with `op=migrate`. Existing payloads remain readable through `history()`. The continuity regression covers extraction, commit, recall and a corrected revision in one sequence.
+
+
+## Two-sided episodes
+
+Assistant replies are appended as Source rows and then enter the same extraction projection as user turns with `role=assistant`. This keeps the exact reply available for bot-behavior extraction without duplicating message text.

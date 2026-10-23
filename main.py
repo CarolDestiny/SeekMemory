@@ -367,6 +367,17 @@ class Main(star.Star):
                 reply_to=str(event.get_extra("_seekmemory_source_id", "") or ""),
             )
             self.db.append_sources([source])
+            if self.buffer is not None:
+                self.buffer.add(
+                    umo,
+                    text,
+                    str(event.get_self_id()),
+                    source_id,
+                    now,
+                    source=source,
+                    turn_id=turn_id,
+                    role="assistant",
+                )
             if self.checkpoint is not None:
                 recall_ids = event.get_extra("_seekmemory_recall_ids", ()) or ()
                 for art_id in recall_ids:

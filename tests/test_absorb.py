@@ -70,6 +70,11 @@ class BufferTest(unittest.TestCase):
         buf.add("umo:a", "third", "1", "s_third")
         self.assertEqual(buf.items[0].source_id, "s_third")
 
+    def test_add_accepts_assistant_role(self):
+        buf = Buffer()
+        turn = buf.add("umo:a", "bot reply", "bot", role="assistant")
+        self.assertEqual(turn.role, "assistant")
+
     def test_topic_grouping_uses_time_and_similarity(self):
         buf = Buffer()
         buf.add("s", "go hangzhou", "1", "s1", "2026-10-20T10:00:00")
