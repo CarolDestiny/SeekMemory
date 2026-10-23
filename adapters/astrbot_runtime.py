@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 try:
-    from ..app.runtime.contracts import RuntimeInput, WakeDecision
+    from ..app.runtime.contracts import RuntimeInput, WakeAction, WakeDecision
+    from ..app.runtime.tools import ToolPolicy, trace_tool_call
 except ImportError:
-    from app.runtime.contracts import RuntimeInput, WakeDecision
+    from app.runtime.contracts import RuntimeInput, WakeAction, WakeDecision
+    from app.runtime.tools import ToolPolicy, trace_tool_call
 
 
 class AstrBotRuntimeAdapter:
@@ -19,12 +21,13 @@ class AstrBotRuntimeAdapter:
         except Exception:  # noqa: BLE001 - unknown host event defaults to group
             private = False
         value = str(text or "")
+        direct = bool(getattr(event, "is_at_or_wake_command", False))
         return RuntimeInput(
             session_id=str(umo or ""),
             text=value,
             speaker_id=str(sender or ""),
             private=private,
-            mentioned=private,
+            mentioned=private or direct,
             question=("?" in value or "\uff1f" in value),
             unread_count=max(0, int(unread_count)),
         )
@@ -36,3 +39,17 @@ class AstrBotRuntimeAdapter:
             event.set_extra("_seekmemory_runtime_reason", decision.reason)
         except Exception:  # noqa: BLE001 - observability must not break the host
             return
+
+    @staticmethod
+    def apply_llm_gate(event, decision: WakeDecision, enabled: bool) -> None:
+        if not enabled:
+            return
+        try:
+            event.should_call_llm(decision.action in (WakeAction.REPLY, WakeAction.PROACTIVE))
+        except Exception:  # noqa: BLE001 - host version may not expose the gate
+            return
+
+    @staticmethod
+    def observe_tool(event, tool, tool_args, policy: ToolPolicy):
+        name = str(getattr(tool, "name", tool) or "")
+        return trace_tool_call(event, name, tool_args, policy)

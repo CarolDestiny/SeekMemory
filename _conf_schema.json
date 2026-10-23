@@ -156,5 +156,20 @@
     "description": "会话历史保留条数",
     "type": "int",
     "default": 24
+  },
+  "runtime_gate_enabled": {
+    "description": "Enable AgentRuntime gating of the default AstrBot LLM request (observe-only when false).",
+    "type": "bool",
+    "default": false
+  },
+  "runtime_episode_retention_days": {
+    "description": "Runtime episode retention in days; set 0 to disable age pruning.",
+    "type": "int",
+    "default": 30
+  },
+  "runtime_episode_max_rows": {
+    "description": "Maximum runtime episode rows retained by the local DB.",
+    "type": "int",
+    "default": 5000
   }
 }

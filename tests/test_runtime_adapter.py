@@ -42,6 +42,12 @@ class AdapterTest(unittest.TestCase):
         self.assertFalse(result.mentioned)
         self.assertFalse(result.question)
 
+    def test_wake_command_marks_group_message_as_direct(self) -> None:
+        event = Event(False)
+        event.is_at_or_wake_command = True
+        result = AstrBotRuntimeAdapter.from_event(event, "hello", "g1", "u1")
+        self.assertTrue(result.mentioned)
+
     def test_decision_is_exposed_as_event_metadata(self) -> None:
         event = Event(False)
         AstrBotRuntimeAdapter.apply_decision(

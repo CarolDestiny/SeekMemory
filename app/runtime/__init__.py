@@ -11,13 +11,20 @@ from .contracts import (
     WakeAction,
     WakeDecision,
 )
+from .episode import DBEpisodeStore, EpisodeRecorder, JsonlEpisodeStore, RuntimeEpisode
 from .runtime import AgentRuntime
-from .state import InMemoryStateStore, JsonStateStore
+from .state import DBStateStore, InMemoryStateStore, JsonStateStore
+from .tools import ToolCall, ToolPolicy
 from .wake import WakePolicy
 
 __all__ = [
     "ActionPort",
     "AgentRuntime",
+    "DBEpisodeStore",
+    "DBStateStore",
+    "EpisodeRecorder",
+    "JsonlEpisodeStore",
+    "RuntimeEpisode",
     "InMemoryStateStore",
     "JsonStateStore",
     "MemoryContextPort",
@@ -25,6 +32,8 @@ __all__ = [
     "RuntimeResult",
     "SocialState",
     "StateStore",
+    "ToolCall",
+    "ToolPolicy",
     "TraceSink",
     "WakeAction",
     "WakeDecision",

@@ -56,6 +56,15 @@ class AgentRuntime:
             )
         return decision
 
+    def quiet(self, session_id: str, seconds: float, now: float | None = None) -> SocialState:
+        moment = self.clock() if now is None else now
+        state = self.store.get(session_id)
+        state.quiet_until = max(state.quiet_until, moment + max(0.0, float(seconds)))
+        state.last_action = "quiet"
+        state.last_reason = "quiet_window"
+        self.store.put(state)
+        return state
+
     def mark_delivered(self, session_id: str, now: float | None = None) -> SocialState:
         moment = self.clock() if now is None else now
         state = self.store.get(session_id)

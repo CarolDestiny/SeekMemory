@@ -98,6 +98,12 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(len(trace.rows), 1)
         self.assertNotIn("hello", str(trace.rows[0]))
 
+    def test_observe_uses_runtime_clock_when_event_has_no_timestamp(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 500)
+        runtime.observe(RuntimeInput("s1", "ambient"))
+        self.assertEqual(store.get("s1").last_seen_at, 500)
+
     def test_delivery_clears_unread_and_updates_last_spoke(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 200)

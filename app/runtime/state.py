@@ -90,3 +90,38 @@ class JsonStateStore:
                         os.unlink(temp)
             except Exception as exc:  # noqa: BLE001 - runtime state failure is not fatal
                 self.last_error = type(exc).__name__
+
+
+class DBStateStore:
+    """Persist SocialState through the project's SQLite DB facade."""
+
+    def __init__(self, db) -> None:
+        self.db = db
+        self.last_error = ""
+
+    def get(self, session_id: str) -> SocialState:
+        key = str(session_id or "")
+        try:
+            raw = self.db.get_runtime_state(key)
+        except Exception as exc:  # noqa: BLE001 - runtime state is fail-open
+            self.last_error = type(exc).__name__
+            return SocialState(session_id=key)
+        if not isinstance(raw, dict) or not raw:
+            return SocialState(session_id=key)
+        data = {
+            name: raw[name]
+            for name in SocialState.__dataclass_fields__
+            if name in raw and raw[name] is not None
+        }
+        data["session_id"] = key
+        try:
+            return SocialState(**data)
+        except TypeError:
+            return SocialState(session_id=key)
+
+    def put(self, state: SocialState) -> None:
+        try:
+            self.db.put_runtime_state(str(state.session_id or ""), asdict(state))
+            self.last_error = ""
+        except Exception as exc:  # noqa: BLE001 - runtime state is fail-open
+            self.last_error = type(exc).__name__
