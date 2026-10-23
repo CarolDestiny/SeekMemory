@@ -89,6 +89,14 @@ def _dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
+def _load_any(raw: Any, default: Any) -> Any:
+    """容错地读任意 JSON 列；坏数据退回 default。"""
+    try:
+        return json.loads(raw if raw not in (None, "") else _dump(default))
+    except (TypeError, ValueError):
+        return default
+
+
 def _loads(raw: Any) -> dict[str, Any]:
     """容错地把 TEXT 列读成 dict；坏数据退回空 dict。"""
     try:
@@ -512,6 +520,64 @@ class DB:
                 }
             )
         return out
+
+    # ---------------- 梦境周期 ----------------
+    def dream_get(self, dream_date: str) -> dict[str, Any] | None:
+        """读取某天的梦境台账；没有返回 None。"""
+        row = self.conn.execute(
+            "SELECT * FROM dream_runs WHERE dream_date = ?", (str(dream_date),)
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "date": str(row["dream_date"]),
+            "status": str(row["status"]),
+            "started_at": str(row["started_at"] or ""),
+            "finished_at": str(row["finished_at"] or ""),
+            "batches": int(row["batches"] or 0),
+            "written": int(row["written"] or 0),
+            "errors": _load_any(row["errors"], []),
+            "summary": _load_any(row["summary"], {}),
+        }
+
+    def dream_begin(self, dream_date: str, now: str = "") -> bool:
+        """占位开始一次梦境；当天已完成则返回 False（幂等）。"""
+        existing = self.dream_get(dream_date)
+        if existing is not None and existing["status"] == "done":
+            return False
+        stamp = now or _now()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO dream_runs(dream_date, status, started_at) "
+                "VALUES(?, 'running', ?) "
+                "ON CONFLICT(dream_date) DO UPDATE SET "
+                "status = 'running', started_at = excluded.started_at",
+                (str(dream_date), stamp),
+            )
+        return True
+
+    def dream_finish(self, dream_date: str, *, status: str = "done",
+                     batches: int = 0, written: int = 0,
+                     errors: list[str] | None = None,
+                     summary: dict[str, Any] | None = None,
+                     now: str = "") -> None:
+        """收尾：记录这次睡眠的结果，供报表与续跑判断。"""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE dream_runs SET status = ?, finished_at = ?, batches = ?, "
+                "written = ?, errors = ?, summary = ? WHERE dream_date = ?",
+                (str(status), now or _now(), int(batches), int(written),
+                 _dump(list(errors or [])), _dump(dict(summary or {})),
+                 str(dream_date)),
+            )
+
+    def dream_recent(self, limit: int = 7) -> list[dict[str, Any]]:
+        """最近几次梦境，新的在前。"""
+        rows = self.conn.execute(
+            "SELECT dream_date FROM dream_runs ORDER BY dream_date DESC LIMIT ?",
+            (max(1, int(limit)),),
+        ).fetchall()
+        return [d for d in (self.dream_get(str(r["dream_date"])) for r in rows) if d]
 
     def queue_counts(self) -> dict[str, int]:
         """Count extraction rows per lifecycle state without reading text."""

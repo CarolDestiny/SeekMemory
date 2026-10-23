@@ -63,7 +63,12 @@ def decide_flush(*, pending: int, idle_seconds: float, worth_now: bool,
                  min_pending: int, max_flushes_per_day: int,
                  backlog_flush_at: int,
                  topic_age_seconds: float = 0.0,
-                 topic_ttl_seconds: float = 86400.0) -> FlushDecision:
+                 topic_ttl_seconds: float = 86400.0,
+                 dream_only: bool = False) -> FlushDecision:
+    # 梦境模式下白天一律不抽：进化只发生在 dream 周期里。
+    # 放在最前面，连 topic 过期也不越过它，否则白天又会被触发。
+    if dream_only:
+        return FlushDecision(False, "dream_only")
     if topic_ttl_seconds > 0 and topic_age_seconds >= topic_ttl_seconds:
         return FlushDecision(True, "topic_expired")
     if flushes_today >= max(1, int(max_flushes_per_day)):
