@@ -269,6 +269,70 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(timeline["text"], "second persona")
         self.assertEqual([row["revision"] for row in timeline["revisions"]], [1, 2])
 
+    async def test_persona_history_uses_each_versions_own_evidence(self) -> None:
+        artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
+        first = artifact.make("persona", {"text": "first"},
+                              lineage=artifact.Lineage(sources=("s1",), derived_from=("i1",)))
+        self.plugin.db.commit(first, expected_revision=0, op="promote")
+        second = artifact.revise(first, payload={"text": "second"},
+                                  lineage=artifact.Lineage(sources=("s1", "s2"), derived_from=("i1", "i2")))
+        self.plugin.db.commit(second, expected_revision=1, op="promote")
+        timeline = self.plugin.persona_status()
+        self.assertEqual(timeline["revisions"][0]["sourceIds"], ["s1"])
+        self.assertEqual(timeline["revisions"][1]["sourceIds"], ["s1", "s2"])
+        self.assertEqual(timeline["revisions"][0]["derivedFrom"], ["i1"])
+        self.assertEqual(self.plugin._header_evidence("invalid"), ([], []))
+        self.assertEqual(self.plugin._header_evidence({}), ([], []))
+        self.assertNotIn("sources", timeline)
+
+    async def test_capture_to_extraction_to_weekly_persona_uses_real_pairs(self) -> None:
+        self.plugin.cfg["open_to"] = "everyone"
+        class Event:
+            unified_msg_origin = "bot:FriendMessage:u1"
+            message_str = "事情很多，有点难过"
+            def __init__(self, index):
+                self.extras = {}
+                self.message_obj = SimpleNamespace(message_id=f"persona-turn-{index}")
+            def get_sender_id(self): return "u1"
+            def get_self_id(self): return "bot"
+            def is_private_chat(self): return True
+            def get_extra(self, key, default=None): return self.extras.get(key, default)
+            def set_extra(self, key, value): self.extras[key] = value
+        self.plugin.context.provider_sessions.clear()
+        for i in range(3):
+            event = Event(i)
+            await self.plugin.buffer_message(event)
+            await self.plugin.capture_reply(event, SimpleNamespace(role="assistant", completion_text="听起来你很难过，先缓缓"))
+        self.assertEqual(self.plugin.context.provider_sessions, [])
+        pending = self.plugin.db.pending_extractions()
+        self.assertEqual(len(pending), 6)
+        for row in pending:
+            if row["role"] == "assistant":
+                parent = next(r for r in pending if r["source_id"] == row["reply_to"])
+                self.assertEqual(row["topic_id"], parent["topic_id"])
+        class Provider:
+            async def text_chat(inner, **kwargs):
+                rows = self.plugin.db.pending_extractions()
+                selected = [r for r in rows if f'[{r["source_id"]}]' in kwargs["prompt"]]
+                results = []
+                for row in selected:
+                    if row["role"] == "assistant":
+                        results.append({"text": "她回应情绪", "level": "scene", "bot_behavior": "respond_emotion",
+                                        "confidence": 0.95, "evidence_source_ids": [row["reply_to"], row["source_id"]]})
+                return SimpleNamespace(completion_text=json.dumps(results))
+        self.context.provider = Provider()
+        while self.plugin.buffer.items:
+            await self.plugin._flush("test")
+        calls = len(self.context.provider_sessions)
+        await self.plugin._weekly()
+        self.assertEqual(len(self.context.provider_sessions), calls)
+        persona, = self.plugin.cache.active("persona")
+        self.assertEqual(persona.header.subject_id, "bot:self")
+        self.assertEqual(len(persona.header.lineage.sources), 6)
+        block, info = self.plugin._recall_block("你好", "bot:FriendMessage:stranger", True, "stranger")
+        self.assertIn(persona.header.id, info["final_ids"])
+        self.assertIn("你先回应情绪", block)
+
     async def test_inject_memory_preserves_context_contract(self) -> None:
         class Event:
             unified_msg_origin = "bot:FriendMessage:alice"

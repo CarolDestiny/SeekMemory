@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import datetime
+import math
 import re
 from dataclasses import replace
 from collections.abc import Callable
@@ -19,6 +20,18 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..core.graph import Graph
     from ..maintain.impression import revise_impression
     from ..maintain.link import link_new
+    from ..perceive.behavior import (
+        DEFAULT_BEHAVIOR_CONFIDENCE,
+        behavior_boundary,
+        behavior_of,
+        check_payload,
+        dedupe_behaviors,
+        evidence_ids,
+        is_behavior,
+        is_behavior_key,
+        payload_of,
+        validate_evidence,
+    )
     from ..perceive.extract import (
         ExtractionParseError,
         build_prompt,
@@ -36,6 +49,18 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from store.cache import Cache
     from store.db import DB
 
+    from perceive.behavior import (
+        DEFAULT_BEHAVIOR_CONFIDENCE,
+        behavior_boundary,
+        behavior_of,
+        check_payload,
+        dedupe_behaviors,
+        evidence_ids,
+        is_behavior,
+        is_behavior_key,
+        payload_of,
+        validate_evidence,
+    )
     from perceive.extract import (
         ExtractionParseError,
         build_prompt,
@@ -114,11 +139,13 @@ def _subject_id(item: dict, owner: str, default: str, owner_id: str = "") -> str
 
 def _num(value: Any, default: float, low: float, high: float) -> float:
     """把模型给的数值收进区间；缺失、NaN 或非法值回落到默认值。"""
+    if isinstance(value, bool):
+        return default
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
-    if number != number:  # NaN
+    if not math.isfinite(number):
         return default
     return max(low, min(high, number))
 
@@ -131,6 +158,10 @@ def strength_of(item: dict) -> dict:
         "valence": _num(item.get("valence"), base.valence, -1.0, 1.0),
         "funny": _num(item.get("funny"), base.funny, 0.0, 1.0),
     }
+    if "confidence" in item or is_behavior(item):
+        # 行为条目没给 confidence 时保守落在 0.9 以下；老式普通事实保持兼容默认。
+        default = DEFAULT_BEHAVIOR_CONFIDENCE if is_behavior(item) else base.confidence
+        out["confidence"] = _num(item.get("confidence"), default, 0.0, 1.0)
     hits = item.get("hits")
     if hits is not None:
         try:
@@ -152,13 +183,80 @@ def worth_now(items: list[DialogueTurn]) -> bool:
     return False
 
 
+def _dialog_rows(items: list[DialogueTurn]) -> list[DialogueTurn]:
+    """Return every supplied row; the caller owns bounded chunks.
+
+    ``_flush`` already chunks the original rows, and a recovered immutable
+    parent can push the pairing context above the chunk size. Rendering that
+    context in full is safe, so no supplied row may be silently lost.
+    """
+    return list(items)
+
+
 def dialogue_of(items: list[DialogueTurn]) -> str:
+    """Render lines with explicit source labels so evidence ids can be cited."""
     lines = []
-    for turn in items[-120:]:
+    for turn in _dialog_rows(items):
         who = f"{turn.role}({turn.speaker_id})" if turn.speaker_id else turn.role
+        if turn.source_id:
+            who = f"{who}[{turn.source_id}]"
+        if turn.role == "assistant" and turn.reply_to:
+            who += f" reply_to={turn.reply_to}"
         prefix = f"[{turn.at}] " if turn.at else ""
         lines.append(f"{prefix}{who}: {turn.text}")
     return "\n".join(lines)
+
+
+def _recover_parents(items: list[DialogueTurn], db: DB | None) -> list[DialogueTurn]:
+    """Recover already-extracted user parents as read-only pairing context.
+
+    A chunk boundary or a restart can leave an assistant turn without the user
+    turn it replies to. The immutable Source is read back only for pairing and
+    evidence: it is never re-queued, re-marked succeeded or re-written.
+
+    Raises:
+        Exception: When the Source lookup fails, so the caller can keep the
+            pending rows retryable instead of extracting without context.
+    """
+    rows = list(items)
+    if db is None:
+        return rows
+    present = {turn.source_id for turn in items if turn.source_id}
+    wanted: list[str] = []
+    for turn in items:
+        parent_id = str(turn.reply_to or "")
+        if turn.role != "assistant" or not parent_id or parent_id in present:
+            continue
+        if parent_id not in wanted:
+            wanted.append(parent_id)
+    if not wanted:
+        return rows
+    sources = db.sources_by_ids(wanted)
+    out: list[DialogueTurn] = []
+    added: set[str] = set()
+    for turn in items:
+        parent_id = str(turn.reply_to or "") if turn.role == "assistant" else ""
+        parent = sources.get(parent_id) if parent_id else None
+        # 只有同会话、role=user、且就是被回复的那条 Source 才能进提示词。
+        if parent is not None and parent.id not in present and parent.id not in added:
+            same_session = parent.session_id == turn.session_id
+            if parent.role == "user" and same_session and parent.id == parent_id:
+                added.add(parent.id)
+                out.append(
+                    DialogueTurn(
+                        parent.session_id,
+                        parent.speaker_id,
+                        parent.role,
+                        parent.text,
+                        parent.at,
+                        parent.id,
+                        "",
+                        parent.turn_id,
+                        parent.reply_to,
+                    )
+                )
+        out.append(turn)
+    return out
 
 
 def existing_texts(cache: Cache | None) -> list[str]:
@@ -176,7 +274,12 @@ def _boundary(scope: str, subject_id: str) -> str:
 
 
 def existing_texts_by_subject(cache: Cache | None) -> dict[str, list[str]]:
-    """Existing memory text grouped by subject and scope boundary."""
+    """Existing memory text grouped by subject, scope and behavior evidence.
+
+    Ordinary memories keep the plain subject boundary. Behavior memories are
+    keyed by their own evidence so a new episode with the same wording but
+    different assistant evidence is not mistaken for a repeat.
+    """
     if cache is None:
         return {}
     out: dict[str, list[str]] = {}
@@ -184,6 +287,12 @@ def existing_texts_by_subject(cache: Cache | None) -> dict[str, list[str]]:
         for art in cache.active("memory"):
             boundary = _boundary(str(art.header.scope or "private"),
                                  str(art.header.subject_id or ""))
+            if is_behavior(art.payload):
+                boundary = behavior_boundary(
+                    boundary,
+                    behavior_of(art.payload),
+                    art.header.lineage.sources,
+                )
             out.setdefault(boundary, []).append(content_of(art))
     except Exception:  # noqa: BLE001 - a broken cache view means no dedupe history
         return {}
@@ -258,6 +367,18 @@ async def absorb(
     """
     if not items or db is None or model is None:
         return WriteOutcome(errors=("invalid extraction input",))
+    items = list(items)
+    owner = owner_of(items)
+    source_ids = tuple(turn.source_id for turn in items if turn.source_id)
+    # 分块边界或重启后，assistant 行的 user 父行可能已抽走；只读补回配对上下文。
+    try:
+        context = _recover_parents(items, db)
+    except Exception as exc:
+        if strict:
+            raise
+        log(f"父对话恢复失败： {type(exc).__name__}")
+        return WriteOutcome(errors=(f"parent: {exc}",), retryable=True)
+    available = {turn.source_id: turn for turn in context if turn.source_id}
     try:
         with stage("provider.call"):
             if hasattr(model, "complete"):
@@ -265,13 +386,13 @@ async def absorb(
                     ChatRequest(
                         session_id=str(items[0].session_id or ""),
                         system_prompt=build_prompt([]),
-                        prompt=dialogue_of(items),
+                        prompt=dialogue_of(context),
                     )
                 )
                 raw = getattr(resp, "text", "") or ""
             else:
                 resp = await model.text_chat(
-                    system_prompt=build_prompt([]), prompt=dialogue_of(items)
+                    system_prompt=build_prompt([]), prompt=dialogue_of(context)
                 )
                 raw = getattr(resp, "completion_text", "") or ""
     except Exception as exc:
@@ -280,18 +401,23 @@ async def absorb(
         log(f"模型调用失败： {type(exc).__name__}")
         return WriteOutcome(errors=(f"model: {exc}",), model_failed=True, retryable=True)
 
-    owner = owner_of(items)
-    source_ids = tuple(turn.source_id for turn in items if turn.source_id)
     group = ":GroupMessage:" in owner
     scope = "shared" if group or not owner else "private"
     senders = {turn.speaker_id for turn in items if turn.speaker_id}
+    # 默认用户归属只认 user 行（含只读父行）：assistant 不能变成 user 主语。
+    user_senders = {turn.speaker_id for turn in context
+                    if turn.speaker_id and turn.role == "user"}
     said_by = "owner"
     if group:
-        said_by = next(iter(senders)) if len(senders) == 1 else "group"
-    default_subject = next(iter(senders), owner or "")
+        said_by = next(iter(user_senders)) if len(user_senders) == 1 else "group"
+    default_subject = (next(iter(user_senders)) if len(user_senders) == 1
+                       else owner_id or owner or "")
 
     def boundary_of(item: dict) -> str:
-        return _boundary(scope, _subject_id(item, owner, default_subject, owner_id))
+        base = _boundary(scope, _subject_id(item, owner, default_subject, owner_id))
+        if not is_behavior(item):
+            return base
+        return behavior_boundary(base, behavior_of(item), evidence_ids(item))
 
     with stage("response.parse"):
         try:
@@ -301,10 +427,31 @@ async def absorb(
                 raise
             return WriteOutcome(errors=(f"parse: {exc}",), model_failed=True,
                                 retryable=True)
+    # 证据必须先校验、后去重：不合法的行为证据要整批可重试，不能被当成重复跳过。
+    checked: list[tuple[dict, tuple[str, ...]]] = []
+    for item in parsed[:MAX_ITEMS]:
+        candidate = {**item, "owner_umo": owner} if owner else dict(item)
+        try:
+            check_payload(candidate)
+            # 行为条目必须引用本批（含只读父行）里真实的 assistant + user 父行。
+            evidence = validate_evidence(candidate, available, session_id=owner)
+        except ValueError as exc:
+            log(f"证据校验失败： {type(exc).__name__}")
+            return WriteOutcome(errors=(f"evidence: {exc}",), model_failed=True,
+                                retryable=True)
+        checked.append((candidate, evidence))
+    evidence_of = {id(item): evidence for item, evidence in checked}
+    parsed = [item for item, _ in checked]
     with stage("memory.deduplicate"):
+        existing = existing_texts_by_subject(cache)
+        # 行为事件按“证据 + 行为值”判重，措辞和证据顺序都不参与。
+        repeated = {key for key in existing if is_behavior_key(key)}
+        parsed = dedupe_behaviors(
+            parsed, existing_keys=repeated, boundary_of=boundary_of
+        )
         parsed = filter_duplicates(
             parsed,
-            existing_by_subject=existing_texts_by_subject(cache),
+            existing_by_subject=existing,
             subject_of=boundary_of,
         )
     if not parsed:
@@ -314,11 +461,10 @@ async def absorb(
     skipped = 0
     errors: list[str] = []
     retryable = False
-    for item in parsed[:MAX_ITEMS]:
+    for item in parsed:
+        evidence = evidence_of.get(id(item), ())
         try:
-            if owner:
-                item = {**item, "owner_umo": owner}
-            payload = dict(item)
+            payload = payload_of(item)
             if group and len(senders) > 1:
                 payload["speakers"] = sorted(senders)
             strength = strength_of(item)
@@ -335,9 +481,9 @@ async def absorb(
                     scope=scope,
                     said_by=said_by,
                     subject_id=_subject_id(item, owner, default_subject, owner_id),
-                    lineage=Lineage(sources=source_ids),
+                    lineage=Lineage(sources=evidence or source_ids),
                     time=TimeSpan(
-                        created=_event_at(item, items),
+                        created=_event_at(item, context),
                         valid_from=_date_or_none(item.get("valid_from")),
                         valid_to=_date_or_none(item.get("valid_to")),
                     ),
@@ -356,7 +502,7 @@ async def absorb(
                     expected_revision=0,
                     op="create",
                     reason="extract",
-                    source_ids=source_ids,
+                    source_ids=evidence or source_ids,
                 )
                 if cache is not None:
                     cache.put(art)

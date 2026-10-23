@@ -295,11 +295,14 @@ export interface components {
             id: string;
             revision: number;
             text: string;
+            /** @description 每个版本只回溯自身历史 header 的证据；旧版本缺少证据时省略数组，不复制当前版本证据。 */
             revisions: {
                 revision: number;
                 at: string;
                 op: string;
                 text: string;
+                derivedFrom?: string[];
+                sourceIds?: string[];
             }[];
         };
         RuntimeStatus: {

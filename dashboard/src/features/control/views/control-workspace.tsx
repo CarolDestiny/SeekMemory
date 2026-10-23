@@ -118,6 +118,7 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
           status={vm.status}
           busy={vm.busy}
           onAction={vm.requestAction}
+          client={client}
         />
       )}
       {section === "diagnose" && <Diagnostics client={client} />}

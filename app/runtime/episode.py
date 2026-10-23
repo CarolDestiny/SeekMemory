@@ -6,6 +6,7 @@ import json
 import re
 import threading
 import time
+import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -185,7 +186,7 @@ class DBEpisodeStore:
 
     def append(self, episode: RuntimeEpisode) -> None:
         payload = asdict(episode)
-        payload["id"] = f"ep_{time.time_ns()}"
+        payload["id"] = f"ep_{uuid.uuid4().hex}"
         payload["tool_calls"] = list(normalize_tool_calls(episode.tool_calls))
         try:
             self.db.append_runtime_episode(payload)

@@ -1,295 +1,120 @@
-"""test_persona：稳定 impression 的筛选口径与每周人格沉淀。
-
-覆盖 promote_candidates 的非 impression / 权重 / hits / 年龄四条边界，
-compose 的第二人称改写与 TOP_N 上限，persona 未变化时不重复覆盖、
-旧 persona 标 merged、lineage 与 ledger 追溯，以及 scope 收敛规则。
-"""
-
-from __future__ import annotations
-
-import os
-import shutil
-import sys
-import tempfile
+"""#15 明确禁止把用户特征改成人格；旧预期由真实自我证据契约替代。"""
 import unittest
+from unittest.mock import patch
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core.artifact import Artifact, make
-from maintain.persona import TOP_N, compose, distill_persona
-from maintain.promote import AGE_DAYS, HITS_BAR, WEIGHT_BAR, promote_candidates
-from recall.assemble import build as assemble
-from store.cache import Cache
-from store.db import DB
+from persona_support import PersonaCase
+from core.artifact import Strength, TimeSpan, make
+from core.bot_behavior import BEHAVIORS, compose_behaviors, trusted_self_persona
+from core.graph import Graph
+from maintain.persona import compose, distill_persona, distill_self_persona
+from maintain.promote import promote_candidates
+from maintain.self_impression import build_self_impressions, promote_self_candidates
+from recall.pipeline import build_block
 from store.ledger import Ledger
 
-TODAY = "2026-10-21"
-RECENT = "2026-10-10T10:00:00"
 
+class PersonaTest(PersonaCase):
+    def prepare(self, kind="respond_emotion"):
+        self.three(kind)
+        build_self_impressions(self.db, self.cache)
 
-def _memory(
-    text: str,
-    level: str = "impression",
-    weight: float = 2.0,
-    hits: int = 4,
-    created: str = RECENT,
-    scope: str = "private",
-    sources: tuple[str, ...] = (),
-) -> Artifact:
-    """构造一条 memory；impression 默认满足稳定口径，便于单独调边界。"""
-    payload = {
-        "text": text,
-        "level": level,
-        "shape": "pattern" if level == "impression" else "point",
-        "chrono": "once",
-        "about": "other",
-    }
-    header: dict[str, object] = {
-        "strength": {"weight": weight, "hits": hits},
-        "scope": scope,
-        "time": {"created": created, "updated": created},
-    }
-    if sources:
-        header["lineage"] = {"sources": tuple(sources)}
-    return make("memory", payload, **header)
-
-
-class _PersonaCase(unittest.TestCase):
-    """每个用例一个临时数据库与缓存。"""
-
-    def setUp(self) -> None:
-        """创建临时库与依赖对象。"""
-        self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_persona_")
-        self.db = DB(os.path.join(self.tmpdir, "memory.db"))
-        self.cache = Cache(self.db)
-        self.ledger = Ledger(self.db)
-
-    def tearDown(self) -> None:
-        """关闭数据库并删除临时目录。"""
-        self.db.close()
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
-    def _seed(self, art: Artifact) -> Artifact:
-        """同时写库与缓存，模拟一条在线记忆。"""
-        self.db.upsert(art)
-        self.cache.put(art)
-        return art
-
-    def _persona_count(self) -> int:
-        """库里 family=persona 的节点总数（含已 merged 的旧版本）。"""
-        return self.db.count("persona")
-
-
-class PromoteTest(_PersonaCase):
-    """promote_candidates：只有稳定 impression 才是候选人。"""
-
-    def test_rejects_non_impression_level(self) -> None:
-        """scene / fact / 无 level 的记忆即使权重与 hits 再高也不入选。"""
-        self._seed(_memory("他今天加班到很晚", "scene", weight=2.0, hits=9))
-        self._seed(_memory("他的名字叫吕宇轩", "fact", weight=2.0, hits=9))
-        self._seed(make("memory", {"text": "没有层级的旧数据"}))
-
-        self.assertEqual(promote_candidates(self.cache, today=TODAY), [])
-
-    def test_rejects_insufficient_weight(self) -> None:
-        """weight < 1.5 不入选；恰好 1.5 是闭区间，可以入选。"""
-        low = self._seed(_memory("他偶尔会赖床", weight=WEIGHT_BAR - 0.1))
-        self.assertEqual(promote_candidates(self.cache, today=TODAY), [])
-
-        boundary = self._seed(_memory("他有点倔", weight=WEIGHT_BAR))
-        self.assertEqual(promote_candidates(self.cache, today=TODAY),
-                         [boundary])
-        self.assertNotIn(low, promote_candidates(self.cache, today=TODAY))
-
-    def test_rejects_sparse_and_young(self) -> None:
-        """hits 不足且存在不到 30 天：不入选；hits 够或年龄够：入选。"""
-        self._seed(_memory("他最近有点累", weight=1.6, hits=HITS_BAR - 1,
-                           created="2026-10-15T10:00:00"))
-        self.assertEqual(promote_candidates(self.cache, today=TODAY), [])
-
-        by_hits = self._seed(_memory("他心软", weight=1.7, hits=HITS_BAR))
-        found = promote_candidates(self.cache, today=TODAY)
-        self.assertEqual(found, [by_hits])
-
-        by_age = self._seed(_memory("他不会照顾自己", weight=1.6, hits=0,
-                                    created="2026-08-01T10:00:00"))
-        found = promote_candidates(self.cache, today=TODAY)
-        self.assertIn(by_age, found)
-        self.assertEqual([art.header.id for art in found],
-                         [by_hits.header.id, by_age.header.id])
-
-    def test_age_bar_is_thirty_days(self) -> None:
-        """恰好 30 天算稳定，29 天且 hits 不足不算。"""
-        young = self._seed(_memory("他今天有点烦", weight=1.8, hits=0,
-                                   created="2026-09-22T10:00:00"))
-        self.assertEqual(promote_candidates(self.cache, today=TODAY), [])
-
-        mature = self._seed(_memory("他认死理", weight=1.8, hits=0,
-                                    created="2026-09-21T10:00:00"))
-        found = promote_candidates(self.cache, today=TODAY)
-        self.assertEqual([art.header.id for art in found], [mature.header.id])
-        self.assertNotIn(young.header.id, [art.header.id for art in found])
-
-    def test_min_hits_override_is_backward_compatible(self) -> None:
-        """旧调用 promote_candidates(cache, 10) 的 min_hits 仍可收紧口径。"""
-        art = self._seed(_memory("他有点倔", weight=2.0, hits=4))
-        self.assertEqual(promote_candidates(self.cache, min_hits=10, today=TODAY), [])
-        art = self._seed(_memory("他嘴硬心软", weight=2.0, hits=10))
-        self.assertEqual(promote_candidates(self.cache, min_hits=10, today=TODAY), [art])
-
-
-class ComposeTest(unittest.TestCase):
-    """compose：拼成第二人称人格文本。"""
-
-    def test_rewrites_third_person_to_second_person(self) -> None:
-        """「他有点倔」改写成「你有点倔。」，后续句子用「你记得」引导。"""
-        text = compose([_memory("他有点倔"), _memory("他心软")])
-        self.assertEqual(text, "你有点倔。你记得他心软。")
-
-    def test_caps_top_n_and_skips_empty_text(self) -> None:
-        """最多取 TOP_N 条，空文本跳过，句子都以第二人称开头。"""
-        impressions = [_memory(f"他习惯{index}") for index in range(TOP_N + 2)]
-        text = compose(impressions)
-        self.assertEqual(text.count("。"), TOP_N)
-        self.assertNotIn(f"习惯{TOP_N}", text)
-        self.assertTrue(text.startswith("你"))
-        self.assertEqual(compose([_memory("")]), "")
-
-    def test_persona_is_first_in_assembled_text(self) -> None:
-        """有 persona 时组装头部第一句就是人格，不再补成「你记得你……」。"""
-        persona = make("persona", {"text": "你不轻易说重话。"})
-        memory = _memory("他加班到很晚", "scene")
-        text = assemble([memory, persona], budget=300)
-        self.assertTrue(text.startswith("你不轻易说重话。"))
-        self.assertNotIn("你记得你", text)
-
-
-class DistillTest(_PersonaCase):
-    """distill_persona：写入 persona、合并旧版本、记账本。"""
-
-    def _seed_three(self) -> tuple[Artifact, Artifact, Artifact]:
-        """三条稳定 impression，权重与来源各不相同。"""
-        stubborn = self._seed(_memory("他有点倔", weight=2.0, hits=4,
-                                      sources=("src_a", "src_b")))
-        soft = self._seed(_memory("他心软", weight=1.7, hits=3,
-                                  sources=("src_b", "src_c")))
-        careless = self._seed(_memory("他不会照顾自己", weight=1.6, hits=3))
-        return stubborn, soft, careless
-
-    def test_persona_text_lineage_and_strength(self) -> None:
-        """persona 是第二人称文本，derived_from/sources/strength 可追溯。"""
-        stubborn, soft, careless = self._seed_three()
-        extra = self._seed(_memory("他偶尔赖床", weight=1.5, hits=3,
-                                   sources=("src_d",)))
-
-        persona = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(persona)
-        assert persona is not None
-        self.assertEqual(persona.header.family, "persona")
-        self.assertEqual(persona.header.said_by, "inferred")
-        self.assertEqual(persona.payload["text"],
-                         "你有点倔。你记得他心软。你知道他不会照顾自己。")
-        self.assertEqual(persona.header.lineage.derived_from,
-                         (stubborn.header.id, soft.header.id, careless.header.id))
-        self.assertNotIn(extra.header.id, persona.header.lineage.derived_from)
-        self.assertEqual(persona.header.lineage.sources,
-                         ("src_a", "src_b", "src_c"))
-        self.assertEqual(persona.header.strength.weight, 2.0)
-        self.assertEqual(persona.header.strength.hits, 10)
-        self.assertIsNotNone(self.db.get(persona.header.id))
-        self.assertEqual([art.header.id for art in self.cache.active("persona")],
-                         [persona.header.id])
-
-    def test_unchanged_text_is_not_rewritten(self) -> None:
-        """印象没变化时返回旧 persona，不产生新版本、不重复记账。"""
-        self._seed_three()
-        first = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(first)
-        assert first is not None
-        entries = len(self.db.ledger_entries())
-
-        second = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(second)
-        assert second is not None
-        self.assertEqual(second.header.id, first.header.id)
-        self.assertEqual(second.header.revision, 1)
-        self.assertEqual(self._persona_count(), 1)
-        self.assertEqual(len(self.db.ledger_entries()), entries)
-
-    def test_old_persona_marked_merged(self) -> None:
-        """印象变化后旧 persona 标 merged、移出缓存，新 persona revision +1。"""
-        self._seed_three()
-        first = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(first)
-        assert first is not None
-
-        self._seed(_memory("他特别爱干净", weight=3.0, hits=6))
-        second = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(second)
-        assert second is not None
+    def test_bootstrap_stable_id_and_evidence_revisions(self):
+        self.prepare()
+        first = distill_self_persona(self.db, self.cache)
+        self.assertTrue(trusted_self_persona(first))
+        self.assertEqual(first.payload["text"], compose_behaviors(["respond_emotion"]))
+        self.assertEqual(distill_persona(self.db, self.cache), first)
+        self.assertEqual(len(self.db.history(first.header.id)), 1)
+        self.episode()
+        build_self_impressions(self.db, self.cache)
+        second = distill_self_persona(self.db, self.cache)
         self.assertEqual(second.header.id, first.header.id)
         self.assertEqual(second.header.revision, 2)
+        self.assertEqual(second.payload["text"], first.payload["text"])
+        self.assertEqual(len(second.header.lineage.sources), 8)
+        self.assertEqual([r["revision"] for r in self.db.history(first.header.id)], [1, 2])
+        self.assertTrue(Ledger(self.db).verify())
 
-        current = self.db.get(first.header.id)
-        self.assertIsNotNone(current)
-        assert current is not None
-        self.assertEqual(current.header.state, "active")
-        self.assertEqual(current.header.revision, 2)
-        self.assertIs(self.cache.get(first.header.id), second)
-        self.assertEqual([art.header.id for art in self.cache.active("persona")],
-                         [second.header.id])
-        history = self.db.history(first.header.id)
-        self.assertEqual([row["revision"] for row in history], [1, 2])
+    def test_user_impressions_rejected_by_both_compatibility_paths(self):
+        art = self.seed(make("memory", {"text": "他有点倔", "about": "other",
+                                        "level": "impression"}, subject_id="u1",
+                             strength=Strength(weight=5, hits=100)))
+        self.assertEqual(promote_candidates(self.cache), [])
+        self.assertIsNone(distill_persona(self.db, self.cache))
+        self.assertEqual(compose([art]), "")
+        self.assertEqual(self.db.get(art.header.id), art)
 
-    def test_no_candidate_keeps_old_persona(self) -> None:
-        """没有候选时返回 None，旧 persona 保持 active，账本不新增。"""
-        old = self._seed(make("persona", {"text": "旧的人格"}, scope="private"))
-        self._seed(_memory("他最近有点累", weight=1.6, hits=1))
-        before = len(self.db.ledger_entries())
+    def test_fixed_text_composer_has_three_trait_limit(self):
+        for kind in BEHAVIORS:
+            self.prepare(kind)
+        candidates = promote_self_candidates(self.cache)
+        self.assertEqual(len(promote_candidates(self.cache)), 6)
+        persona = distill_self_persona(self.db, self.cache)
+        self.assertEqual(len(persona.payload["behaviors"]), 3)
+        self.assertEqual(persona.payload["text"], compose(candidates))
 
-        self.assertIsNone(distill_persona(self.db, self.cache, TODAY))
-        stored = self.db.get(old.header.id)
-        self.assertIsNotNone(stored)
-        assert stored is not None
-        self.assertEqual(stored.header.state, "active")
-        self.assertIsNotNone(self.cache.get(old.header.id))
-        self.assertEqual(len(self.db.ledger_entries()), before)
+    def test_legacy_persona_reuses_id_and_preserves_history(self):
+        legacy = self.seed(make("persona", {"text": "许澄住在栖云城"}, id="legacy",
+                                time=TimeSpan(created="2025-01-01T00:00:00")))
+        extra = self.seed(make("persona", {"text": "other legacy"}, id="extra"))
+        self.prepare()
+        result = distill_self_persona(self.db, self.cache)
+        self.assertEqual(result.header.id, legacy.header.id)
+        self.assertEqual(result.header.subject_id, "bot:self")
+        self.assertEqual(self.db.get(extra.header.id).header.state, "merged")
+        self.assertEqual(len(self.cache.active("persona")), 1)
+        self.assertEqual(self.db.history(legacy.header.id)[0]["payload"]["text"], legacy.payload["text"])
+        self.assertNotIn("许澄", result.payload["text"])
 
-    def test_ledger_records_promote_and_chain_verifies(self) -> None:
-        self._seed_three()
-        persona = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(persona)
-        assert persona is not None
+    def test_extra_personas_retired_atomically_even_if_text_unchanged(self):
+        self.prepare()
+        original = distill_self_persona(self.db, self.cache)
+        extra = self.seed(make("persona", {"text": "legacy"}))
+        result = distill_self_persona(self.db, self.cache)
+        self.assertEqual(result, original)
+        self.assertIsNone(self.cache.get(extra.header.id))
+        self.assertEqual(len(self.cache.active("persona")), 1)
 
-        entries = self.db.ledger_entries()
-        self.assertEqual(len(entries), 1)
-        entry = entries[0]
-        self.assertEqual(entry["op"], "promote")
-        self.assertEqual(entry["entity"], persona.header.id)
-        self.assertIsNone(entry["before_hash"])
-        self.assertEqual(entry["after_hash"], "1")
-        self.assertTrue(self.ledger.verify())
+    def test_partial_consolidation_failure_rolls_back_everything(self):
+        self.prepare()
+        original = self.seed(make("persona", {"text": "old"}, id="p1"))
+        extra = self.seed(make("persona", {"text": "extra"}, id="p2"))
+        ledger = self.db.ledger_entries()
+        commit = self.db._commit_conn
+        def fail_second(art, **kwargs):
+            if art.header.id == extra.header.id:
+                raise RuntimeError("busy")
+            return commit(art, **kwargs)
+        with patch.object(self.db, "_commit_conn", side_effect=fail_second):
+            with self.assertRaises(RuntimeError):
+                distill_self_persona(self.db, self.cache)
+        self.assertEqual(self.db.get(original.header.id), original)
+        self.assertEqual(self.cache.get(original.header.id), original)
+        self.assertEqual(self.db.get(extra.header.id), extra)
+        self.assertEqual(self.db.ledger_entries(), ledger)
 
-    def test_scope_shared_only_when_all_sources_shared(self) -> None:
-        """来源全是 shared 时 persona 才 shared。"""
-        self._seed(_memory("他总是嘴硬", scope="shared"))
-        self._seed(_memory("他心软", scope="shared"))
+    def test_no_qualified_evidence_keeps_existing_history(self):
+        old = self.seed(make("persona", {"text": "old"}))
+        self.assertIsNone(distill_self_persona(self.db, self.cache))
+        self.assertEqual(self.db.get(old.header.id), old)
 
-        persona = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(persona)
-        assert persona is not None
-        self.assertEqual(persona.header.scope, "shared")
-
-    def test_scope_private_when_any_source_private(self) -> None:
-        """只要有一条来源是 private，persona 就保持 private。"""
-        self._seed(_memory("他总是嘴硬", scope="shared"))
-        self._seed(_memory("他心软", scope="private"))
-
-        persona = distill_persona(self.db, self.cache, TODAY)
-        self.assertIsNotNone(persona)
-        assert persona is not None
-        self.assertEqual(persona.header.scope, "private")
+    def test_safe_persona_is_in_final_context_and_legacy_is_silent(self):
+        unsafe = self.seed(make("persona", {"text": "许澄的秘密橙色纸鹤"}, scope="shared"))
+        def recall():
+            return build_block(self.cache, Graph(self.db, self.cache), self.db,
+                               "unrelated", "你好", True,
+                               {"explore_rate": 0, "budget_chars": 600}.get,
+                               "owner", speaker="stranger", dry_run=True)
+        block, info = recall()
+        self.assertNotIn(unsafe.payload["text"], block)
+        self.assertNotIn(unsafe.header.id, info["final_ids"])
+        self.prepare()
+        persona = distill_self_persona(self.db, self.cache)
+        block, info = recall()
+        self.assertIn(persona.payload["text"], block)
+        self.assertIn(persona.header.id, info["final_ids"])
+        self.assertNotIn("许澄", block)
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()

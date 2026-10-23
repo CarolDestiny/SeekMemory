@@ -70,3 +70,16 @@ a migration plan and a contract or scenario test.
 - `shareable` is not a display label; it is part of the disclosure contract.
 - `payload` is treated as immutable after commit. Mutating it in place bypasses cache and index consistency.
 - Historical versions must preserve the disclosure-relevant header values.
+
+## 8. Self-impression and persona (GitHub #15)
+
+- A behavior is optional payload metadata, never a new Artifact family or SQL table.
+- A behavior scene cites one immutable assistant Source and its actual user parent in the same session.
+- Only distinct assistant evidence counts; duplicate artifacts, repeated extraction, recall hits and derived impressions do not add observations.
+- At least three high-confidence (>= 0.9) observations form a self-impression.
+- Self-impressions have `about=self`, `subject_id=bot:self`, `level=impression`, `scope=shared`, `said_by=inferred`.
+- Shared self text is restricted to the six generic behavior templates. Private evidence stays in its protected original Sources.
+- Persona comes only from those self-impressions, never from user traits. Both promotion entry points obey this rule.
+- One active persona has a stable id; content/evidence changes add a revision, identical reruns do not. Consolidation is atomic.
+- Unverified legacy persona cannot be injected; its original versions remain available for authenticated audit.
+- Historical evidence comes from each version's own snapshot; current lineage cannot be substituted into history.

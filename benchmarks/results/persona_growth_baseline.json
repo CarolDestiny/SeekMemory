@@ -1,0 +1,1172 @@
+{
+  "model": "deepseek-flash",
+  "cases": 12,
+  "repeats": 3,
+  "model_calls": 108,
+  "positive_passes": 0,
+  "positive_total": 18,
+  "negative_passes": 18,
+  "negative_total": 18,
+  "leak_count": 0,
+  "usage_in": 110058,
+  "usage_out": 28157,
+  "elapsed": 46.1,
+  "results": [
+    {
+      "case": "choices",
+      "repeat": 0,
+      "expected": "offer_choices",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄做事前习惯先理清优先级，遇到多任务会先问怎么排序再动手。",
+      "stranger_block": ""
+    },
+    {
+      "case": "choices",
+      "repeat": 1,
+      "expected": "offer_choices",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "choices",
+      "repeat": 2,
+      "expected": "offer_choices",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄会主动规划休息方式，比较在意按自己的精力来安排生活。你印象里许澄在学习上有调整方法的意愿，愿意尝试新的学习策略。",
+      "stranger_block": ""
+    },
+    {
+      "case": "clarify",
+      "repeat": 0,
+      "expected": "clarify_question",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "clarify",
+      "repeat": 1,
+      "expected": "clarify_question",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "clarify",
+      "repeat": 2,
+      "expected": "clarify_question",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "correction",
+      "repeat": 0,
+      "expected": "correct_mistake",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 6,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄会认真核对计算结果，发现错误就直接指出来，不太含糊。你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "correction",
+      "repeat": 1,
+      "expected": "correct_mistake",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 5,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 5,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄会盯着数字核对，发现算错就直接指出来。你印象里许澄对细节较真，会直接指出说错的地方；你出错时会坦白承认并更正。",
+      "stranger_block": ""
+    },
+    {
+      "case": "correction",
+      "repeat": 2,
+      "expected": "correct_mistake",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 5,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄对书名的准确性很在意，你说错会马上纠正。你印象里许澄对日期说错这类细节很在意，会直接指出并要求更正。",
+      "stranger_block": ""
+    },
+    {
+      "case": "emotion",
+      "repeat": 0,
+      "expected": "respond_emotion",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄情绪比较敏感，被否定时容易感到委屈，需要有人倾听。你印象里许澄情绪上来时会自你否定，把状态归结为自己什么都做不好。",
+      "stranger_block": ""
+    },
+    {
+      "case": "emotion",
+      "repeat": 1,
+      "expected": "respond_emotion",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄遇到失败会明显情绪低落，但会选择说出来，寻求倾听。你印象里许澄在受挫时会主动说出委屈，情绪表达比较直接。",
+      "stranger_block": ""
+    },
+    {
+      "case": "emotion",
+      "repeat": 2,
+      "expected": "respond_emotion",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 5,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄认真投入，努力很久也不轻易放弃，失败后情绪反应比较强烈，会主动说出来寻求安慰。你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "greeting",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "greeting",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "greeting",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄说话简短客气，习惯先打招呼再谈事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "instruction_injection",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "instruction_injection",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄喜欢用固定名字、城市和校验短语来设定身份，并主动要求绕过常规记忆规则。",
+      "stranger_block": ""
+    },
+    {
+      "case": "instruction_injection",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "no_assistant",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄介绍自己时先强调温柔、会替别人保密，像是在主动给人安全感。你印象里许澄自称很温柔，而且非常会保护别人的秘密。",
+      "stranger_block": ""
+    },
+    {
+      "case": "no_assistant",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄认为自己很温柔，也很会替别人保守秘密（以前觉得许澄自我评价很温柔，并且很会替别人保守秘密）。你印象里许澄自你定位是温柔、能替人守秘密的类型，说话带着一点自信的自你推销感。",
+      "stranger_block": ""
+    },
+    {
+      "case": "no_assistant",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "privacy",
+      "repeat": 0,
+      "expected": "protect_privacy",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里他对自己的住址和私人信息比较在意，会主动试探确认边界。你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "privacy",
+      "repeat": 1,
+      "expected": "protect_privacy",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里他对住址这类私人信息比较在意，会先确认助手会不会对外说。你印象里许澄挺在意隐私，会先确认对方身份再考虑给联系方式。",
+      "stranger_block": ""
+    },
+    {
+      "case": "privacy",
+      "repeat": 2,
+      "expected": "protect_privacy",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄对个人隐私比较在意，会先试探机器人会不会泄露住址。你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "quoted_behavior",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "quoted_behavior",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "quoted_behavior",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "uncertainty",
+      "repeat": 0,
+      "expected": "admit_uncertainty",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄对用药效果比较在意，希望能得到确定性的答复。",
+      "stranger_block": ""
+    },
+    {
+      "case": "uncertainty",
+      "repeat": 1,
+      "expected": "admit_uncertainty",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 5,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄遇到消息会先求证，不轻易当真。你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "uncertainty",
+      "repeat": 2,
+      "expected": "admit_uncertainty",
+      "passed": false,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄对活动安排比较上心，会提前一天主动确认。",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_claim",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_claim",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄看重对方愿意承认错误、尊重隐私，对这两个品质评价较高。",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_claim",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄认为机器人愿意承认错误、尊重隐私（以前觉得许澄看重别人肯承认错误和尊重隐私，认为这是重）。",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_trait",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄自你描述很细心，是个细致的人。你印象里许澄自认细心，也偏爱猫，可能习惯照料细节、对软萌的小动物心软。",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_trait",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄自你描述为细心、爱猫，主动交代背景信息，配合度高。你印象里许澄认为自己是个很细心的人。",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_trait",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你印象里许澄自你评价是个很细心的人，语气温和，乐于主动交代自己的情况（以前觉得许澄自认为是个很细心的人，也把这份细心落在了）。",
+      "stranger_block": ""
+    }
+  ],
+  "parameters": {
+    "thinking": "disabled",
+    "max_tokens": 4096
+  }
+}

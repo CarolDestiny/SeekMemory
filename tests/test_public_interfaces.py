@@ -78,6 +78,19 @@ class ContractDataclassTest(unittest.TestCase):
         self.assertEqual(turn.at, "")
         self.assertEqual(turn.source_id, "")
         self.assertEqual(turn.topic_id, "")
+        self.assertEqual(turn.turn_id, "")
+        self.assertIsNone(turn.reply_to)
+
+    def test_dialogue_turn_trailing_pair_fields(self):
+        turn = DialogueTurn("umo", "bot", "assistant", "reply", "", "s_a",
+                            "tp", "t1", "s_u")
+        self.assertEqual(turn.turn_id, "t1")
+        self.assertEqual(turn.reply_to, "s_u")
+        self.assertEqual(
+            turn,
+            DialogueTurn("umo", "bot", "assistant", "reply", source_id="s_a",
+                         topic_id="tp", turn_id="t1", reply_to="s_u"),
+        )
 
     def test_extraction_state_defaults(self):
         state = ExtractionState("source", "turn", "session")

@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.contracts import DialogueTurn  # noqa: E402
 from core.artifact import content_of  # noqa: E402
 from core.graph import Graph  # noqa: E402
+from core.source import Source  # noqa: E402
 from perceive.absorb import absorb, dialogue_of, owner_of, worth_now  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import build_prompt, parse_response  # noqa: E402
@@ -210,10 +211,328 @@ class PromptTest(unittest.TestCase):
         self.assertIn("supersedes", prompt)
         self.assertIn("2026-10-20T23:14:00", prompt)
 
+    def test_prompt_documents_one_behavior_field_and_evidence(self):
+        prompt = build_prompt([])
+        self.assertIn("bot_behavior", prompt)
+        self.assertIn("evidence_source_ids", prompt)
+        self.assertNotIn("category=", prompt)
+        self.assertIn("respond_emotion", prompt)
+        self.assertIn("protect_privacy", prompt)
+
     def test_parse_keeps_tags(self):
         items = parse_response(GOOD)
         self.assertEqual(len(items), 2)
         self.assertIn("杭州", items[0]["tags"])
+
+
+PAIR_SESSION = "umo:pair"
+PAIR_AT = "2026-10-22T12:00:00"
+REPLY_AT = "2026-10-22T12:00:20"
+
+
+def _sources(db, suffix: str = "1", user: str = "10001"):
+    parent = Source(f"s_u{suffix}", f"t{suffix}", PAIR_SESSION, user, "user",
+                    "我有点撑不住", PAIR_AT)
+    reply = Source(f"s_a{suffix}", f"t{suffix}", PAIR_SESSION, "bot", "assistant",
+                   "先歇口气，崩在哪儿了？", REPLY_AT,
+                   reply_to=f"s_u{suffix}")
+    db.append_sources([parent, reply])
+    return parent, reply
+
+
+def _pair(parent: Source, reply: Source) -> list[DialogueTurn]:
+    return [
+        DialogueTurn(parent.session_id, parent.speaker_id, "user", parent.text,
+                     parent.at, parent.id, "", parent.turn_id, parent.reply_to),
+        DialogueTurn(reply.session_id, reply.speaker_id, "assistant", reply.text,
+                     reply.at, reply.id, "", reply.turn_id, reply.reply_to),
+    ]
+
+
+def _behavior_raw(evidence, *, text="她在他撑不住时先接住情绪", confidence=None,
+                  behavior="respond_emotion"):
+    item = {
+        "level": "scene", "bot_behavior": behavior, "text": text,
+        "tags": "情绪 安慰", "about": "relation", "subject_kind": "self",
+        "subject_id": "self", "bot_action": "先回应情绪",
+        "evidence_source_ids": list(evidence),
+    }
+    if confidence is not None:
+        item["confidence"] = confidence
+    return json.dumps([item], ensure_ascii=False)
+
+
+class ReplyPairBufferTest(unittest.TestCase):
+    def test_reply_pair_shares_topic_across_interleaved_users(self):
+        buf = Buffer()
+        first = buf.add("umo:a", "我有点撑不住", "10001", "s_u1", PAIR_AT,
+                        turn_id="t1")
+        buf.add("umo:a", "另一个人说完全无关的事", "10002", "s_u2",
+                "2026-10-22T12:00:05", turn_id="t2")
+        reply = buf.add("umo:a", "先歇口气", "bot", "s_a1", REPLY_AT,
+                        turn_id="t1", reply_to="s_u1", role="assistant")
+        self.assertEqual(reply.topic_id, first.topic_id)
+        self.assertEqual(reply.reply_to, "s_u1")
+        self.assertEqual(reply.turn_id, "t1")
+
+    def test_reply_pair_never_crosses_sessions(self):
+        buf = Buffer()
+        other = buf.add("umo:b", "别的会话", "20002", "s_u9", PAIR_AT,
+                        turn_id="t9")
+        reply = buf.add("umo:a", "先歇口气", "bot", "s_a1", REPLY_AT,
+                        turn_id="t9", reply_to="s_u9", role="assistant")
+        self.assertEqual(reply.reply_to, "s_u9")
+        self.assertNotEqual(reply.topic_id, other.topic_id)
+
+    def test_pair_fields_survive_file_reload(self):
+        path = os.path.join(tempfile.mkdtemp(prefix="seekmem_pair_"), "pending.json")
+        buf = Buffer(path)
+        buf.add("umo:a", "我有点撑不住", "10001", "s_u1", PAIR_AT, turn_id="t1")
+        buf.add("umo:a", "先歇口气", "bot", "s_a1", REPLY_AT, turn_id="t1",
+                reply_to="s_u1", role="assistant")
+        again = Buffer(path)
+        self.assertEqual([turn.turn_id for turn in again.items], ["t1", "t1"])
+        self.assertEqual([turn.reply_to for turn in again.items], [None, "s_u1"])
+
+    def test_pair_fields_survive_db_projection_reload(self):
+        db, _cache, _graph = make_db()
+        self.addCleanup(db.close)
+        buf = Buffer("", db=db)
+        parent, reply = _sources(db)
+        buf.add(parent.session_id, parent.text, parent.speaker_id, parent.id,
+                parent.at, source=parent, turn_id=parent.turn_id)
+        buf.add(reply.session_id, reply.text, reply.speaker_id, reply.id,
+                reply.at, source=reply, turn_id=reply.turn_id, role="assistant")
+        reloaded = Buffer("", db=db)
+        rows = {turn.source_id: turn for turn in reloaded.items}
+        self.assertEqual(rows["s_a1"].turn_id, "t1")
+        self.assertEqual(rows["s_a1"].reply_to, "s_u1")
+        self.assertEqual(rows["s_a1"].topic_id, rows["s_u1"].topic_id)
+
+
+class BehaviorEvidenceTest(unittest.TestCase):
+    def test_behavior_evidence_is_per_item_and_confidence_is_kept(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        extra = Source("s_extra", "t9", PAIR_SESSION, "10002", "user",
+                       "今天天气不错", "2026-10-22T12:00:05")
+        db.append_sources([extra])
+        turns = _pair(parent, reply) + [
+            DialogueTurn(PAIR_SESSION, "10002", "user", "今天天气不错",
+                         "2026-10-22T12:00:05", "s_extra", "", "t9")
+        ]
+        outcome = asyncio.run(absorb(
+            turns, db, cache, graph,
+            FakeProvider(_behavior_raw(["s_a1", "s_u1"], confidence=0.95)),
+        ))
+        self.assertEqual(outcome.written, 1)
+        art = cache.active("memory")[0]
+        self.assertEqual(art.header.lineage.sources, ("s_a1", "s_u1"))
+        self.assertAlmostEqual(art.header.strength.confidence, 0.95)
+        self.assertEqual(art.payload["bot_behavior"], "respond_emotion")
+        self.assertNotIn("evidence_source_ids", art.payload)
+        self.assertEqual(art.header.subject_id, "self")
+        evidence = {row["id"] for row in db.inspect_record(art.header.id)["sources"]}
+        self.assertEqual(evidence, {"s_u1", "s_a1"})
+
+    def test_invented_evidence_is_retryable_and_writes_nothing(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        outcome = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_u1", "s_bogus"])),
+        ))
+        self.assertTrue(outcome.retryable)
+        self.assertTrue(outcome.model_failed)
+        self.assertEqual(outcome.written, 0)
+        self.assertEqual(cache.active("memory"), [])
+
+    def test_cross_session_evidence_is_rejected(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        db.append_sources([
+            Source("s_other_u", "t7", "umo:other", "20002", "user", "别人的话", PAIR_AT),
+            Source("s_other_a", "t7", "umo:other", "bot", "assistant", "别人的回复",
+                   REPLY_AT, reply_to="s_other_u"),
+        ])
+        outcome = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_other_u", "s_other_a"])),
+        ))
+        self.assertTrue(outcome.retryable)
+        self.assertEqual(outcome.written, 0)
+        self.assertEqual(cache.active("memory"), [])
+
+    def test_behavior_without_assistant_parent_is_rejected(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        outcome = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_u1"])),
+        ))
+        self.assertTrue(outcome.retryable)
+        self.assertEqual(outcome.written, 0)
+
+    def test_invalid_evidence_is_retried_even_when_text_exists(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        first = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_u1", "s_a1"], text="她先接住情绪")),
+        ))
+        self.assertEqual(first.written, 1)
+        retry = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_u1", "s_bogus"], text="她先接住情绪")),
+        ))
+        self.assertTrue(retry.retryable)
+        self.assertEqual(retry.written, 0)
+        self.assertEqual(len(cache.active("memory")), 1)
+
+    def test_behavior_text_fields_alone_do_not_qualify(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        raw = json.dumps([{"level": "scene", "text": "她的语气很温和",
+                           "tags": "语气", "bot_tone": "温和"}], ensure_ascii=False)
+        outcome = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph, FakeProvider(raw),
+        ))
+        self.assertEqual(outcome.written, 1)
+        art = cache.active("memory")[0]
+        self.assertEqual(art.payload["bot_tone"], "温和")
+        self.assertNotIn("bot_behavior", art.payload)
+
+    def test_behavior_confidence_defaults_below_threshold(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        outcome = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_u1", "s_a1"])),
+        ))
+        self.assertEqual(outcome.written, 1)
+        confidence = cache.active("memory")[0].header.strength.confidence
+        self.assertLess(confidence, 0.9)
+
+    def test_ordinary_fact_without_confidence_keeps_legacy_default(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        raw = json.dumps([{"level": "fact", "text": "他今天很累", "tags": "累"}],
+                         ensure_ascii=False)
+        outcome = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph, FakeProvider(raw),
+        ))
+        self.assertEqual(outcome.written, 1)
+        self.assertAlmostEqual(
+            cache.active("memory")[0].header.strength.confidence, 1.0
+        )
+
+    def test_nonfinite_behavior_confidence_cannot_claim_high_confidence(self):
+        for value in (float("inf"), float("nan"), "Infinity", True):
+            with self.subTest(value=value):
+                db, cache, graph = make_db()
+                self.addCleanup(db.close)
+                parent, reply = _sources(db)
+                result = asyncio.run(absorb(
+                    _pair(parent, reply), db, cache, graph,
+                    FakeProvider(_behavior_raw([parent.id, reply.id], confidence=value)),
+                ))
+                self.assertEqual(result.written, 1)
+                self.assertLess(cache.active("memory")[0].header.strength.confidence, 0.9)
+
+    def test_repeated_evidence_dedupes_but_distinct_evidence_survives(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db, "1")
+        first = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_u1", "s_a1"], text="她先接住情绪")),
+        ))
+        self.assertEqual(first.written, 1)
+        again = asyncio.run(absorb(
+            _pair(parent, reply), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_a1", "s_u1"],
+                                       text="她会先把情绪接住再问细节")),
+        ))
+        self.assertEqual(again.written, 0)
+        self.assertEqual(len(cache.active("memory")), 1)
+        parent2, reply2 = _sources(db, "2", user="10003")
+        third = asyncio.run(absorb(
+            _pair(parent2, reply2), db, cache, graph,
+            FakeProvider(_behavior_raw(["s_u2", "s_a2"], text="她先接住情绪")),
+        ))
+        self.assertEqual(third.written, 1)
+        self.assertEqual(len(cache.active("memory")), 2)
+
+    def test_default_subject_uses_recovered_user_not_assistant(self):
+        db, cache, graph = make_db()
+        parent, reply = _sources(db)
+        provider = FakeProvider(json.dumps(
+            [{"level": "fact", "text": "他今天很累", "tags": "累"}],
+            ensure_ascii=False,
+        ))
+        outcome = asyncio.run(absorb(
+            _pair(parent, reply)[1:], db, cache, graph, provider,
+        ))
+        self.assertEqual(outcome.written, 1)
+        art = cache.active("memory")[0]
+        self.assertEqual(art.header.subject_id, "10001")
+        self.assertIn("user(10001)[s_u1]", provider.seen)
+        self.assertIn("assistant(bot)[s_a1]", provider.seen)
+        self.assertEqual(db.pending_extractions(), [])
+
+
+class DialogueWindowTest(unittest.TestCase):
+    def test_renderer_does_not_drop_supplied_rows(self):
+        rows = [
+            DialogueTurn("umo:a", "10001", "user", "parent line", PAIR_AT,
+                         "s_p", "", "t1"),
+            DialogueTurn("umo:a", "bot", "assistant", "reply line", REPLY_AT,
+                         "s_r", "", "t1", "s_p"),
+        ]
+        rows += [_turn(f"filler {index}", source_id=f"f{index}")
+                 for index in range(119)]
+        text = dialogue_of(rows)
+        self.assertEqual(text.count("\n") + 1, len(rows))
+        for row in rows:
+            self.assertIn(f"[{row.source_id}]", text)
+
+    def test_absorb_preserves_full_chunk_and_recovered_parent(self):
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+        parent, reply = _sources(db)
+        rows = _pair(parent, reply)[1:]
+        rows += [DialogueTurn(PAIR_SESSION, "10001", "user", f"filler {i}",
+                              PAIR_AT, f"f{i}") for i in range(119)]
+        provider = FakeProvider("[]")
+        result = asyncio.run(absorb(rows, db, cache, graph, provider))
+        self.assertFalse(result.retryable)
+        for row in rows:
+            self.assertIn(f"[{row.source_id}]", provider.seen)
+        self.assertIn(f"[{parent.id}]", provider.seen)
+        self.assertEqual(db.pending_extractions(), [])
+
+    def test_parent_from_another_session_never_reaches_model(self):
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+        foreign = Source("foreign", "foreign", "other", "20002", "user",
+                         "FOREIGN_PRIVATE_BODY", PAIR_AT)
+        db.append_sources([foreign])
+        reply = DialogueTurn(PAIR_SESSION, "bot", "assistant", "reply", REPLY_AT,
+                             "reply", reply_to=foreign.id)
+        provider = FakeProvider("[]")
+        asyncio.run(absorb([reply], db, cache, graph, provider))
+        self.assertNotIn(foreign.text, provider.seen)
+
+    def test_parent_read_failure_is_retryable_before_model_call(self):
+        from unittest.mock import patch
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+        parent, reply = _sources(db)
+        provider = FakeProvider("[]")
+        with patch.object(db, "sources_by_ids", side_effect=RuntimeError("busy")):
+            result = asyncio.run(absorb(_pair(parent, reply)[1:], db, cache,
+                                        graph, provider))
+        self.assertTrue(result.retryable)
+        self.assertEqual(provider.seen, "")
 
 
 if __name__ == "__main__":

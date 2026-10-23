@@ -94,6 +94,10 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |
 | Persona revision timeline was not exposed | covered by `tests/test_webui_host.py` (host layer) |
 | Repeated bot behavior had no self-impression path | covered by `tests/test_self_impression.py` |
+| Same reply or a derived impression inflated behavior frequency | covered by `tests/test_self_impression.py` |
+| Persona consolidation partially committed or lost stable identity | covered by `tests/test_persona.py` |
+| An old persona revision displayed a newer revision's private evidence | covered by `tests/test_webui_host.py` and `dashboard/tests/persona-evidence.test.ts` |
+| Windows clock collisions silently lost runtime audit rows | covered by `tests/test_runtime_actions.py` |
 | Wait, quiet, proactive and per-session rate-limit scheduling were untested | covered by `tests/test_runtime_scheduler.py` |
 
 ## Staging and model probes
@@ -115,6 +119,31 @@ python3 benchmarks/real_eval.py --cases benchmarks/data/extraction_smoke.jsonl -
 - Natural-language leakage cannot be proven by a single unit test. Combine boundary assertions, red-team prompts and
   final-output checks.
 - Capacity and latency under real group traffic require staging load tests and production metrics.
+
+## Persona growth model probe (GitHub #15)
+
+`python benchmarks/persona_growth.py --dry-run` checks the frozen 12 synthetic cases
+without network access. A real run uses `SEEKMEMORY_EVAL_API_KEY` (environment only),
+optional `SEEKMEMORY_EVAL_BASE_URL` / `SEEKMEMORY_EVAL_MODEL`, and requires `--out`.
+It calls the model only for background extraction, then uses real commits, deterministic
+maintenance and final-context assembly. Each case repeats three times (108 extraction calls).
+The gate is >= 90% positive scenarios, all negative scenarios and zero fixture-identifier leaks.
+Both compared checkouts use the same API configuration: `deepseek-flash`, non-thinking,
+maximum 4096 output tokens. Actual AstrBot provider settings remain owned by the host;
+this manual adapter comparison does not establish quality for every configured provider.
+
+Use `--repo /path/to/checkout` to evaluate another revision with the same frozen cases,
+and `--baseline-result path.json` for explicit improvements/regressions per case.
+Recorded results live in `benchmarks/results/persona_growth*.json`: baseline `9cbfd885`
+passed 0/18 positives and 18/18 negatives; the updated extractor passed 18/18 and 18/18,
+with zero tested leaks. These are finite synthetic cases, not proof of unrestricted
+natural-language accuracy. Earlier failed prompt iterations were used to identify
+behavior omission; the evidence thresholds and negative cases were not relaxed.
+
+Host verification uses an installed AstrBot package without starting adapters or production
+services. `test_capture_to_extraction_to_weekly_persona_uses_real_pairs` covers the actual
+capture, Source-backed queue, flush, weekly maintenance and final prompt, and checks that
+capture/recall/maintenance add no model call beyond the background extractor.
 
 ## CI policy
 

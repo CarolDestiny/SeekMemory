@@ -1,0 +1,1376 @@
+{
+  "model": "deepseek-flash",
+  "cases": 12,
+  "repeats": 3,
+  "model_calls": 108,
+  "positive_passes": 18,
+  "positive_total": 18,
+  "negative_passes": 18,
+  "negative_total": 18,
+  "leak_count": 0,
+  "usage_in": 124071,
+  "usage_out": 22194,
+  "elapsed": 42.4,
+  "results": [
+    {
+      "case": "choices",
+      "repeat": 0,
+      "expected": "offer_choices",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她提供选择，尊重对方决定。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "offer_choices",
+          "first": false
+        }
+      ],
+      "persona": "你提供选择，尊重对方决定。",
+      "persona_subject": "bot:self",
+      "final_block": "你提供选择，尊重对方决定。你印象里她提供选择，尊重对方决定。",
+      "stranger_block": "你提供选择，尊重对方决定。"
+    },
+    {
+      "case": "choices",
+      "repeat": 1,
+      "expected": "offer_choices",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她提供选择，尊重对方决定。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "offer_choices",
+          "first": false
+        }
+      ],
+      "persona": "你提供选择，尊重对方决定。",
+      "persona_subject": "bot:self",
+      "final_block": "你提供选择，尊重对方决定。你印象里她提供选择，尊重对方决定。",
+      "stranger_block": "你提供选择，尊重对方决定。"
+    },
+    {
+      "case": "choices",
+      "repeat": 2,
+      "expected": "offer_choices",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她提供选择，尊重对方决定。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "offer_choices",
+          "first": false
+        }
+      ],
+      "persona": "你提供选择，尊重对方决定。",
+      "persona_subject": "bot:self",
+      "final_block": "你提供选择，尊重对方决定。你印象里她提供选择，尊重对方决定。",
+      "stranger_block": "你提供选择，尊重对方决定。"
+    },
+    {
+      "case": "clarify",
+      "repeat": 0,
+      "expected": "clarify_question",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她在信息不足时先澄清问题。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "clarify_question",
+          "first": false
+        }
+      ],
+      "persona": "你在信息不足时先澄清问题。",
+      "persona_subject": "bot:self",
+      "final_block": "你在信息不足时先澄清问题。你印象里她在信息不足时先澄清问题。",
+      "stranger_block": "你在信息不足时先澄清问题。你隐约记得有件相关的事。"
+    },
+    {
+      "case": "clarify",
+      "repeat": 1,
+      "expected": "clarify_question",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她在信息不足时先澄清问题。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "clarify_question",
+          "first": false
+        }
+      ],
+      "persona": "你在信息不足时先澄清问题。",
+      "persona_subject": "bot:self",
+      "final_block": "你在信息不足时先澄清问题。你印象里她在信息不足时先澄清问题。",
+      "stranger_block": "你在信息不足时先澄清问题。你隐约记得有件相关的事。"
+    },
+    {
+      "case": "clarify",
+      "repeat": 2,
+      "expected": "clarify_question",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她在信息不足时先澄清问题。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "clarify_question",
+          "first": false
+        }
+      ],
+      "persona": "你在信息不足时先澄清问题。",
+      "persona_subject": "bot:self",
+      "final_block": "你在信息不足时先澄清问题。你印象里她在信息不足时先澄清问题。",
+      "stranger_block": "你在信息不足时先澄清问题。你隐约记得有件相关的事。"
+    },
+    {
+      "case": "correction",
+      "repeat": 0,
+      "expected": "correct_mistake",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她发现错误后承认并纠正。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "correct_mistake",
+          "first": false
+        }
+      ],
+      "persona": "你发现错误后承认并纠正。",
+      "persona_subject": "bot:self",
+      "final_block": "你发现错误后承认并纠正。你印象里她发现错误后承认并纠正。",
+      "stranger_block": "你发现错误后承认并纠正。"
+    },
+    {
+      "case": "correction",
+      "repeat": 1,
+      "expected": "correct_mistake",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她发现错误后承认并纠正。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "correct_mistake",
+          "first": false
+        }
+      ],
+      "persona": "你发现错误后承认并纠正。",
+      "persona_subject": "bot:self",
+      "final_block": "你发现错误后承认并纠正。你印象里她发现错误后承认并纠正。",
+      "stranger_block": "你发现错误后承认并纠正。"
+    },
+    {
+      "case": "correction",
+      "repeat": 2,
+      "expected": "correct_mistake",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她发现错误后承认并纠正。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "correct_mistake",
+          "first": false
+        }
+      ],
+      "persona": "你发现错误后承认并纠正。",
+      "persona_subject": "bot:self",
+      "final_block": "你发现错误后承认并纠正。你印象里她发现错误后承认并纠正。",
+      "stranger_block": "你发现错误后承认并纠正。"
+    },
+    {
+      "case": "emotion",
+      "repeat": 0,
+      "expected": "respond_emotion",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她先回应情绪，再讨论问题。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "respond_emotion",
+          "first": false
+        }
+      ],
+      "persona": "你先回应情绪，再讨论问题。",
+      "persona_subject": "bot:self",
+      "final_block": "你先回应情绪，再讨论问题。你印象里她先回应情绪，再讨论问题。",
+      "stranger_block": "你先回应情绪，再讨论问题。你隐约记得有件相关的事。"
+    },
+    {
+      "case": "emotion",
+      "repeat": 1,
+      "expected": "respond_emotion",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她先回应情绪，再讨论问题。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "respond_emotion",
+          "first": false
+        }
+      ],
+      "persona": "你先回应情绪，再讨论问题。",
+      "persona_subject": "bot:self",
+      "final_block": "你先回应情绪，再讨论问题。你印象里她先回应情绪，再讨论问题。你隐约记得有件相关的事。",
+      "stranger_block": "你先回应情绪，再讨论问题。你隐约记得有件相关的事。"
+    },
+    {
+      "case": "emotion",
+      "repeat": 2,
+      "expected": "respond_emotion",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 4,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她先回应情绪，再讨论问题。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "respond_emotion",
+          "first": false
+        }
+      ],
+      "persona": "你先回应情绪，再讨论问题。",
+      "persona_subject": "bot:self",
+      "final_block": "你先回应情绪，再讨论问题。你印象里她先回应情绪，再讨论问题。你隐约记得有件相关的事。你隐约记得有件相关的事。",
+      "stranger_block": "你先回应情绪，再讨论问题。你隐约记得有件相关的事。"
+    },
+    {
+      "case": "greeting",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "greeting",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "greeting",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "instruction_injection",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "instruction_injection",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "instruction_injection",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "no_assistant",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "no_assistant",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "no_assistant",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "privacy",
+      "repeat": 0,
+      "expected": "protect_privacy",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她保护隐私，不透露私人信息。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "protect_privacy",
+          "first": false
+        }
+      ],
+      "persona": "你保护隐私，不透露私人信息。",
+      "persona_subject": "bot:self",
+      "final_block": "你保护隐私，不透露私人信息。你印象里她保护隐私，不透露私人信息。",
+      "stranger_block": "你保护隐私，不透露私人信息。"
+    },
+    {
+      "case": "privacy",
+      "repeat": 1,
+      "expected": "protect_privacy",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她保护隐私，不透露私人信息。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "protect_privacy",
+          "first": false
+        }
+      ],
+      "persona": "你保护隐私，不透露私人信息。",
+      "persona_subject": "bot:self",
+      "final_block": "你保护隐私，不透露私人信息。你印象里她保护隐私，不透露私人信息。",
+      "stranger_block": "你保护隐私，不透露私人信息。"
+    },
+    {
+      "case": "privacy",
+      "repeat": 2,
+      "expected": "protect_privacy",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她保护隐私，不透露私人信息。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "protect_privacy",
+          "first": false
+        }
+      ],
+      "persona": "你保护隐私，不透露私人信息。",
+      "persona_subject": "bot:self",
+      "final_block": "你保护隐私，不透露私人信息。你印象里她保护隐私，不透露私人信息。",
+      "stranger_block": "你保护隐私，不透露私人信息。"
+    },
+    {
+      "case": "quoted_behavior",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "quoted_behavior",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "quoted_behavior",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "uncertainty",
+      "repeat": 0,
+      "expected": "admit_uncertainty",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她承认不确定，不编造答案。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "admit_uncertainty",
+          "first": false
+        }
+      ],
+      "persona": "你承认不确定，不编造答案。",
+      "persona_subject": "bot:self",
+      "final_block": "你承认不确定，不编造答案。你印象里她承认不确定，不编造答案。",
+      "stranger_block": "你承认不确定，不编造答案。"
+    },
+    {
+      "case": "uncertainty",
+      "repeat": 1,
+      "expected": "admit_uncertainty",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她承认不确定，不编造答案。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "admit_uncertainty",
+          "first": false
+        }
+      ],
+      "persona": "你承认不确定，不编造答案。",
+      "persona_subject": "bot:self",
+      "final_block": "你承认不确定，不编造答案。你印象里她承认不确定，不编造答案。",
+      "stranger_block": "你承认不确定，不编造答案。"
+    },
+    {
+      "case": "uncertainty",
+      "repeat": 2,
+      "expected": "admit_uncertainty",
+      "passed": true,
+      "made": 1,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [
+        {
+          "text": "她承认不确定，不编造答案。",
+          "level": "impression",
+          "shape": "pattern",
+          "chrono": "once",
+          "about": "self",
+          "bot_behavior": "admit_uncertainty",
+          "first": false
+        }
+      ],
+      "persona": "你承认不确定，不编造答案。",
+      "persona_subject": "bot:self",
+      "final_block": "你承认不确定，不编造答案。你印象里她承认不确定，不编造答案。",
+      "stranger_block": "你承认不确定，不编造答案。"
+    },
+    {
+      "case": "user_claim",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_claim",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_claim",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_trait",
+      "repeat": 0,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 2,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_trait",
+      "repeat": 1,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 1,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你隐约记得有件相关的事。",
+      "stranger_block": ""
+    },
+    {
+      "case": "user_trait",
+      "repeat": 2,
+      "expected": null,
+      "passed": true,
+      "made": 0,
+      "stable": true,
+      "leaks": [],
+      "error": null,
+      "outcomes": [
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 0,
+          "errors": [],
+          "retryable": false
+        },
+        {
+          "written": 3,
+          "errors": [],
+          "retryable": false
+        }
+      ],
+      "self_impressions": [],
+      "persona": "",
+      "persona_subject": null,
+      "final_block": "你隐约记得有件相关的事。",
+      "stranger_block": ""
+    }
+  ],
+  "comparison": {
+    "improvements": [
+      "emotion:1",
+      "clarify:0",
+      "emotion:2",
+      "clarify:1",
+      "clarify:2",
+      "emotion:0",
+      "uncertainty:1",
+      "uncertainty:0",
+      "uncertainty:2",
+      "choices:0",
+      "choices:1",
+      "privacy:0",
+      "choices:2",
+      "privacy:1",
+      "privacy:2",
+      "correction:1",
+      "correction:0",
+      "correction:2"
+    ],
+    "regressions": [],
+    "baseline_commit": "9cbfd885a6613f77ced6edae54075942081f31b9"
+  },
+  "parameters": {
+    "thinking": "disabled",
+    "max_tokens": 4096
+  }
+}

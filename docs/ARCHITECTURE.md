@@ -104,7 +104,28 @@ The extractor returns `subject_kind`, `subject_id`, `event_at` and validity date
 - Extraction batches rotate one topic per session. The scheduler keeps its own
   bounded `webui/trace.py` ring for capacity samples, separate from the
   business Journal event log.
-- Not implemented yet: local vector retrieval, reflection wiring, RBAC and persona source policy.
+- Not implemented yet: local vector retrieval, general reflection signals and full RBAC.
+
+## Robot self-impressions (GitHub #15)
+
+User and assistant turns keep `turn_id` and `reply_to` in the pending projection.
+An assistant reply inherits the actual parent topic; extraction can read an already
+processed immutable parent as context without re-queuing it. Per-item evidence
+is checked before deduplication. A behavior scene references exactly one real
+user/reply pair, so one batch or several artifacts cannot inflate its frequency.
+
+Weekly/dream maintenance aggregates self-impressions before decay and merge.
+It requires at least three distinct assistant Sources with confidence >= 0.9,
+then creates or revises a `bot:self` impression. User impressions remain independent.
+The six v1 behaviors are responding to emotion, clarifying, admitting uncertainty,
+offering choices, protecting privacy and correcting mistakes. Shared text comes
+from fixed generic sentences, never extracted names, places or private facts.
+
+Persona keeps one stable id and append-only revisions. Persona changes and any
+duplicate-head retirement commit atomically. Old unverified persona text remains
+in history but cannot enter chat context. No model/network call is added to chat
+capture or recall; behavior fields use the existing background extraction call.
+The admin timeline shows each revision's own lineage and protected dialogue evidence.
 
 ## Agent Runtime boundary
 
