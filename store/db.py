@@ -1065,3 +1065,11 @@ class DB:
             )
             deleted += int(cur.rowcount or 0)
         return deleted
+
+    def list_runtime_state_sessions(self, limit: int = 1000) -> list[str]:
+        """List sessions that have persisted runtime state."""
+        rows = self.conn.execute(
+            "SELECT session_id FROM runtime_state ORDER BY updated_at DESC LIMIT ?",
+            (max(1, min(10000, int(limit))),),
+        ).fetchall()
+        return [str(row["session_id"]) for row in rows]

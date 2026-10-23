@@ -7,6 +7,13 @@ from enum import Enum
 from typing import Any, Protocol
 
 
+class AttentionLevel(str, Enum):
+    AMBIENT = "ambient"
+    ADDRESSED = "addressed"
+    DIRECT = "direct"
+    PRIVATE = "private"
+
+
 class WakeAction(str, Enum):
     IGNORE = "ignore"
     OBSERVE = "observe"
@@ -23,7 +30,7 @@ class RuntimeInput:
     session_id: str
     text: str
     speaker_id: str = ""
-    private: bool = True
+    private: bool = False
     mentioned: bool = False
     name_mentioned: bool = False
     question: bool = False
@@ -61,6 +68,9 @@ class SocialState:
 class WakeDecision:
     action: WakeAction
     reason: str
+    attention: AttentionLevel = AttentionLevel.AMBIENT
+    must_reply: bool = False
+    defer_until: float = 0.0
     wait_seconds: float = 0.0
     confidence: float = 1.0
 

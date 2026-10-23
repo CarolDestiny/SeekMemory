@@ -7,6 +7,7 @@ import importlib
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -381,6 +382,50 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("private message body", serialized)
         self.assertNotIn("/secret", serialized)
 
+    async def test_runtime_scheduler_tick_is_isolated_and_private(self) -> None:
+        now = time.time()
+        self.plugin.db.put_runtime_state(
+            "s-wait",
+            {
+                "session_id": "s-wait",
+                "last_seen_at": now,
+                "wait_until": now + 120,
+                "quiet_until": 0.0,
+            },
+        )
+        self.plugin.db.put_runtime_state(
+            "s-proactive",
+            {
+                "session_id": "s-proactive",
+                "last_seen_at": now - 1000,
+                "proactive_idle_seconds": 1.0,
+                "proactive_probability": 1.0,
+                "quiet_until": 0.0,
+            },
+        )
+        self.plugin.db.put_runtime_state(
+            "s-bad", {"session_id": "s-bad", "last_seen_at": now}
+        )
+        original_get = self.plugin.runtime.store.get
+
+        def flaky_get(session_id):
+            if session_id == "s-bad":
+                raise RuntimeError("secret message body")
+            return original_get(session_id)
+
+        self.plugin.trace.rows.clear()
+        self.plugin.runtime.store.get = flaky_get
+        try:
+            self.plugin._runtime_scheduler_tick()
+        finally:
+            self.plugin.runtime.store.get = original_get
+        rows = list(self.plugin.trace.rows)
+        statuses = {row.status for row in rows}
+        self.assertIn("scheduler_wait", statuses)
+        self.assertIn("scheduler_proactive", statuses)
+        self.assertNotIn("secret message body", json.dumps([row.context for row in rows]))
+        self.assertNotIn("s-bad", json.dumps([row.context for row in rows]))
+
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace
 
@@ -416,8 +461,24 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             def set_extra(self, key, value):
                 self.extras[key] = value
 
+        class ToolSet:
+            def __init__(self):
+                self.tools = [
+                    SimpleNamespace(name="memory_search"),
+                    SimpleNamespace(name="shell_exec"),
+                ]
+                self.removed = []
+
+            def remove_tool(self, name):
+                self.removed.append(name)
+                self.tools = [tool for tool in self.tools if tool.name != name]
+
+        tools = ToolSet()
         event = Event()
-        await self.plugin.inject_memory(event, SimpleNamespace(system_prompt=""))
+        req = SimpleNamespace(system_prompt="", func_tool=tools)
+        await self.plugin.inject_memory(event, req)
+        self.assertEqual(tools.removed, ["shell_exec"])
+        self.assertEqual([tool.name for tool in tools.tools], ["memory_search"])
         self.assertTrue(event.get_extra("_seekmemory_recall_ids"))
         self.assertEqual(self.plugin.checkpoint.pending(), 0)
         await self.plugin.capture_reply(

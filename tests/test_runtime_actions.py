@@ -74,6 +74,12 @@ class ActionTest(unittest.TestCase):
         AstrBotRuntimeAdapter.apply_llm_gate(event, decision, True)
         self.assertFalse(event.call_llm)
 
+    def test_llm_gate_honors_must_reply(self) -> None:
+        event = Event()
+        decision = WakeDecision(WakeAction.WAIT, "deferred", must_reply=True)
+        AstrBotRuntimeAdapter.apply_llm_gate(event, decision, True)
+        self.assertTrue(event.call_llm)
+
     def test_tool_policy_and_trace(self) -> None:
         event = Event()
         policy = ToolPolicy(("memory_",))
@@ -92,6 +98,7 @@ class ActionTest(unittest.TestCase):
         state.quiet_until = 321
         state_store.put(state)
         self.assertEqual(DBStateStore(db).get("s1").quiet_until, 321)
+        self.assertEqual(db.list_runtime_state_sessions(), ["s1"])
 
         recorder = EpisodeRecorder(DBEpisodeStore(db))
         recorder.record(RuntimeEpisode(

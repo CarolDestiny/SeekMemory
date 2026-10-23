@@ -43,9 +43,12 @@ class AgentRuntime:
         now = event.at if event.at else self.clock()
         state = self.store.get(event.session_id)
         state.last_seen_at = now
-        state.last_unread_seq = max(state.last_unread_seq, int(event.unread_seq))
+        observed_seq = max(0, int(event.unread_seq))
+        if observed_seq <= int(state.last_unread_seq):
+            observed_seq = int(state.last_unread_seq) + 1
+        state.last_unread_seq = observed_seq
         state.unread_count = max(
-            state.unread_count, int(event.unread_count), 1
+            int(event.unread_count), observed_seq - int(state.read_through_seq), 1
         )
         decision = self.policy.evaluate(event, state, now)
         state.last_action = decision.action.value
