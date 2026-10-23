@@ -44,6 +44,7 @@ Additional required fields for every item:
 - subject_name: optional human-readable name
 - event_at: ISO datetime when the remembered event happened
 - valid_from / valid_to: ISO date or null for plans and time-bound facts
+- Optional bot behavior fields when assistant lines are present: bot_action, bot_tone, bot_boundary, outcome. Omit them when the reply does not show a durable behavior pattern.
 
 Dialogue lines may start with [ISO timestamp]. Resolve relative dates against that timestamp,
 never against extraction time. If the exact event time is unclear, use the earliest dialogue time.
