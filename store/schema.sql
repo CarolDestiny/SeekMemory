@@ -129,3 +129,16 @@ CREATE TABLE IF NOT EXISTS extraction_state (
 
 CREATE INDEX IF NOT EXISTS idx_extraction_state_queue
 ON extraction_state(state, next_attempt_at, created_at, source_id);
+
+-- 梦境周期台账：每天一次，记录这次"睡觉"抽了什么、改了什么。
+-- 主键是日期，天然幂等：同一天重复触发只会被这个表挡住。
+CREATE TABLE IF NOT EXISTS dream_runs (
+    dream_date  TEXT PRIMARY KEY,
+    status      TEXT NOT NULL DEFAULT 'planned',
+    started_at  TEXT NOT NULL DEFAULT '',
+    finished_at TEXT NOT NULL DEFAULT '',
+    batches     INTEGER NOT NULL DEFAULT 0,
+    written     INTEGER NOT NULL DEFAULT 0,
+    errors      TEXT NOT NULL DEFAULT '[]',
+    summary     TEXT NOT NULL DEFAULT '{}'
+);

@@ -12,6 +12,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "test_bm25.py",
         "test_calling.py",
         "test_capacity.py",
+        "test_dream.py",
         "test_flush_batches.py",
         "test_gate.py",
         "test_journal.py",

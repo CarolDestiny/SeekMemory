@@ -126,5 +126,35 @@
     "type": "string",
     "hint": "例：{\"pending_saturated_rows\": 150, \"defer_limit\": 300}",
     "default": ""
+  },
+  "dream_enabled": {
+    "description": "梦境模式：白天只缓冲，抽取与进化留到每天固定时刻",
+    "type": "bool",
+    "default": true
+  },
+  "dream_time": {
+    "description": "梦境时刻 HH:MM",
+    "type": "string",
+    "default": "03:30"
+  },
+  "dream_max_batches": {
+    "description": "一次梦境最多处理多少个话题批次",
+    "type": "int",
+    "default": 12
+  },
+  "context_system_chars": {
+    "description": "系统提示词预算（字）",
+    "type": "int",
+    "default": 1600
+  },
+  "group_context_messages": {
+    "description": "群聊流水最多注入多少条",
+    "type": "int",
+    "default": 20
+  },
+  "history_messages": {
+    "description": "会话历史保留条数",
+    "type": "int",
+    "default": 24
   }
 }

@@ -18,8 +18,10 @@ from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
+from .app.budget import budget_from_config, estimate_tokens
 from .app.checkpoint import CheckpointManager
 from .app.contracts import DialogueTurn
+from .app.dream import DreamCycle
 from .app.flush_policy import decide_flush, select_topic_batches
 from .core.capacity import (
     NORMAL,
@@ -64,6 +66,8 @@ class Main(star.Star):
         self._flushing = False
         self._flush_day = ""
         self._flush_count = 0
+        self.budget = budget_from_config(self._c)
+        self.dream: DreamCycle | None = None
         self._schedulers: list[asyncio.Task] = []
         self.data_path = (
             Path(str(self._c("db_path", ""))).expanduser()
@@ -82,6 +86,11 @@ class Main(star.Star):
         self._backpressure = False
         self._deferred_rows = 0
         self._init_engine()
+        if self.db is not None:
+            self.dream = DreamCycle(
+                self.db, self._c,
+                log=lambda msg: logger.info(f"[seekmemory] {msg}"),
+            )
         self.web = WebRoutes(self)
         self.web.register()
 
@@ -239,16 +248,20 @@ class Main(star.Star):
         self, text: str, umo: str = "", private: bool = False, speaker: str = ""
     ) -> tuple[str, dict]:
         """交给读路径模块：常驻层 + 检索 + 偶然浮现。"""
-        conf = self._c
-        if self._degrade_recall:
-            def reduced(key: str, default):
-                if key == "budget_chars":
-                    return max(80, int(self._c(key, default) * 0.5))
-                if key == "recall_k":
-                    return max(1, int(self._c(key, default) * 0.5))
-                return self._c(key, default)
+        budget_chars = int(self.budget.injection_chars)
+        recall_k = int(self._c("recall_k", 8))
+        if self._degrade_recall:  # 容量紧张时减半
+            budget_chars = max(80, budget_chars // 2)
+            recall_k = max(1, recall_k // 2)
 
-            conf = reduced
+        def conf(key: str, default):
+            """把预算注入到读路径配置里，其它键仍走插件配置。"""
+            if key == "budget_chars":
+                return budget_chars
+            if key == "recall_k":
+                return recall_k
+            return self._c(key, default)
+
         return build_block(
             self.cache,
             self.graph,
@@ -348,14 +361,11 @@ class Main(star.Star):
     async def start_jobs(self) -> None:
         if not self.ready or self.jobs.closed or self._schedulers:
             return
+        operations = [self._weekly_loop, self._checkpoint_loop, self._dream_loop]
+        if not self._dream_on:  # 兼容旧行为：梦境关掉才保留白天/夜间抽取
+            operations += [self._nightly_loop, self._idle_loop]
         self._schedulers = [
-            asyncio.create_task(operation())
-            for operation in (
-                self._nightly_loop,
-                self._weekly_loop,
-                self._idle_loop,
-                self._checkpoint_loop,
-            )
+            asyncio.create_task(operation()) for operation in operations
         ]
         self.journal.record("scheduler", "running", "维护定时任务已启动")
 
@@ -604,13 +614,21 @@ class Main(star.Star):
             backlog_flush_at=int(self._c("backlog_flush_at", 30)),
             topic_age_seconds=self.buffer.oldest_topic_age(),
             topic_ttl_seconds=float(self._c("topic_ttl_seconds", 86400)),
+            dream_only=self._dream_on,
         )
         if decision.should:
             return True
+        if self._dream_on:
+            return False
         return (
             capacity.state in (SATURATED, PROTECTIVE)
             and "schedule_extraction" in capacity.actions
         )
+
+    @property
+    def _dream_on(self) -> bool:
+        """梦境模式：白天只缓冲，抽取与进化都留到 dream 周期。"""
+        return bool(self.dream is not None and self.dream.enabled)
 
     async def _idle_loop(self) -> None:
         """聊完安静一会儿就抽，不用等到半夜。"""
@@ -624,6 +642,51 @@ class Main(star.Star):
             except Exception as e:  # noqa: BLE001
                 logger.error(f"[seekmemory] 空闲抽取失败：{e}")
                 self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
+
+    async def _dream_loop(self) -> None:
+        """每天 dream_time 跑一次进化；启动时若已过点且没做，立刻补一次。"""
+        if self.dream is not None and self.dream.due():
+            try:
+                self.jobs.submit("dream", self._run_dream)
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[seekmemory] 补跑梦境失败：{e}")
+        while True:
+            await asyncio.sleep(
+                self._seconds_until(str(self._c("dream_time", "03:30")))
+            )
+            try:
+                self.jobs.submit("dream", self._run_dream)
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[seekmemory] 梦境任务提交失败：{e}")
+                self.journal.record("scheduler", "failed", "梦境提交失败", error=e)
+
+    async def _run_dream(self) -> None:
+        """一次梦境：批量抽取当天的缓冲，再做整理与人格沉淀。"""
+        if self.dream is None or self.buffer is None:
+            return
+        self._apply_capacity_maintenance(self._observe_capacity())
+        result = await self.dream.run(
+            flush_once=self._flush,
+            pending=lambda: len(self.buffer.items),
+            maintain=self._dream_maintain,
+        )
+        self.journal.record(
+            "dream",
+            result.status,
+            f"{result.date}：{result.batches} 个话题 / 写入 {result.written} 条"
+            + (f" / {len(result.errors)} 个错误" if result.errors else ""),
+            self.jobs.task_id,
+            context={
+                "date": result.date,
+                "batches": result.batches,
+                "written": result.written,
+                "errors": list(result.errors),
+            },
+        )
+
+    async def _dream_maintain(self) -> dict:
+        """抽取之后的整理：遗忘、合并、人格沉淀。"""
+        return await self._weekly()
 
     async def _nightly(self) -> None:
         """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
@@ -653,7 +716,7 @@ class Main(star.Star):
             or not self.buffer.items
             or self.db is None
         ):
-            return
+            return 0, 0
         self._flushing = True
         try:
             capacity = self._observe_capacity()
@@ -698,7 +761,7 @@ class Main(star.Star):
             if not ready:
                 if failure is not None:
                     raise failure
-                return
+                return 0, 0
             self._flush_count += 1
             written = 0
             for umo, topic_id, part, prov in ready:
@@ -751,16 +814,17 @@ class Main(star.Star):
             )
             if failure is not None:
                 raise failure
+            return written, len(ready)
         finally:
             self._flushing = False
 
-    async def _weekly(self) -> None:
+    async def _weekly(self) -> dict:
         from .maintain.decay import decay_all
         from .maintain.merge import merge_similar
         from .maintain.persona import distill_persona
 
         if self.db is None or self.cache is None:
-            return
+            return {}
         today = datetime.date.today().isoformat()
         with self.journal.span("weekly", "decay") as metrics:
             dropped = decay_all(self.db, self.cache, today)
@@ -781,3 +845,4 @@ class Main(star.Star):
             f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组，"
             f"人格 {'已更新' if persona else '无变化'}"
         )
+        return {"forgotten": dropped, "merged": merged, "persona": bool(persona)}
