@@ -41,7 +41,7 @@ class PipelineDisclosureTest(unittest.TestCase):
         self.assertNotIn("top secret phrase", block)
         self.assertEqual(info["disclosure"][art.header.id], "paraphrase")
 
-    def test_bm25_does_not_make_private_memory_visible_cross_session(self):
+    def test_bm25_makes_private_memory_globally_retrievable_but_not_raw(self):
         db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db)
         graph = Graph(db, cache)
@@ -63,7 +63,8 @@ class PipelineDisclosureTest(unittest.TestCase):
         )
 
         self.assertNotIn("唯一的量化交易私密短语", block)
-        self.assertEqual(info["picked_ids"], ())
+        self.assertEqual(info["picked_ids"], (art.header.id,))
+        self.assertIn(info["disclosure"].get(art.header.id), ("hint", "paraphrase", "silence"))
 
 
 class OptionalBM25PipelineTest(unittest.TestCase):

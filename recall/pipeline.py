@@ -11,7 +11,13 @@ from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..app.ports import Retriever
-    from ..core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
+    from ..core.disclosure import (
+        DisclosureLevel,
+        RecallScene,
+        decide,
+        safe_text,
+        scope_prior,
+    )
     from ..core.graph import Graph
     from ..core.bot_behavior import trusted_self_persona
     from ..recall.assemble import build_with_meta as assemble_text_meta
@@ -29,7 +35,13 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..store.db import DB
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from app.ports import Retriever
-    from core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
+    from core.disclosure import (
+        DisclosureLevel,
+        RecallScene,
+        decide,
+        safe_text,
+        scope_prior,
+    )
     from core.graph import Graph
     from core.bot_behavior import trusted_self_persona
     from store.cache import Cache
@@ -61,7 +73,11 @@ def subject_of(speaker: str, owner_umo: str) -> str:
 
 def recent_context(pool: list, subject: str, *, profile: bool = False,
                    limit: int = 2) -> list:
-    """Return recent visible memory for an explicit recall question."""
+    """Return recent global memory for an explicit recall question.
+
+    Subject match is a ranking factor rather than a visibility gate; private
+    memory from another conversation can still influence the fallback.
+    """
     if not subject:
         return []
     levels = ("fact", "scene", "detail") if profile else ("scene", "detail", "fact")
@@ -76,13 +92,18 @@ def recent_context(pool: list, subject: str, *, profile: bool = False,
                 continue
             subject_id = str(art.header.subject_id or "")
             said_by = str(art.header.said_by or "")
-            if subject_id not in (subject, "owner") and said_by != subject:
-                continue
-            rows.append((str(art.header.time.created or ""), str(art.header.id), art))
+            if subject_id == subject or said_by == subject:
+                affinity = 2
+            elif subject_id == "owner":
+                affinity = 1
+            else:
+                affinity = 0
+            rows.append((affinity, str(art.header.time.created or ""),
+                         str(art.header.id), art))
         except Exception:
             continue
-    rows.sort(reverse=True)
-    return [row[2] for row in rows[:max(0, limit)]]
+    rows.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+    return [row[3] for row in rows[:max(0, limit)]]
 
 
 def build_block(
@@ -165,6 +186,14 @@ def build_block(
         else:
             retriever = GraphRetriever(graph, cache)
         candidates = retriever.retrieve(text, pool)
+        candidates = [
+            type(candidate)(
+                candidate.artifact,
+                candidate.activation * scope_prior(candidate.artifact),
+                candidate.lexical * scope_prior(candidate.artifact),
+            )
+            for candidate in candidates
+        ]
         loose = mode == "loose"
         picked = select(
             candidates,

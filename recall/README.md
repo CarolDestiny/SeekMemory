@@ -12,7 +12,7 @@
 | 文件 | 行数 | 职责 |
 | --- | ---: | --- |
 | `__init__.py` | 0 | 空包标记 |
-| `scope.py` | 64 | `visible()`：private 只给归属会话，shared / shadow 全员可见 |
+| `scope.py` | 64 | `visible()`: global candidate pool; only explicit secret family is excluded |
 | `designated.py` | 85 | 指定记忆交付：私聊 + 触发词 + given 三条硬条件 |
 | `seed.py` | 173 | `seeds()`：二元组重合度 + 梗标签加分，取 top-limit 个种子 id |
 | `spread.py` | 75 | `activate()`：每跳乘 0.5、每轮只留 top 20 的激活扩散 |

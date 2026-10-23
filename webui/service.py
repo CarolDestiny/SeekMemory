@@ -11,6 +11,7 @@ try:
     from ..core.artifact import Artifact, content_of, revise, validate
     from ..core.graph import Graph
     from ..core.versioning import VersionError
+    from ..recall.designated import deliverable
     from ..recall.pipeline import Conf, build_block
     from ..recall.scope import owner_of, visible
     from ..store.cache import Cache
@@ -20,6 +21,7 @@ except ImportError:
     from core.artifact import Artifact, content_of, revise, validate
     from core.graph import Graph
     from core.versioning import VersionError
+    from recall.designated import deliverable
     from recall.pipeline import Conf, build_block
     from recall.scope import owner_of, visible
     from store.cache import Cache
@@ -224,6 +226,11 @@ class ManagementService:
         owner = str(self.conf("owner_umo", ""))
         pool = self.cache.active()
         eligible = visible(pool, body["umo"], owner, self.db.source_umo)
+        private = ":FriendMessage:" in body["umo"]
+        eligible = [
+            art for art in eligible
+            if deliverable(art, body["query"], private)
+        ]
         ids = {art.header.id for art in eligible}
         block, info = build_block(
             self.cache,
@@ -231,7 +238,7 @@ class ManagementService:
             self.db,
             body["umo"],
             body["query"],
-            ":FriendMessage:" in body["umo"],
+            private,
             self.conf,
             owner,
             body["speaker"],

@@ -84,6 +84,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Runtime delivery was recorded before actual send | covered by `tests/test_webui_host.py` (host layer) |
 | Runtime memory context was coupled to main injection | covered by `tests/test_agent_runtime.py`, `tests/test_seekmemory_context.py` |
 | Private/direct attention was suppressed by wait | covered by `tests/test_agent_runtime.py` |
+| Cross-session memory was hidden by private scope | covered by `tests/test_scope.py`, `tests/test_recall_pipeline.py` |
+| Disclosure was a hard session gate instead of a factor model | covered by `tests/test_recall_feel.py`, `tests/test_kernel.py` |
 | Tool guard was advisory in the request path | covered by `tests/test_webui_host.py` (host layer) |
 | Scheduler policy was not run over persisted sessions | covered by `tests/test_runtime_actions.py` DB session listing |
 | Due ambient wait had no reply dispatch | covered by `tests/test_webui_host.py` (host layer) |

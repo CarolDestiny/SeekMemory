@@ -647,7 +647,7 @@ WebUI 的 TypeScript 源码保存在 `dashboard/`，发版 CI 构建 `pages/memo
 后端复用运行中的 DB、Cache、Graph。人工修订在一个事务内校验 revision、写入新版本和账本，
 不修改 Source；任务执行器串行处理手动/定时维护，卸载时先取消任务再释放数据库。
 生命周期日志保存最近 500 条，1 MiB 轮转并保留一个备份；重启把未结束任务标记为 interrupted。
-界面不改变已有 scope 语义：shared/shadow 进入跨会话候选，private 按归属过滤；shadow 正文仍由组装层遮蔽。
+Scope is now a continuous disclosure prior, not a visibility gate. Private/global memories participate in recall; session provenance and subject affinity decide whether the result is full, paraphrase, hint or silence.
 详情和限制见 [WebUI 使用说明](webui/README.md)、[管理接口](CONTRACT.md#webui-管理接口)。
 
 ## 16. 可选 BM25 字面检索（ISSUE-0024）
