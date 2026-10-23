@@ -58,6 +58,13 @@ class ToolGuardTest(unittest.TestCase):
         self.assertTrue(guard.check_tool("memory_search", {}).enforced)
         self.assertFalse(guard.check_tool("shell", {}).allowed)
 
+    def test_malformed_tool_set_is_fail_open(self) -> None:
+        guard = PolicyToolGuard(ToolPolicy(("memory_",)))
+        class BadToolSet:
+            tools = [Tool("shell")]
+        self.assertEqual(guard.filter_tool_set(BadToolSet()), ())
+        self.assertEqual(guard.filter_tool_set(None), ())
+
     def test_observation_policy_never_claims_enforcement(self) -> None:
         event = Event()
         call = trace_tool_call(

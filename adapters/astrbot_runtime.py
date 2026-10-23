@@ -43,6 +43,7 @@ class AstrBotRuntimeAdapter:
         try:
             event.set_extra("_seekmemory_runtime_action", decision.action.value)
             event.set_extra("_seekmemory_runtime_reason", decision.reason)
+            event.set_extra("_seekmemory_runtime_defer_until", decision.defer_until)
         except Exception:  # noqa: BLE001 - observability must not break the host
             return
 

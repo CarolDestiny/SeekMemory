@@ -173,10 +173,17 @@ class PolicyToolGuard:
         ``remove_tool(name)``. No tool is executed here.
         """
         removed: list[str] = []
+        remove_tool = getattr(tool_set, "remove_tool", None)
+        if not callable(remove_tool):
+            return ()
         tools = list(getattr(tool_set, "tools", ()) or ())
         for tool in tools:
             name = str(getattr(tool, "name", "") or "")
-            if name and not self.policy.allows(name):
-                tool_set.remove_tool(name)
+            if not name or self.policy.allows(name):
+                continue
+            try:
+                remove_tool(name)
                 removed.append(name)
+            except Exception:  # noqa: BLE001 - guard is fail-open
+                continue
         return tuple(removed)

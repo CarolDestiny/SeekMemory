@@ -7,6 +7,7 @@ import importlib
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -380,6 +381,50 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         serialized = json.dumps(journal_event)
         self.assertNotIn("private message body", serialized)
         self.assertNotIn("/secret", serialized)
+
+    async def test_runtime_scheduler_tick_is_isolated_and_private(self) -> None:
+        now = time.time()
+        self.plugin.db.put_runtime_state(
+            "s-wait",
+            {
+                "session_id": "s-wait",
+                "last_seen_at": now,
+                "wait_until": now + 120,
+                "quiet_until": 0.0,
+            },
+        )
+        self.plugin.db.put_runtime_state(
+            "s-proactive",
+            {
+                "session_id": "s-proactive",
+                "last_seen_at": now - 1000,
+                "proactive_idle_seconds": 1.0,
+                "proactive_probability": 1.0,
+                "quiet_until": 0.0,
+            },
+        )
+        self.plugin.db.put_runtime_state(
+            "s-bad", {"session_id": "s-bad", "last_seen_at": now}
+        )
+        original_get = self.plugin.runtime.store.get
+
+        def flaky_get(session_id):
+            if session_id == "s-bad":
+                raise RuntimeError("secret message body")
+            return original_get(session_id)
+
+        self.plugin.trace.rows.clear()
+        self.plugin.runtime.store.get = flaky_get
+        try:
+            self.plugin._runtime_scheduler_tick()
+        finally:
+            self.plugin.runtime.store.get = original_get
+        rows = list(self.plugin.trace.rows)
+        statuses = {row.status for row in rows}
+        self.assertIn("scheduler_wait", statuses)
+        self.assertIn("scheduler_proactive", statuses)
+        self.assertNotIn("secret message body", json.dumps([row.context for row in rows]))
+        self.assertNotIn("s-bad", json.dumps([row.context for row in rows]))
 
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace

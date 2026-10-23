@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.runtime import (  # noqa: E402
     AgentRuntime,
+    AttentionLevel,
     InMemoryStateStore,
     JsonStateStore,
     MemoryContext,
@@ -91,7 +92,17 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(ambient.action, WakeAction.WAIT)
         self.assertEqual(direct.action, WakeAction.REPLY)
 
-    def test_wait_window_returns_wait(self) -> None:
+    def test_addressed_question_breaks_wait(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "what happened?", question=True, at=150),
+            self.state,
+            150,
+        )
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.attention, AttentionLevel.ADDRESSED)
+
+    def test_wait_decision_carries_defer_deadline(self) -> None:
         self.state.wait_until = 200
         decision = self.policy.evaluate(
             RuntimeInput("s1", "ambient", at=150), self.state, 150
@@ -99,6 +110,7 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(decision.action, WakeAction.WAIT)
         self.assertEqual(decision.reason, "waiting")
         self.assertEqual(decision.wait_seconds, 50)
+        self.assertEqual(decision.defer_until, 200)
 
     def test_direct_attention_breaks_wait(self) -> None:
         self.state.wait_until = 200

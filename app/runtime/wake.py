@@ -46,13 +46,6 @@ class WakePolicy:
                 confidence=0.95,
             )
 
-        if state.wait_until > moment:
-            return WakeDecision(
-                WakeAction.WAIT,
-                "waiting",
-                attention=AttentionLevel.AMBIENT,
-                wait_seconds=state.wait_until - moment,
-            )
         if state.quiet_until > moment:
             return WakeDecision(
                 WakeAction.IGNORE,
@@ -80,6 +73,15 @@ class WakePolicy:
                 "keyword_match",
                 attention=AttentionLevel.ADDRESSED,
                 confidence=0.7,
+            )
+
+        if state.wait_until > moment:
+            return WakeDecision(
+                WakeAction.WAIT,
+                "waiting",
+                attention=AttentionLevel.AMBIENT,
+                wait_seconds=state.wait_until - moment,
+                defer_until=state.wait_until,
             )
 
         cooldown_until = state.cooldown_until
