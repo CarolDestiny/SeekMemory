@@ -25,6 +25,8 @@ from .app.dream import DreamCycle
 from .app.flush_policy import chunk_turns, decide_flush, select_topic_batches
 from .app.runtime import (
     AgentRuntime,
+    DBEpisodeStore,
+    DBStateStore,
     EpisodeRecorder,
     JsonStateStore,
     JsonlEpisodeStore,
@@ -86,13 +88,6 @@ class Main(star.Star):
         )
         self.journal = Journal(self.data_path.parent / "lifecycle.jsonl")
         self.trace = Trace()
-        self.runtime = AgentRuntime(
-            JsonStateStore(str(self.data_path.parent / "runtime_state.json")),
-            trace=self.trace,
-        )
-        self.episode_recorder = EpisodeRecorder(
-            JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
-        )
         self.tool_policy = ToolPolicy(
             allowed_prefixes=("memory_", "search_memory", "query_memory")
         )
@@ -107,6 +102,17 @@ class Main(star.Star):
         self._backpressure = False
         self._deferred_rows = 0
         self._init_engine()
+        if self.db is not None:
+            self.runtime = AgentRuntime(DBStateStore(self.db), trace=self.trace)
+            self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
+        else:
+            self.runtime = AgentRuntime(
+                JsonStateStore(str(self.data_path.parent / "runtime_state.json")),
+                trace=self.trace,
+            )
+            self.episode_recorder = EpisodeRecorder(
+                JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
+            )
         if self.db is not None:
             self.dream = DreamCycle(
                 self.db, self._c,

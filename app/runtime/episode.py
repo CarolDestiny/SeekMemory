@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Protocol
@@ -55,3 +56,16 @@ class JsonlEpisodeStore:
                 self.last_error = ""
             except Exception as exc:  # noqa: BLE001 - episode logging is fail-open
                 self.last_error = type(exc).__name__
+
+
+class DBEpisodeStore:
+    """Persist runtime episodes through the project's SQLite DB facade."""
+
+    def __init__(self, db) -> None:
+        self.db = db
+
+    def append(self, episode: RuntimeEpisode) -> None:
+        payload = asdict(episode)
+        payload["id"] = f"ep_{time.time_ns()}"
+        payload["tool_calls"] = list(episode.tool_calls)
+        self.db.append_runtime_episode(payload)

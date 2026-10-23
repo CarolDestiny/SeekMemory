@@ -142,3 +142,29 @@ CREATE TABLE IF NOT EXISTS dream_runs (
     errors      TEXT NOT NULL DEFAULT '[]',
     summary     TEXT NOT NULL DEFAULT '{}'
 );
+
+-- Runtime state is mutable scheduler state, separate from Source/Artifact memory.
+CREATE TABLE IF NOT EXISTS runtime_state (
+    session_id TEXT PRIMARY KEY,
+    payload    TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+
+-- Runtime episodes are append-only metadata/audit records, not memory artifacts.
+CREATE TABLE IF NOT EXISTS runtime_episodes (
+    id                  TEXT PRIMARY KEY,
+    at                  TEXT NOT NULL,
+    session_id          TEXT NOT NULL,
+    decision            TEXT NOT NULL DEFAULT '',
+    reason              TEXT NOT NULL DEFAULT '',
+    action              TEXT NOT NULL DEFAULT '',
+    delivered           INTEGER NOT NULL DEFAULT 0,
+    response_chars      INTEGER NOT NULL DEFAULT 0,
+    tool_calls          TEXT NOT NULL DEFAULT '[]',
+    outcome             TEXT NOT NULL DEFAULT '',
+    error               TEXT NOT NULL DEFAULT '',
+    user_source_id      TEXT NOT NULL DEFAULT '',
+    assistant_source_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_episodes_session
+ON runtime_episodes(session_id, at, id);

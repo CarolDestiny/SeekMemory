@@ -15,6 +15,8 @@ from adapters.astrbot_actions import AstrBotActionPort  # noqa: E402
 from adapters.astrbot_runtime import AstrBotRuntimeAdapter  # noqa: E402
 from app.runtime import (  # noqa: E402
     AgentRuntime,
+    DBEpisodeStore,
+    DBStateStore,
     EpisodeRecorder,
     InMemoryStateStore,
     JsonlEpisodeStore,
@@ -23,6 +25,7 @@ from app.runtime import (  # noqa: E402
     WakeAction,
     WakeDecision,
 )
+from store.db import DB  # noqa: E402
 
 
 class Context:
@@ -81,6 +84,26 @@ class ActionTest(unittest.TestCase):
         self.assertEqual(event.extras["_seekmemory_tool_calls"], ("memory_search",))
         blocked = AstrBotRuntimeAdapter.observe_tool(event, "shell", {}, policy)
         self.assertFalse(blocked.allowed)
+
+    def test_db_state_and_episode_stores(self) -> None:
+        db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_db_"), "memory.db"))
+        state_store = DBStateStore(db)
+        state = state_store.get("s1")
+        state.quiet_until = 321
+        state_store.put(state)
+        self.assertEqual(DBStateStore(db).get("s1").quiet_until, 321)
+
+        recorder = EpisodeRecorder(DBEpisodeStore(db))
+        recorder.record(RuntimeEpisode(
+            session_id="s1", at="2026-01-01T00:00:00", decision="reply",
+            reason="mention", action="reply", delivered=True,
+            response_chars=4, tool_calls=("memory_search",), outcome="ok",
+            user_source_id="u1", assistant_source_id="a1",
+        ))
+        rows = db.list_runtime_episodes("s1")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["decision"], "reply")
+        self.assertIn("memory_search", rows[0]["tool_calls"])
 
     def test_episode_jsonl_has_no_message_body(self) -> None:
         path = os.path.join(tempfile.mkdtemp(prefix="seekmem_episode_"), "episodes.jsonl")

@@ -567,4 +567,4 @@ An extraction item may include an optional `supersedes` exact-text hint. After t
 
 ## Runtime actions and episodes
 
-`AstrBotActionPort` provides send/wait/proactive host actions. `EpisodeRecorder` writes bounded metadata to `runtime_episodes.jsonl` (no message bodies). `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
+`AstrBotActionPort` provides send/wait/proactive host actions. `DBStateStore` and `DBEpisodeStore` persist mutable social state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
