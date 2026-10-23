@@ -38,6 +38,7 @@ class PackageTests(unittest.TestCase):
             shutil.copyfile(ROOT / name, target)
         for directory in (
             "app",
+            "adapters",
             "core",
             "store",
             "recall",
