@@ -34,18 +34,15 @@ def forget_expired(db: DB, cache: Cache, today: str = "") -> int:
         base = datetime.date.fromisoformat(today[:10]) if today else datetime.date.today()
     except ValueError:
         base = datetime.date.today()
-    forgotten = 0
-    for art in list(cache.active()):
-        if not _expired(art, base):
-            continue
-        updated = revise(art, state="forgotten")
-        db.commit(
-            updated,
-            expected_revision=art.header.revision,
-            op="forget",
-            reason="lifecycle expiration",
-            source_ids=tuple(art.header.lineage.sources),
-        )
+    expired = [art for art in list(cache.active()) if _expired(art, base)]
+    if not expired:
+        return 0
+    writes = [
+        (revise(art, state="forgotten"), art.header.revision,
+         tuple(art.header.lineage.sources))
+        for art in expired
+    ]
+    db.commit_many(writes, op="forget", reason="lifecycle expiration")
+    for art in expired:
         cache.remove(art.header.id)
-        forgotten += 1
-    return forgotten
+    return len(expired)
