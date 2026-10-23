@@ -535,3 +535,8 @@ Assistant replies are appended as Source rows and then enter the same extraction
 ## Self-impressions and persona
 
 Assistant replies enter extraction with `role=assistant`. Optional `bot_action`, `bot_tone`, `bot_boundary` and `outcome` fields are preserved in memory payloads. The weekly maintenance job aggregates repeated behavior into `family=memory`, `level=impression`, `about=self`, `subject_id=bot:self` artifacts. `distill_self_persona()` composes persona only from those self-impressions and keeps one stable persona id across revisions.
+
+
+## Atomic batch writes
+
+`DB.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.

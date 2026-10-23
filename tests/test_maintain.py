@@ -158,6 +158,27 @@ class ReflectTest(_MaintainCase):
 class MergeTest(_MaintainCase):
     """merge_similar：超过 500 条时合并最旧一批相似记忆。"""
 
+    def test_merge_rolls_back_when_a_member_write_fails(self) -> None:
+        for _ in range(501):
+            self._seed(_memory("he works late again", "scene", weight=1.0,
+                               time={"created": "2024-01-01T00:00:00",
+                                     "updated": "2024-01-01T00:00:00"}))
+        before_size = self.cache.size()
+        original = self.db._commit_conn
+        calls = {"count": 0}
+
+        def flaky(*args, **kwargs):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise RuntimeError("member write failed")
+            return original(*args, **kwargs)
+
+        self.db._commit_conn = flaky
+        with self.assertRaises(RuntimeError):
+            merge_similar(self.db, self.cache)
+        self.assertEqual(self.cache.size(), before_size)
+        self.assertEqual(self.cache.by_level("impression"), [])
+
     def test_501_similar_scenes_make_impression(self) -> None:
         """501 条相似场景合并出至少一条 impression，成员标 merged。"""
         total = 501

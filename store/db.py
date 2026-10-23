@@ -248,14 +248,35 @@ class DB:
             "promote",
         ):
             raise ValueError(f"unknown commit op: {op}")
-        self._commit_conn(
-            art,
-            expected_revision=expected_revision,
-            op=op,
-            reason=reason,
-            source_ids=source_ids,
-            state_events=state_events,
-        )
+        with self.conn:
+            self._commit_conn(
+                art,
+                expected_revision=expected_revision,
+                op=op,
+                reason=reason,
+                source_ids=source_ids,
+                state_events=state_events,
+            )
+
+    def commit_many(
+        self,
+        writes: list[tuple[Artifact, int, tuple[str, ...]]],
+        *,
+        op: str,
+        reason: str = "",
+    ) -> None:
+        """Commit several artifact writes in one SQLite transaction."""
+        if not writes:
+            return
+        with self.conn:
+            for art, expected_revision, source_ids in writes:
+                self._commit_conn(
+                    art,
+                    expected_revision=expected_revision,
+                    op=op,
+                    reason=reason,
+                    source_ids=source_ids,
+                )
 
     def history(self, node_id: str) -> list[dict]:
         """返回一条记忆的版本链（旧→新）：revision / at / payload。"""
@@ -821,87 +842,85 @@ class DB:
         state_events: tuple[StateEvent, ...] = (),
     ) -> None:
         h, now = art.header, _now()
-        with self.conn:
-            row = self.conn.execute(
-                "SELECT revision FROM nodes WHERE id = ?", (h.id,)
-            ).fetchone()
-            current = int(row["revision"]) if row is not None else 0
-            if current != int(expected_revision):
-                raise VersionError(
-                    f"revision conflict: expected {expected_revision}, current {current}"
-                )
-            prev = self.get(h.id) if current else None
-            assert_next_revision(prev, art)
-            content = _dump(art.payload)
-            blob = hashlib.sha256(content.encode("utf-8")).hexdigest()
-            level, parent = art.payload.get("level"), art.payload.get("parent")
-            args = (
-                h.id,
-                h.family,
-                level if isinstance(level, str) else None,
-                parent if isinstance(parent, str) else None,
-                blob,
-                h.state,
-                h.scope,
-                _dump(h.strength),
-                _dump(h.time),
-                h.said_by,
-                h.shareable,
-                h.time.created or now,
-                h.time.updated or now,
-                int(h.revision),
-                _dump(h.lineage),
-                h.subject_id,
+        row = self.conn.execute(
+            "SELECT revision FROM nodes WHERE id = ?", (h.id,)
+        ).fetchone()
+        current = int(row["revision"]) if row is not None else 0
+        if current != int(expected_revision):
+            raise VersionError(
+                f"revision conflict: expected {expected_revision}, current {current}"
             )
-            header = _dump(
-                {
-                    "state": h.state,
-                    "scope": h.scope,
-                    "strength": _dump(h.strength),
-                    "time": _dump(h.time),
-                    "said_by": h.said_by,
-                    "revision": int(h.revision),
-                    "lineage": _dump(h.lineage),
-                    "subject_id": h.subject_id,
-                }
-            )
+        prev = self.get(h.id) if current else None
+        assert_next_revision(prev, art)
+        content = _dump(art.payload)
+        blob = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        level, parent = art.payload.get("level"), art.payload.get("parent")
+        args = (
+            h.id,
+            h.family,
+            level if isinstance(level, str) else None,
+            parent if isinstance(parent, str) else None,
+            blob,
+            h.state,
+            h.scope,
+            _dump(h.strength),
+            _dump(h.time),
+            h.said_by,
+            h.shareable,
+            h.time.created or now,
+            h.time.updated or now,
+            int(h.revision),
+            _dump(h.lineage),
+            h.subject_id,
+        )
+        header = _dump(
+            {
+                "state": h.state,
+                "scope": h.scope,
+                "strength": _dump(h.strength),
+                "time": _dump(h.time),
+                "said_by": h.said_by,
+                "revision": int(h.revision),
+                "lineage": _dump(h.lineage),
+                "subject_id": h.subject_id,
+            }
+        )
+        self.conn.execute(
+            "INSERT OR IGNORE INTO blobs(hash, content, at) VALUES(?, ?, ?)",
+            (blob, content, now),
+        )
+        self.conn.execute(_UPSERT, args)
+        self.conn.execute(
+            "INSERT INTO versions(entity, revision, blob, header, at) VALUES(?, ?, ?, ?, ?)",
+            (h.id, int(h.revision), blob, header, now),
+        )
+        self.conn.execute(
+            "INSERT INTO artifact_versions(entity, revision, op, blob, header, at) "
+            "VALUES(?, ?, ?, ?, ?, ?)",
+            (h.id, int(h.revision), op, blob, header, now),
+        )
+        for source_id in source_ids:
             self.conn.execute(
-                "INSERT OR IGNORE INTO blobs(hash, content, at) VALUES(?, ?, ?)",
-                (blob, content, now),
+                "INSERT OR IGNORE INTO artifact_evidence(entity, revision, source) "
+                "VALUES(?, ?, ?)",
+                (h.id, int(h.revision), str(source_id)),
             )
-            self.conn.execute(_UPSERT, args)
+        for event in state_events:
+            event.validate()
             self.conn.execute(
-                "INSERT INTO versions(entity, revision, blob, header, at) VALUES(?, ?, ?, ?, ?)",
-                (h.id, int(h.revision), blob, header, now),
-            )
-            self.conn.execute(
-                "INSERT INTO artifact_versions(entity, revision, op, blob, header, at) "
+                "INSERT OR IGNORE INTO state_events(id, entity, revision_seen, op, delta, at) "
                 "VALUES(?, ?, ?, ?, ?, ?)",
-                (h.id, int(h.revision), op, blob, header, now),
+                (
+                    event.id,
+                    event.entity_id,
+                    event.revision_seen,
+                    event.op,
+                    _dump(event.delta),
+                    event.at or now,
+                ),
             )
-            for source_id in source_ids:
-                self.conn.execute(
-                    "INSERT OR IGNORE INTO artifact_evidence(entity, revision, source) "
-                    "VALUES(?, ?, ?)",
-                    (h.id, int(h.revision), str(source_id)),
-                )
-            for event in state_events:
-                event.validate()
-                self.conn.execute(
-                    "INSERT OR IGNORE INTO state_events(id, entity, revision_seen, op, delta, at) "
-                    "VALUES(?, ?, ?, ?, ?, ?)",
-                    (
-                        event.id,
-                        event.entity_id,
-                        event.revision_seen,
-                        event.op,
-                        _dump(event.delta),
-                        event.at or now,
-                    ),
-                )
-            before = str(current) if current else None
-            self._ledger_append_conn(op, h.id, before, str(h.revision), reason, now)
-
+        before = str(current) if current else None
+        self._ledger_append_conn(op, h.id, before, str(h.revision), reason, now)
     def _ledger_append_conn(
         self,
         op: str,

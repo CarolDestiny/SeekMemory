@@ -200,15 +200,20 @@ def merge_similar(
                 said_by="inferred",
                 subject_id=str(members[0].header.subject_id or ""),
             )
-            db.commit(art, expected_revision=0, op="merge",
-                      reason=f"merge {count} memories into impression",
-                      source_ids=sources)
+            writes = [(art, 0, sources)]
+            for member in members:
+                writes.append((
+                    revise(member, state="merged"),
+                    member.header.revision,
+                    tuple(member.header.lineage.sources),
+                ))
+            db.commit_many(
+                writes,
+                op="merge",
+                reason=f"merge {count} memories into impression",
+            )
             cache.put(art)
             for member in members:
-                updated = revise(member, state="merged")
-                db.commit(updated, expected_revision=member.header.revision, op="merge",
-                          reason=f"merged into {art.header.id}",
-                          source_ids=tuple(member.header.lineage.sources))
                 cache.remove(member.header.id)
             made += 1
     return made
