@@ -139,25 +139,11 @@ export function RunTraces({
   const vm = useRunTraces(client)
   return (
     <section className="mx-auto w-full max-w-7xl space-y-5 p-5 sm:p-8">
-      <div className="workspace-intro flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">运行轨迹</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            查看一次回复经过的步骤，以及记忆为什么被使用或隐藏。
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            已注入表示进入模型上下文，不代表回答一定引用。已发送单独记录；不保存对话正文。
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          disabled={vm.loading}
-          onClick={() => {
-            void vm.refresh()
-          }}
-        >
-          刷新轨迹
-        </Button>
+      <div className="workspace-intro">
+        <h1 className="text-2xl font-semibold">运行轨迹</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          查看一次回复经过的步骤，以及记忆为什么被使用或隐藏。
+        </p>
       </div>
       {vm.error && (
         <p role="alert" className="text-sm text-destructive">
@@ -188,7 +174,16 @@ export function RunTraces({
             { value: "fallback_used", label: traceFlagLabels.fallback_used },
           ]}
         />
-        <p className="text-xs text-muted-foreground">
+        <Button
+          variant="outline"
+          disabled={vm.loading}
+          onClick={() => {
+            void vm.refresh()
+          }}
+        >
+          刷新轨迹
+        </Button>
+        <p className="w-full text-xs text-muted-foreground">
           {vm.total} 次运行
           {vm.snapshot &&
             ` · 保留 ${vm.snapshot.retention_days} 天，最多 ${vm.snapshot.capacity} 条事件`}
