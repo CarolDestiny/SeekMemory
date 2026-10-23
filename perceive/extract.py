@@ -151,14 +151,39 @@ def _is_duplicate(key: str, other: str) -> bool:
     return len(short) >= 4 and short in long
 
 
-def filter_duplicates(items: list[dict], existing_texts: list[str]) -> list[dict]:
-    """按字面去重（批次内 + 与已有记忆），保留首次出现的条目。"""
-    seen: list[str] = []
-    for raw in existing_texts:
-        if isinstance(raw, str):
-            key = _normalize(raw)
-            if key:
-                seen.append(key)
+def filter_duplicates(
+    items: list[dict],
+    existing_texts: list[str] | None = None,
+    *,
+    existing_by_subject: dict[str, list[str]] | None = None,
+    subject_of=None,
+) -> list[dict]:
+    """Deduplicate literal memory text inside one identity boundary.
+
+    The legacy list form keeps the old global behavior. When
+    ``existing_by_subject`` and ``subject_of`` are supplied, dedupe is scoped to
+    the item's subject/scope so two people saying the same sentence do not
+    collapse into one memory.
+    """
+    scoped = existing_by_subject is not None and subject_of is not None
+    seen_by_subject: dict[str, list[str]] = {}
+    global_seen: list[str] = []
+
+    def _keys(values: list[str]) -> list[str]:
+        out: list[str] = []
+        for raw in values:
+            if isinstance(raw, str):
+                key = _normalize(raw)
+                if key:
+                    out.append(key)
+        return out
+
+    if scoped:
+        for boundary, values in (existing_by_subject or {}).items():
+            seen_by_subject[str(boundary)] = _keys(values)
+    else:
+        global_seen = _keys(existing_texts or [])
+
     kept: list[dict] = []
     for item in items:
         if not isinstance(item, dict):
@@ -167,7 +192,14 @@ def filter_duplicates(items: list[dict], existing_texts: list[str]) -> list[dict
         if not isinstance(text, str):
             continue
         key = _normalize(text)
-        if not key or any(_is_duplicate(key, old) for old in seen):
+        if not key:
+            continue
+        if scoped:
+            boundary = str(subject_of(item))
+            seen = seen_by_subject.setdefault(boundary, [])
+        else:
+            seen = global_seen
+        if any(_is_duplicate(key, old) for old in seen):
             continue
         seen.append(key)
         kept.append(item)

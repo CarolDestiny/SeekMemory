@@ -13,7 +13,10 @@ def content_hash(text: str) -> str:
 
 def make_source_id(*, event_id: str = "", session_id: str, speaker_id: str,
                    role: str, text: str, at: str = "") -> str:
-    raw = event_id or "\x1f".join((session_id, speaker_id, role, at, text))
+    if event_id:
+        raw = "\x1f".join((event_id, session_id, speaker_id, role, text))
+    else:
+        raw = "\x1f".join((session_id, speaker_id, role, at, text))
     return "s_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
