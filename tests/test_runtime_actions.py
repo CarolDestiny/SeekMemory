@@ -60,6 +60,15 @@ class ActionTest(unittest.TestCase):
         asyncio.run(actions.wait(0))
         self.assertEqual(context.sent, [("s1", "hello"), ("s1", "later")])
 
+    def test_send_reports_host_false_as_failure(self) -> None:
+        class Context:
+            async def send_message(self, session, chain):
+                return False
+
+        actions = AstrBotActionPort(Context(), message_factory=lambda text: text)
+        self.assertFalse(asyncio.run(actions.send("s1", "hello")))
+        self.assertFalse(asyncio.run(actions.send("s1", "")))
+
     def test_runtime_quiet_window(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 100)

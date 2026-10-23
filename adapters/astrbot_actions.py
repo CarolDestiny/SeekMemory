@@ -18,13 +18,14 @@ class AstrBotActionPort:
         from astrbot.core.message.message_event_result import MessageChain
         return MessageChain().message(text)
 
-    async def send(self, session_id: str, text: str) -> None:
+    async def send(self, session_id: str, text: str) -> bool:
         if not str(text or "").strip():
-            return
-        await self.context.send_message(session_id, self._chain(text))
+            return False
+        result = await self.context.send_message(session_id, self._chain(text))
+        return result is not False
 
-    async def proactive(self, session_id: str, text: str) -> None:
-        await self.send(session_id, text)
+    async def proactive(self, session_id: str, text: str) -> bool:
+        return await self.send(session_id, text)
 
     async def wait(self, seconds: float) -> None:
         await asyncio.sleep(max(0.0, float(seconds)))

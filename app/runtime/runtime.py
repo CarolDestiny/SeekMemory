@@ -27,12 +27,14 @@ class AgentRuntime:
         trace: TraceSink | None = None,
         clock: Callable[[], float] | None = None,
         memory_context: MemoryContextPort | None = None,
+        wait_seconds: float = 0.0,
     ) -> None:
         self.store = store
         self.policy = policy or WakePolicy()
         self.trace = trace
         self.clock = clock or (lambda: 0.0)
         self.memory_context = memory_context
+        self.wait_seconds = max(0.0, float(wait_seconds))
 
     def build_context(self, event: RuntimeInput) -> MemoryContext:
         if self.memory_context is None:
@@ -58,6 +60,13 @@ class AgentRuntime:
             state.ignored_streak = 0
         elif decision.action is WakeAction.IGNORE:
             state.ignored_streak += 1
+        if self.wait_seconds > 0 and decision.action in (
+            WakeAction.OBSERVE,
+            WakeAction.WAIT,
+        ):
+            # Debounce new ambient traffic: every ambient event extends the
+            # pending wait instead of letting an earlier deadline fire.
+            state.wait_until = max(state.wait_until, now + self.wait_seconds)
         self.store.put(state)
         if self.trace is not None:
             self.trace.record(
@@ -99,6 +108,13 @@ class AgentRuntime:
         state.unread_count = max(
             0, int(state.last_unread_seq) - state.read_through_seq
         )
+        state.last_seen_at = self.clock() if now is None else now
+        self.store.put(state)
+        return state
+
+    def clear_wait(self, session_id: str, now: float | None = None) -> SocialState:
+        state = self.store.get(session_id)
+        state.wait_until = 0.0
         state.last_seen_at = self.clock() if now is None else now
         self.store.put(state)
         return state
