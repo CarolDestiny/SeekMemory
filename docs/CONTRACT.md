@@ -540,3 +540,6 @@ Assistant replies enter extraction with `role=assistant`. Optional `bot_action`,
 ## Atomic batch writes
 
 `DB.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.
+
+
+Lifecycle expiry and retention decay also use one `commit_many()` transaction: either all selected Artifacts become `forgotten`, or none do and the cache remains intact.

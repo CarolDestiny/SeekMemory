@@ -38,7 +38,7 @@ def decay_all(db: DB, cache: Cache, today: str) -> int:
     base = _day(today)
     if base is None:
         return 0
-    forgotten = 0
+    expired = []
     for art in list(cache.active()):
         if art.header.family != "memory":
             continue
@@ -52,10 +52,15 @@ def decay_all(db: DB, cache: Cache, today: str) -> int:
         shape = str(art.payload.get("shape") or "point")
         if retention(art.header.strength, shape, float(days)) >= FORGET_BELOW:
             continue
-        updated = revise(art, state="forgotten")
-        db.commit(updated, expected_revision=art.header.revision, op="forget",
-                  reason=f"retention<{FORGET_BELOW} days={days} shape={shape}",
-                  source_ids=tuple(art.header.lineage.sources))
+        expired.append(art)
+    if not expired:
+        return 0
+    writes = [
+        (revise(art, state="forgotten"), art.header.revision,
+         tuple(art.header.lineage.sources))
+        for art in expired
+    ]
+    db.commit_many(writes, op="forget", reason="retention decay")
+    for art in expired:
         cache.remove(art.header.id)
-        forgotten += 1
-    return forgotten
+    return len(expired)
