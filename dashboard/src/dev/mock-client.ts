@@ -10,6 +10,7 @@ import {
   type ManagementClient,
   type OperationEvent,
 } from "../features/control/model.ts"
+import { demoTraces } from "./mock-traces.ts"
 import { mockMemories } from "./mock-data.ts"
 
 const base = mockMemories[0]
@@ -249,6 +250,9 @@ let events: OperationEvent[] = [
   .sort((a, b) => b.at.localeCompare(a.at))
 
 export const mockClient: ManagementClient = {
+  async traces() {
+    return demoTraces(base.id)
+  },
   async records() {
     return records
   },

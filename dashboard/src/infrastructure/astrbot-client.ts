@@ -1,6 +1,7 @@
 import { z } from "zod"
 import type { ApiRequest, ApiResponse } from "../contracts/api.ts"
 import { memoryCollectionSchema } from "../features/memory/model.ts"
+import { tracesSchema } from "../features/control/trace-model.ts"
 import {
   detailSchema,
   diagnosticSchema,
@@ -47,6 +48,10 @@ const idResponseSchema = z.object({ id: z.string() }) satisfies z.ZodType<
 >
 
 export const astrbotClient: ManagementClient = {
+  async traces() {
+    const host = await bridge()
+    return tracesSchema.parse(await host.apiGet("manage/traces"))
+  },
   async records() {
     const host = await bridge()
     const data = await host.apiGet("manage/records")

@@ -14,12 +14,14 @@ import { ArtifactEditor } from "./artifact-editor"
 import { Diagnostics } from "./diagnostics"
 import { LogView } from "./log-view"
 import { RuntimePanel } from "./runtime-panel"
+import { RunTraces } from "./run-traces"
 
 const sections = [
   { id: "memory", label: "记忆库", icon: BookOpen },
   { id: "runtime", label: "运行与任务", icon: Activity },
   { id: "diagnose", label: "召回诊断", icon: FlaskConical },
   { id: "logs", label: "生命周期日志", icon: ScrollText },
+  { id: "traces", label: "运行轨迹", icon: Activity },
 ] as const
 
 const actionLabels = {
@@ -120,6 +122,9 @@ export function ControlWorkspace({ client }: { client: ManagementClient }) {
       )}
       {section === "diagnose" && <Diagnostics client={client} />}
       {section === "logs" && <LogView events={vm.events} />}
+      {section === "traces" && (
+        <RunTraces client={client} onInspect={setEditorId} />
+      )}
       <ArtifactEditor
         key={editorId}
         client={client}

@@ -56,6 +56,15 @@ const idle: RuntimeStatus = {
 
 function clientWith(overrides: Partial<ManagementClient>): ManagementClient {
   return {
+    async traces() {
+      return {
+        runs: [],
+        events: [],
+        capacity: 5000,
+        retention_days: 7,
+        persistence_error: false,
+      }
+    },
     async records() {
       return records
     },

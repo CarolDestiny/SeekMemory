@@ -9,6 +9,7 @@ import {
   eventsSchema,
   statusSchema,
 } from "../../src/features/control/model.ts"
+import { tracesSchema } from "../../src/features/control/trace-model.ts"
 import { apiOperations, validateApi } from "../contract-schema.ts"
 import { astrbotClient } from "../../src/infrastructure/astrbot-client.ts"
 
@@ -43,6 +44,7 @@ void test("真实后端响应同时满足 OpenAPI 与前端 Zod，覆盖全部�
     detail: detailSchema,
     status: statusSchema,
     events: eventsSchema,
+    traces: tracesSchema,
     diagnose: diagnosticSchema,
     update: z.object({ id: z.string() }),
     task: z.object({ id: z.string() }),
@@ -79,6 +81,7 @@ void test("生产桥接适配器消费全部成功响应，路径与请求体符
     status: () => astrbotClient.status(),
     detail: () => astrbotClient.detail("fixture"),
     events: () => astrbotClient.events(),
+    traces: () => astrbotClient.traces(),
     diagnose: () =>
       astrbotClient.diagnose({
         query: "咖啡",

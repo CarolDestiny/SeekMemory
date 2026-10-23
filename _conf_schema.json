@@ -157,6 +157,16 @@
     "type": "int",
     "default": 24
   },
+  "trace_retention_days": {
+    "description": "运行轨迹保留天数（1–365），不包含聊天正文",
+    "type": "int",
+    "default": 7
+  },
+  "trace_max_rows": {
+    "description": "运行轨迹最多保留的事件行数（1–5000），一轮运行可包含多条事件",
+    "type": "int",
+    "default": 5000
+  },
   "runtime_gate_enabled": {
     "description": "Enable AgentRuntime gating of the default AstrBot LLM request (observe-only when false).",
     "type": "bool",

@@ -580,6 +580,24 @@ quiet, wait (when supplied), proactive.
 
 `AstrBotActionPort` provides send/wait/proactive host actions. `DBStateStore` and `DBEpisodeStore` persist mutable social state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
 
+## Agent run traces
+
+`run_traces.jsonl` contains one whitelisted event per line, separate from SQLite runtime episodes.
+It stores no message bodies, user/session identifiers, prompts, responses, tool arguments or
+results. Tool names, generated Artifact IDs, counts, timestamps and fixed enums are allowed.
+`trace_retention_days` defaults to 7 (1–365); `trace_max_rows` defaults to 5000 (1–5000 events).
+Cleanup runs on startup, append and snapshot. Capacity cleanup may evict up to 1% in a batch;
+ID lists and disclosure maps are capped at 256. Incomplete timelines are flagged.
+
+Run filters overlap. `not_recalled` means a completed recall observation selected no memory;
+unknown/skipped/failed observations do not establish this. `recalled_but_withheld` means at least
+one memory received silence disclosure. `recalled_and_injected` means final_ids entered the
+request context. `fallback_used` means recent_profile/recent_topic was selected. None proves a
+model used memory in its answer. `delivered` records the separate host message-sent callback.
+Tool-return status stays unknown; uncorrelated or overlapping tool calls have no guessed duration.
+Writes fail open and expose persistence_error; missing diagnostic events never retry business
+operations or alter recall/disclosure/tool policy. This log is not an immutable business ledger.
+
 
 ## Runtime timing and unread state
 

@@ -5,6 +5,7 @@ import type {
   ApiSchemas,
 } from "../../contracts/api.ts"
 import type { MemoryRecord } from "../memory/model.ts"
+import type { TraceSnapshot } from "./trace-model.ts"
 
 export const detailSchema = z.object({
   artifact: z.object({
@@ -150,6 +151,7 @@ export type UpdateCommand = z.infer<typeof updateSchema>
 export type DiagnosticQuery = ApiRequest<"diagnose">
 
 export interface ManagementClient {
+  traces(): Promise<TraceSnapshot>
   records(): Promise<readonly MemoryRecord[]>
   status(): Promise<RuntimeStatus>
   detail(id: string): Promise<ArtifactDetail>

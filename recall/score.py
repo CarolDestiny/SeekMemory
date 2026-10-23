@@ -193,6 +193,7 @@ def select(
     min_ev_abs: float | None = None,
     min_ev_rel: float | None = None,
     lexical_weight: float = 2.0,
+    diagnostics: dict | None = None,
 ) -> list[Artifact]:
     """
     按分数取 top-k，并以 explore 概率随机捞一条非 top 的记忆做探索。
@@ -207,6 +208,8 @@ def select(
     gate=False 保持旧行为（永远尽量凑满 k），供消融实验对比。
     min_ev_abs / min_ev_rel 用来覆盖 recall.gate 的默认证据阈值（配置/标定）。
     """
+    if diagnostics is not None:
+        diagnostics.update(evaluated=False, passed=0, rejected=0, threshold=0.0)
     if k <= 0 or not candidates:
         return []
     if not math.isfinite(lexical_weight):
@@ -284,6 +287,10 @@ def select(
             return []
         top_evidence = max(item[4] for item in scored)
         floor = gate_mod.evidence_floor(top_evidence, min_ev_abs, min_ev_rel)
+        if diagnostics is not None:
+            passed = sum(item[4] >= floor for item in scored)
+            diagnostics.update(evaluated=True, passed=passed,
+                               rejected=len(scored) - passed, threshold=floor)
         scored = [item for item in scored if item[4] >= floor]
         if not scored:
             return []

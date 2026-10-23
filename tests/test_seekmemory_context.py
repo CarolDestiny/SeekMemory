@@ -181,6 +181,8 @@ class FakeMain(main_module.Main):
         self.cache = object()
         self.data_path = Path(data_dir) / "memory.db"
         self.journal = journal_module.Journal(Path(data_dir) / "journal.jsonl")
+        self.run_traces = main_module.TraceStore(Path(data_dir) / "run_traces.jsonl")
+        self.run_tracer = main_module.RunTracer(self.run_traces)
         self.calls = []
         self.runtime = runtime_module.AgentRuntime(
             runtime_module.InMemoryStateStore(),
@@ -224,6 +226,10 @@ with tempfile.TemporaryDirectory() as temp:
     assert event.get_extra("_seekmemory_recall_ids") == ("a1", "2")
     assert req.system_prompt == "base\n\nmemory block\n", req.system_prompt
     assert plugin._last_context_chars == len("memory block")
+    trace = plugin.run_traces.snapshot()
+    assert trace["events"][0]["event"] == "llm_request"
+    assert trace["events"][0]["recall"]["artifact_ids"] == ["a1"]
+    assert "memory block" not in json.dumps(trace)
     journal = plugin.journal.events[-1]
     assert (
         journal["kind"], journal["status"], journal["stage"]
