@@ -218,6 +218,42 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(row["text"] for row in rows), ["New plan", "Plan A"])
         self.assertFalse(plugin._flushing)
 
+    async def test_runtime_observe_is_default_and_gate_is_opt_in(self) -> None:
+        class Event:
+            unified_msg_origin = "bot:GroupMessage:g1"
+            message_str = "ambient message"
+            message_obj = SimpleNamespace(message_id="m1")
+
+            def __init__(self):
+                self.extras = {}
+                self.call_llm = True
+
+            def is_private_chat(self):
+                return False
+
+            def get_sender_id(self):
+                return "u1"
+
+            def get_extra(self, key, default=None):
+                return self.extras.get(key, default)
+
+            def set_extra(self, key, value):
+                self.extras[key] = value
+
+            def should_call_llm(self, value):
+                self.call_llm = value
+
+        observe_event = Event()
+        await self.plugin.buffer_message(observe_event)
+        self.assertTrue(observe_event.call_llm)
+        self.assertEqual(observe_event.extras["_seekmemory_runtime_action"], "observe")
+
+        self.plugin.cfg["runtime_gate_enabled"] = True
+        gated_event = Event()
+        await self.plugin.buffer_message(gated_event)
+        self.assertFalse(gated_event.call_llm)
+        self.assertEqual(gated_event.extras["_seekmemory_runtime_action"], "observe")
+
     async def test_persona_status_exposes_revision_timeline(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
         first = artifact.make("persona", {"text": "first persona"})

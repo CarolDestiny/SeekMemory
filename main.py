@@ -23,7 +23,14 @@ from .app.checkpoint import CheckpointManager
 from .app.contracts import DialogueTurn
 from .app.dream import DreamCycle
 from .app.flush_policy import chunk_turns, decide_flush, select_topic_batches
-from .app.runtime import AgentRuntime, JsonStateStore
+from .app.runtime import (
+    AgentRuntime,
+    EpisodeRecorder,
+    JsonStateStore,
+    JsonlEpisodeStore,
+    RuntimeEpisode,
+    ToolPolicy,
+)
 from .core.capacity import (
     NORMAL,
     PROTECTIVE,
@@ -44,6 +51,7 @@ from .perceive.model import ProviderChatModel
 from .recall.designated import is_private
 from .recall.pipeline import build_block
 from .recall.retriever import HybridRetriever
+from .adapters.astrbot_actions import AstrBotActionPort
 from .adapters.astrbot_runtime import AstrBotRuntimeAdapter
 from .store.cache import Cache
 from .store.db import DB
@@ -82,6 +90,13 @@ class Main(star.Star):
             JsonStateStore(str(self.data_path.parent / "runtime_state.json")),
             trace=self.trace,
         )
+        self.episode_recorder = EpisodeRecorder(
+            JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
+        )
+        self.tool_policy = ToolPolicy(
+            allowed_prefixes=("memory_", "search_memory", "query_memory")
+        )
+        self.actions = AstrBotActionPort(context)
         self.jobs = Jobs(self.journal)
         artifact_limit = max(1, int(self._c("max_episodes", 500)))
         self.capacity = CapacityGovernor(self._thresholds(artifact_limit))
@@ -338,6 +353,9 @@ class Main(star.Star):
                 )
             )
             AstrBotRuntimeAdapter.apply_decision(event, decision)
+            AstrBotRuntimeAdapter.apply_llm_gate(
+                event, decision, bool(self._c("runtime_gate_enabled", False))
+            )
         except Exception:
             pass
 
@@ -397,8 +415,43 @@ class Main(star.Star):
                     if art is not None and art.header.family == "memory":
                         self.checkpoint.record(art)
                 event.set_extra("_seekmemory_recall_ids", ())
+            self.episode_recorder.record(
+                RuntimeEpisode(
+                    session_id=umo,
+                    at=now,
+                    decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
+                    reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+                    action="reply",
+                    delivered=True,
+                    response_chars=len(text),
+                    tool_calls=tuple(event.get_extra("_seekmemory_tool_calls", ()) or ()),
+                    outcome="ok",
+                    user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+                    assistant_source_id=source_id,
+                )
+            )
         except Exception:
             pass
+
+    @filter.on_using_llm_tool()
+    async def observe_tool(self, event, tool, tool_args) -> None:
+        call = AstrBotRuntimeAdapter.observe_tool(
+            event, tool, tool_args, self.tool_policy
+        )
+        self.trace.record(
+            "tool",
+            "allowed" if call.allowed else "blocked",
+            {"tool": call.name, "argKeys": len(call.args_keys)},
+        )
+
+    @filter.on_llm_tool_respond()
+    async def observe_tool_result(self, event, tool, tool_args, tool_result) -> None:
+        name = str(getattr(tool, "name", tool) or "")
+        self.trace.record(
+            "tool",
+            "result",
+            {"tool": name, "ok": bool(tool_result)},
+        )
 
     @filter.on_astrbot_loaded()
     async def start_jobs(self) -> None:

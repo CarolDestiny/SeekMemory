@@ -156,5 +156,10 @@
     "description": "会话历史保留条数",
     "type": "int",
     "default": 24
+  },
+  "runtime_gate_enabled": {
+    "description": "Enable AgentRuntime gating of the default AstrBot LLM request (observe-only when false).",
+    "type": "bool",
+    "default": false
   }
 }
