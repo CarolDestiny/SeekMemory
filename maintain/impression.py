@@ -118,12 +118,20 @@ def revise_impression(db: DB, cache: Cache, art: Artifact) -> Artifact | None:
         return None
 
 
+def _merged_sources(old: Artifact, art: Artifact) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(
+        tuple(old.header.lineage.sources) + tuple(art.header.lineage.sources)
+    ))
+
+
 def _reinforce(db: DB, cache: Cache, art: Artifact, old: Artifact,
                weight: float, hits: int) -> Artifact:
-    """同一句话再出现一次：只加权重与命中数，不产生新版本。"""
-    new = revise(old, strength=replace(old.header.strength, weight=weight, hits=hits))
+    sources = _merged_sources(old, art)
+    lineage = replace(old.header.lineage, sources=sources)
+    new = revise(old, strength=replace(old.header.strength, weight=weight, hits=hits),
+                 lineage=lineage)
     db.commit(new, expected_revision=old.header.revision, op="reinforce",
-              reason="impression reinforced", source_ids=tuple(art.header.lineage.sources))
+              reason="impression reinforced", source_ids=sources)
     cache.put(new)
     _retire(db, cache, art)
     return new
@@ -133,9 +141,13 @@ def _reword(db: DB, cache: Cache, art: Artifact, old: Artifact,
             weight: float, hits: int, score: float) -> Artifact:
     text = _text(art)
     payload = {**old.payload, **art.payload, "text": text}
-    lineage = replace(old.header.lineage,
-                      derived_from=tuple(dict.fromkeys(
-                          old.header.lineage.derived_from + (old.header.id,))))
+    sources = _merged_sources(old, art)
+    lineage = replace(
+        old.header.lineage,
+        sources=sources,
+        derived_from=tuple(dict.fromkeys(
+            old.header.lineage.derived_from + (art.header.id,))),
+    )
     new = revise(
         old,
         payload,
@@ -145,7 +157,7 @@ def _reword(db: DB, cache: Cache, art: Artifact, old: Artifact,
     )
     db.commit(new, expected_revision=old.header.revision, op="merge",
               reason=f"impression revised: {score:.2f}",
-              source_ids=tuple(art.header.lineage.sources))
+              source_ids=sources)
     cache.put(new)
     _retire(db, cache, art)
     return new
@@ -160,7 +172,7 @@ def _retire(db: DB, cache: Cache, art: Artifact) -> None:
                   reason="impression merged",
                   source_ids=tuple(art.header.lineage.sources))
     except Exception:
-        pass
+        return
     try:
         cache.remove(art.header.id)
     except Exception:

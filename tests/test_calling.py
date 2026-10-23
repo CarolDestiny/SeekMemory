@@ -106,7 +106,8 @@ class ImpressionTest(unittest.TestCase):
         self.assertIsNotNone(got)
         self.assertEqual(got.header.revision, old.header.revision + 1)
         self.assertIn("真有事会帮", content_of(got))
-        self.assertIn(old.header.id, got.header.lineage.derived_from)
+        self.assertIn(new.header.id, got.header.lineage.derived_from)
+        self.assertNotIn(got.header.id, got.header.lineage.derived_from)
 
     def test_unrelated_impression_untouched(self):
         db, cache = temp_cache()

@@ -37,6 +37,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "test_group_memory.py",
         "test_privacy_outputs.py",
         "test_identity_isolation.py",
+        "test_lineage_consistency.py",
         "test_kernel.py",
         "test_recall.py",
         "test_recall_feel.py",
