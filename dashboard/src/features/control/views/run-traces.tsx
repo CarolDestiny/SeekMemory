@@ -141,7 +141,7 @@ export function RunTraces({
     <section className="mx-auto w-full max-w-7xl space-y-5 p-5 sm:p-8">
       <div className="workspace-intro flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">运行轨迹 · Run Trace</h1>
+          <h1 className="text-2xl font-semibold">运行轨迹</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             查看一次回复经过的步骤，以及记忆为什么被使用或隐藏。
           </p>
