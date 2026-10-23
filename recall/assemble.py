@@ -174,21 +174,18 @@ def _sentence(art: Artifact, text: str | None = None,
 
 
 def _render(items: list[tuple[str, str]]) -> str:
-    """把句子按顺序拼成一段。"""
     return "".join(sentence for _, sentence in items)
 
 
-def _drop(items: list[tuple[str, str]], layers: tuple[str, ...]) -> bool:
-    """从后往前删一条属于 layers 的句子，删到返回 True。"""
+def _drop(items: list[tuple[str, str]], layers: tuple[str, ...]) -> int | None:
     index = next((i for i in range(len(items) - 1, -1, -1) if items[i][0] in layers), None)
     if index is None:
-        return False
+        return None
     del items[index]
-    return True
+    return index
 
 
 def _dedupe_key(art: Artifact) -> str:
-    """去重键：shadow 用影子句，避免正文参与比较，也避免被同文正文吃掉。"""
     if str(art.header.scope or "") == "shadow":
         shadow = str(art.payload.get("shadow_text") or "").strip()
         return "shadow:" + (shadow or art.header.id)
@@ -196,13 +193,12 @@ def _dedupe_key(art: Artifact) -> str:
 
 
 def _dedupe(arts: list[Artifact]) -> list[Artifact]:
-    """内容去重：同一段话只保留一条；取不到文本的坏条目直接跳过（fail-open）。"""
     kept: list[Artifact] = []
     seen: list[str] = []
     for a in arts:
         try:
             t = _dedupe_key(a).strip()
-        except Exception:  # noqa: BLE001 - 单条坏记忆不能拖垮整段注入
+        except Exception:
             continue
         if not t:
             continue
@@ -213,66 +209,96 @@ def _dedupe(arts: list[Artifact]) -> list[Artifact]:
     return kept
 
 
-def build(arts: list[Artifact], budget: int = 2000,
-          *, text: str | None = None, is_private: bool | None = None,
-          notes: dict[str, str] | None = None,
-          overrides: dict[str, str] | None = None) -> str:
-    """
-    组装叙述式注入文本（DESIGN 5.3 / 6.1）。
-
-    层级顺序：人格 > 印象 > 场景 > 细节 > 事实 > 例子。同层内保持传入顺序
-    （调用方按相关性排）。超 budget 时先砍例子，再砍事实、细节、场景。
-
-    text / is_private 是当前会话上下文：传了才允许 designated 交付正文，
-    不传时维持旧的“只给托付提示”；scope=shadow 始终只输出影子句。
-    """
+def build_with_meta(
+    arts: list[Artifact], budget: int = 2000,
+    *, text: str | None = None, is_private: bool | None = None,
+    notes: dict[str, str] | None = None,
+    overrides: dict[str, str] | None = None,
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    input_ids = [art.header.id for art in arts]
     arts = _dedupe(arts)
     if not arts or budget <= 0:
-        return ""
+        return "", (), ()
     entries: list[tuple[str, str]] = []
+    entry_ids: list[str] = []
+    dropped: list[str] = []
     for art in arts:
         if overrides and art.header.id in overrides:
             safe = str(overrides[art.header.id] or "").strip()
             if not safe:
+                dropped.append(art.header.id)
                 continue
             level = str(art.payload.get("level") or art.header.family)
             layer = level if level in ("fact", "impression", "scene", "detail") else "scene"
             entries.append((layer, safe))
+            entry_ids.append(art.header.id)
             continue
         layer, sentence = _sentence(art, text, is_private)
         if not sentence:
+            dropped.append(art.header.id)
             continue
-        # 印象轨迹：这条印象变过，就把「以前…现在…」跟在后面。
         if notes:
             extra = notes.get(art.header.id)
             if extra:
-                sentence = sentence.rstrip("。") + extra + "。"
+                sentence = sentence.rstrip("\u3002") + extra + "\u3002"
         entries.append((layer, sentence))
+        entry_ids.append(art.header.id)
     if not entries:
-        return ""
-    # 层级顺序：人格 > 印象 > 场景 > 细节 > 事实。同一层里保持传入顺序（相关性）。
+        return "", (), tuple(dict.fromkeys(dropped))
     order = {"persona": 0, "impression": 1, "scene": 2, "detail": 3, "fact": 4,
              "example": 5}
     ranked = sorted(enumerate(entries), key=lambda ie: (order.get(ie[1][0], 6), ie[0]))
     header = [i for i, (layer, _) in enumerate(entries) if layer == "persona"]
     header += [i for i, (layer, _) in enumerate(entries) if layer == "impression"][:2]
     sequence = [i for i, _ in ranked if i not in header]
-    items = [entries[i] for i in header + sequence]
-    # 超预算时从最不重要的层开始砍：例子 → 事实 → 细节 → 场景
+    indices = header + sequence
+    items = [entries[i] for i in indices]
+    item_ids = [entry_ids[i] for i in indices]
     for layer in ("example", "fact", "detail", "scene"):
-        while len(_render(items)) > budget and _drop(items, (layer,)):
-            pass
+        while len(_render(items)) > budget:
+            index = _drop(items, (layer,))
+            if index is None:
+                break
+            dropped.append(item_ids.pop(index))
     rest = ("media", "secret", "designated", "shadow", "memory", "impression")
-    while len(_render(items)) > budget and _drop(items, rest):
-        pass
-    text = _render(items)
-    if text and not text.startswith("你"):
-        text = "你记得，" + text
-    if len(text) > budget:
-        cut = text[: max(0, budget - 2)]
-        # 尽量切在句末，避免半句话
-        pos = max(cut.rfind("。"), cut.rfind("；"), cut.rfind("，"))
+    while len(_render(items)) > budget:
+        index = _drop(items, rest)
+        if index is None:
+            break
+        dropped.append(item_ids.pop(index))
+    rendered = _render(items)
+    final_ids = tuple(item_ids)
+    if len(rendered) > budget:
+        cut = rendered[: max(0, budget - 2)]
+        pos = max(cut.rfind("\u3002"), cut.rfind("\uff1b"), cut.rfind("\uff0c"))
         if pos > budget * 0.6:
             cut = cut[: pos + 1]
-        text = cut.rstrip("，。；、 ") + "……"
-    return text if len(text) <= budget else "…" * budget
+        rendered = cut.rstrip("\uff0c\u3002\uff1b\u3001 ") + "\u2026\u2026"
+        final_ids = tuple(
+            entity for entity, (_, sentence) in zip(item_ids, items)
+            if sentence.rstrip("\u3002") and sentence.rstrip("\u3002") in rendered
+        )
+    if rendered and not rendered.startswith("\u4f60"):
+        rendered = "\u4f60\u8bb0\u5f97\uff0c" + rendered
+    if len(rendered) > budget:
+        rendered = rendered[: max(0, budget - 2)].rstrip("\uff0c\u3002\uff1b\u3001 ") + "\u2026\u2026"
+        final_ids = tuple(
+            entity for entity, (_, sentence) in zip(item_ids, items)
+            if sentence.rstrip("\u3002") and sentence.rstrip("\u3002") in rendered
+        )
+    dropped_ids = tuple(dict.fromkeys(dropped + [entity for entity in input_ids
+                                                 if entity not in final_ids]))
+    if len(rendered) > budget:
+        rendered = "\u2026" * max(0, budget)
+        final_ids = ()
+    return rendered, final_ids, dropped_ids
+
+
+def build(arts: list[Artifact], budget: int = 2000,
+          *, text: str | None = None, is_private: bool | None = None,
+          notes: dict[str, str] | None = None,
+          overrides: dict[str, str] | None = None) -> str:
+    return build_with_meta(
+        arts, budget, text=text, is_private=is_private,
+        notes=notes, overrides=overrides,
+    )[0]

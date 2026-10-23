@@ -502,3 +502,8 @@ parked rows back once the governor returns to `normal`. Extraction batches are
 selected round-robin across sessions. Thresholds accept `capacity_thresholds`
 (a JSON object in plugin config) or `SEEKMEMORY_CAPACITY_<FIELD>` environment
 overrides. Source deletion is never a capacity action.
+
+
+## Reinforcement truth
+
+`recall.assemble.build_with_meta()` returns `(text, final_ids, dropped_ids)`. `build_block()` exposes the same values as `final_ids` and `dropped_ids`. Only `final_ids` are recorded in the checkpoint after a successful assistant response. Checkpoint hits use a cooldown window; repeated recalls of the same Artifact inside that window count once.

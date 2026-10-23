@@ -227,11 +227,10 @@ class Main(star.Star):
             )
             self._last_context_chars = len(block)
             log_call(self._calls_path(), umo, info)
-            if self.checkpoint is not None:
-                for art_id in info.get("picked_ids", ()):
-                    art = self.cache.get(str(art_id))
-                    if art is not None:
-                        self.checkpoint.record(art)
+            event.set_extra(
+                "_seekmemory_recall_ids",
+                tuple(str(item) for item in info.get("final_ids", ())),
+            )
             self.journal.record(
                 "recall",
                 "info",
@@ -368,6 +367,13 @@ class Main(star.Star):
                 reply_to=str(event.get_extra("_seekmemory_source_id", "") or ""),
             )
             self.db.append_sources([source])
+            if self.checkpoint is not None:
+                recall_ids = event.get_extra("_seekmemory_recall_ids", ()) or ()
+                for art_id in recall_ids:
+                    art = self.cache.get(str(art_id)) if self.cache is not None else None
+                    if art is not None and art.header.family == "memory":
+                        self.checkpoint.record(art)
+                event.set_extra("_seekmemory_recall_ids", ())
         except Exception:
             pass
 

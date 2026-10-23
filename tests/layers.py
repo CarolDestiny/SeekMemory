@@ -41,6 +41,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "test_recall.py",
         "test_recall_feel.py",
         "test_recall_pipeline.py",
+        "test_reinforcement.py",
         "test_webui.py",
     ),
     "host": (
