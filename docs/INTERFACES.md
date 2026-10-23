@@ -110,3 +110,18 @@ accepted as personality candidates. Three distinct observed replies at confidenc
 read from that revision's stored header, with empty arrays for missing historical
 data. Status contains no original dialogue. The authenticated detail interface
 supplies evidence on demand; the UI filters it to the selected historical version.
+
+## Agent run trace (GitHub #11)
+
+`RunTracer` in `app/runtime/tracing.py` depends only on a `TraceWriter.append(dict)` port.
+`TraceStore` implements that port at the filesystem edge; all writes and reloads pass through
+`clean_event`'s content-free whitelist. The trace is diagnostic metadata, not an Artifact write.
+
+`GET manage/traces?state=all` requires the existing administrator session. It returns bounded
+`runs`, `events`, `capacity`, `retention_days`, and `persistence_error`; see `openapi.yaml` for
+strict field types and the four optional state filters. Unknown filters return 400. The API
+remains available when the memory engine is unavailable. Run IDs are random, never session IDs.
+
+`select(..., diagnostics=dict)` optionally fills gate counts and threshold without changing its
+return value, ordering, exploration seed or privacy rules. A non-evaluated gate is distinct from
+zero candidates passing an evaluated gate.

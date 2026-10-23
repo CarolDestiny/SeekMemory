@@ -102,3 +102,12 @@ Mock 诊断仅演示文本匹配和不同披露级别，不能用于验证真实
 旧主题功能参考（当前配色见上图）：
 
 ![无命中诊断](https://raw.githubusercontent.com/SXP-Simon/SeekMemory/3152766d0c6cd70a84ca5b1485d0983ded97c5e2/images/diagnostics-empty.png)
+
+## Run Trace（运行轨迹）
+
+管理页的“运行轨迹”展示一次 Agent 的模型请求、工具步骤和发送事件。选择筛选条件后，
+点击运行查看时间轴；“筛选与披露详情”显示 gate 和披露等级，点击记忆 ID 打开已有审计抽屉。
+“记忆已注入”不代表模型在回答中引用；“回复已发送”单独显示。筛选可以重叠。
+
+默认保留 7 天、最多 5000 个事件，支持 `trace_retention_days` / `trace_max_rows` 配置。
+用“刷新轨迹”手动更新；截断或保存失败会显示提示。Mock 预览使用虚构轨迹，不连接机器人。

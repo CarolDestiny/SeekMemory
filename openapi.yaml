@@ -460,6 +460,58 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CancelCommand'
+  /astrbot_plugin_seekmemory/manage/traces:
+    get:
+      operationId: traces
+      summary: 仅管理员读取无正文的运行轨迹
+      parameters:
+      - name: state
+        in: query
+        schema:
+          type: string
+          enum:
+          - all
+          - not_recalled
+          - recalled_but_withheld
+          - recalled_and_injected
+          - fallback_used
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TracesResponse'
+        '400':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 请求失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     AstrBotAdmin:
@@ -1215,4 +1267,183 @@ components:
       - status
       - message
       - data
+      additionalProperties: false
+    TraceRecall:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+          - none
+          - strict
+          - loose
+        candidates: &id002
+          type: integer
+          minimum: 0
+        picked_ids: &id001
+          type: array
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{1,96}$
+          maxItems: 256
+        pinned_ids: *id001
+        artifact_ids: *id001
+        dropped_ids: *id001
+        withheld_ids: *id001
+        disclosure:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+            - full
+            - paraphrase
+            - hint
+            - silence
+        fallback:
+          type: string
+          enum:
+          - ''
+          - recent_profile
+          - recent_topic
+        chars: *id002
+        gate:
+          type: object
+          properties:
+            evaluated: &id004
+              type: boolean
+            passed: *id002
+            rejected: *id002
+            threshold:
+              type: number
+              minimum: 0
+          required:
+          - evaluated
+          - passed
+          - rejected
+          - threshold
+          additionalProperties: false
+      required:
+      - mode
+      - candidates
+      - picked_ids
+      - pinned_ids
+      - artifact_ids
+      - dropped_ids
+      - withheld_ids
+      - disclosure
+      - fallback
+      - chars
+      - gate
+      additionalProperties: false
+    TraceEvent:
+      type: object
+      properties:
+        run_id: &id003
+          type: string
+        sequence: *id002
+        at:
+          type: string
+          format: date-time
+        event:
+          type: string
+          enum:
+          - agent_begin
+          - llm_request
+          - llm_response
+          - agent_done
+          - message_sent
+          - tool_call
+          - tool_result
+        request_index: *id002
+        status:
+          type: string
+          enum:
+          - running
+          - ok
+          - error
+          - unknown
+        duration_ms:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+        tool: *id003
+        recall:
+          anyOf:
+          - $ref: '#/components/schemas/TraceRecall'
+          - type: 'null'
+      required:
+      - run_id
+      - sequence
+      - at
+      - event
+      - request_index
+      - status
+      - duration_ms
+      - tool
+      - recall
+      additionalProperties: false
+    TraceRun:
+      type: object
+      properties:
+        id: *id003
+        started_at: *id003
+        updated_at: *id003
+        status:
+          type: string
+          enum:
+          - running
+          - completed
+          - error
+          - interrupted
+        delivered: *id004
+        flags:
+          type: array
+          items:
+            type: string
+            enum:
+            - not_recalled
+            - recalled_but_withheld
+            - recalled_and_injected
+            - fallback_used
+        artifact_ids: *id001
+        event_count: *id002
+        partial: *id004
+      required:
+      - id
+      - started_at
+      - updated_at
+      - status
+      - delivered
+      - flags
+      - artifact_ids
+      - event_count
+      - partial
+      additionalProperties: false
+    TracesResponse:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceRun'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceEvent'
+        capacity:
+          type: integer
+          minimum: 1
+          maximum: 5000
+        retention_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+        persistence_error: *id004
+      required:
+      - runs
+      - events
+      - capacity
+      - retention_days
+      - persistence_error
       additionalProperties: false

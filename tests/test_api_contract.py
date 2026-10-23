@@ -31,6 +31,8 @@ Journal = importlib.import_module("_seekmemory_contract.webui.journal").Journal
 Jobs = importlib.import_module("_seekmemory_contract.webui.jobs").Jobs
 Buffer = importlib.import_module("_seekmemory_contract.perceive.buffer").Buffer
 WebRoutes = importlib.import_module("_seekmemory_contract.webui.routes").WebRoutes
+TraceStore = importlib.import_module("_seekmemory_contract.store.run_trace").TraceStore
+RunTracer = importlib.import_module("_seekmemory_contract.app.runtime.tracing").RunTracer
 
 
 class ApiContractTests(unittest.IsolatedAsyncioTestCase):
@@ -90,6 +92,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             _weekly=asyncio.Event().wait,
         )
         self.plugin.hybrid_retriever = HybridRetriever(self.plugin.graph, cache)
+        self.plugin.run_traces = TraceStore(Path(self.temp.name) / "runs.jsonl")
         self.plugin.buffer.add(
             "bot:FriendMessage:alice",
             "契约测试消息",
@@ -244,6 +247,24 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.call("status")
         await self.call("events")
 
+    async def test_trace_auth_filter_and_content_exclusion(self):
+        extras = {}
+        event = SimpleNamespace(get_extra=extras.get, set_extra=extras.__setitem__)
+        tracer = RunTracer(self.plugin.run_traces)
+        tracer.begin(event)
+        tracer.request(event, {"mode": "strict", "final_ids": [self.ids[0]],
+                               "query": "NEVER_PERSIST_THIS"})
+        tracer.done(event, "ok")
+        result = await self.call("traces")
+        self.assertEqual(len(result["runs"]), 1)
+        self.assertFalse(result["runs"][0]["delivered"])
+        self.assertNotIn("NEVER_PERSIST_THIS", json.dumps(result))
+        filtered = await self.call("traces", query={"state": "not_recalled"})
+        self.assertEqual(filtered["runs"], [])
+        await self.call("traces", username="", expected=401)
+        await self.call("traces", method="POST", expected=405)
+        await self.call("traces", query={"state": "invalid"}, expected=400)
+
     async def test_trimmed_text_limits_match_request_contract(self):
         query = {
             "query": " " * 4500 + "咖啡" + " " * 4500,
@@ -261,7 +282,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_contract_rejects_mutated_shapes_and_requests(self):
         for schema in SPEC["components"]["schemas"].values():
             Draft202012Validator.check_schema(schema)
-        self.assertEqual(len(SPEC["paths"]), 8)
+        self.assertEqual(len(SPEC["paths"]), 9)
         result = await self.call("status")
         for bad in ({**result, "ready": "yes"}, {**result, "schedulerCount": -1}):
             with self.assertRaises(ValidationError):

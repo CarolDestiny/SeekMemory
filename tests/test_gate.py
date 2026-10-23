@@ -44,6 +44,19 @@ def _low(text: str) -> Artifact:
 class EvidenceGateTest(unittest.TestCase):
     """select(gate=True) 只让有相关性证据的候选过门。"""
 
+    def test_trace_diagnostics_do_not_change_selection(self) -> None:
+        pool = [_memory("他今天加班到很晚"), _low("量子力学")]
+        for gate in (True, False):
+            for text in ("今天加班到很晚", "现在几点", "无关内容"):
+                with self.subTest(gate=gate, text=text):
+                    diagnostics = {}
+                    expected = select(pool, text, 0, gate=gate, seed=7)
+                    actual = select(pool, text, 0, gate=gate, seed=7, diagnostics=diagnostics)
+                    self.assertEqual(actual, expected)
+                    if diagnostics["evaluated"]:
+                        self.assertEqual(diagnostics["passed"] + diagnostics["rejected"], len(pool))
+                        self.assertEqual(diagnostics["passed"], len(actual))
+
     def test_all_low_evidence_returns_empty(self) -> None:
         """候选全是低分低证据时返回空列表，不硬凑 k 条。"""
         pool = [_low("他今天弄了数据库"), _low("他下午在改脚本"), _low("他明天要交报表")]
