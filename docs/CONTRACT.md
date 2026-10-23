@@ -558,3 +558,8 @@ An extraction item may include an optional `supersedes` exact-text hint. After t
 ## Evaluation and live probe
 
 `scripts/snapshot_db.py --source ... --destination ...` creates a WAL-consistent SQLite snapshot. `scripts/live_probe.py` opens a database in SQLite read-only mode and reports source/node/persona counts, extraction states and ledger validity. `benchmarks/real_eval.py` runs extraction against an OpenAI-compatible endpoint and reports parse/schema/expected-text recall; it is manual and not part of CI.
+
+
+## Runtime persistence and adapter
+
+`JsonStateStore` persists SocialState atomically in the plugin data directory, so observe-only runtime state survives restarts. `adapters/astrbot_runtime.py` is the only place that maps host message events into `RuntimeInput`; `app/runtime` remains host-agnostic.
