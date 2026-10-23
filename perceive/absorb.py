@@ -19,9 +19,10 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..maintain.impression import revise_impression
     from ..maintain.link import link_new
     from ..perceive.extract import (
+        ExtractionParseError,
         build_prompt,
         filter_duplicates,
-        parse_response,
+        parse_response_checked,
     )
     from ..store.cache import Cache
     from ..store.db import DB
@@ -34,7 +35,12 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from store.cache import Cache
     from store.db import DB
 
-    from perceive.extract import build_prompt, filter_duplicates, parse_response
+    from perceive.extract import (
+        ExtractionParseError,
+        build_prompt,
+        filter_duplicates,
+        parse_response_checked,
+    )
 
 MAX_ITEMS = 6
 
@@ -243,7 +249,7 @@ async def absorb(
         if strict:
             raise
         log(f"模型调用失败： {type(exc).__name__}")
-        return WriteOutcome(errors=(f"model: {exc}",), model_failed=True)
+        return WriteOutcome(errors=(f"model: {exc}",), model_failed=True, retryable=True)
 
     owner = owner_of(items)
     source_ids = tuple(turn.source_id for turn in items if turn.source_id)
@@ -259,7 +265,13 @@ async def absorb(
         return _boundary(scope, _subject_id(item, owner, default_subject, owner_id))
 
     with stage("response.parse"):
-        parsed = parse_response(raw)
+        try:
+            parsed = parse_response_checked(raw)
+        except ExtractionParseError as exc:
+            if strict:
+                raise
+            return WriteOutcome(errors=(f"parse: {exc}",), model_failed=True,
+                                retryable=True)
     with stage("memory.deduplicate"):
         parsed = filter_duplicates(
             parsed,
@@ -272,6 +284,7 @@ async def absorb(
     written_ids: list[str] = []
     skipped = 0
     errors: list[str] = []
+    retryable = False
     for item in parsed[:MAX_ITEMS]:
         try:
             if owner:
@@ -303,6 +316,7 @@ async def absorb(
                 validate(art)
         except Exception as exc:
             skipped += 1
+            retryable = True
             errors.append(f"construct: {exc}")
             log(f"记忆校验失败： {type(exc).__name__}")
             continue
@@ -322,6 +336,7 @@ async def absorb(
         except Exception as exc:
             skipped += 1
             errors.append(f"commit: {exc}")
+            retryable = True
             log(f"记忆写入失败： {type(exc).__name__}")
             continue
         try:
@@ -336,4 +351,5 @@ async def absorb(
         skipped=skipped,
         ids=tuple(written_ids),
         errors=tuple(errors),
+        retryable=retryable,
     )

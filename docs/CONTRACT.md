@@ -356,6 +356,7 @@ class WriteOutcome:
     ids: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
     model_failed: bool = False
+    retryable: bool = False
 ```
 
 ## core/retrieval.py
