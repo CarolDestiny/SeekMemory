@@ -82,11 +82,13 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Runtime actions, episodes and tool policy were untested | covered by `tests/test_runtime_actions.py` |
 | Observe-only mode could accidentally change LLM gating | covered by `tests/test_webui_host.py` (host layer) |
 | Runtime delivery was recorded before actual send | covered by `tests/test_webui_host.py` (host layer) |
+| Runtime memory context was coupled to main injection | covered by `tests/test_agent_runtime.py`, `tests/test_seekmemory_context.py` |
 | Runtime DB failures could break replies | covered by `tests/test_runtime_actions.py` |
 | Runtime episode retention was unbounded | covered by `tests/test_runtime_actions.py` |
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |
 | Persona revision timeline was not exposed | covered by `tests/test_webui_host.py` (host layer) |
 | Repeated bot behavior had no self-impression path | covered by `tests/test_self_impression.py` |
+| Wait, quiet, proactive and per-session rate-limit scheduling were untested | covered by `tests/test_runtime_scheduler.py` |
 
 ## Staging and model probes
 

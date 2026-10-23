@@ -14,6 +14,7 @@ from app.runtime import (  # noqa: E402
     AgentRuntime,
     InMemoryStateStore,
     JsonStateStore,
+    MemoryContext,
     RuntimeInput,
     SocialState,
     WakeAction,
@@ -106,6 +107,31 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(state.unread_count, 3)
         self.assertEqual(len(trace.rows), 1)
         self.assertNotIn("hello", str(trace.rows[0]))
+
+    def test_memory_context_port_is_delegated(self) -> None:
+        seen = []
+        expected = MemoryContext(text="block", info={"final_ids": ("a1",)})
+
+        class Memory:
+            def build_context(self, event):
+                seen.append(event)
+                return expected
+
+        event = RuntimeInput("s1", "hello")
+        runtime = AgentRuntime(InMemoryStateStore(), memory_context=Memory())
+        context = runtime.build_context(event)
+        self.assertIs(context, expected)
+        self.assertIs(seen[0], event)
+        self.assertEqual(context.text, "block")
+        self.assertEqual(context.info["final_ids"], ("a1",))
+
+    def test_missing_memory_context_returns_empty_context(self) -> None:
+        runtime = AgentRuntime(InMemoryStateStore())
+        first = runtime.build_context(RuntimeInput("s1", "hello"))
+        second = runtime.build_context(RuntimeInput("s1", "again"))
+        self.assertEqual(first.text, "")
+        self.assertEqual(first.info, {})
+        self.assertIsNot(first.info, second.info)
 
     def test_observe_uses_runtime_clock_when_event_has_no_timestamp(self) -> None:
         store = InMemoryStateStore()

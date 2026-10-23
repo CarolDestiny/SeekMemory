@@ -100,6 +100,7 @@ class PackageTests(unittest.TestCase):
                     "main.py",
                     "app/checkpoint.py",
                     "app/contracts.py",
+                    "adapters/seekmemory_context.py",
                     "store/schema.sql",
                     "pages/memory/index.html",
                 }
@@ -206,6 +207,29 @@ class PackageTests(unittest.TestCase):
                 "-I",
                 str(installed / "tests/test_smoke.py"),
             ],
+            cwd=installed,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        probe = installed / "tests" / "test_seekmemory_context_import.py"
+        probe.write_text(
+            "import sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n"
+            "from adapters.seekmemory_context import SeekMemoryContextAdapter\n"
+            "from app.runtime import MemoryContext, RuntimeInput\n"
+            "context = SeekMemoryContextAdapter(lambda event: MemoryContext(\n"
+            "    text='block', info={'final_ids': ('a1',)}\n"
+            ")).build_context(RuntimeInput('s1', 'hello'))\n"
+            "assert context.text == 'block'\n"
+            "assert context.info['final_ids'] == ('a1',)\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [sys.executable, "-I", str(probe)],
             cwd=installed,
             capture_output=True,
             text=True,

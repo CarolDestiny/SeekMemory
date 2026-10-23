@@ -82,8 +82,14 @@ class TraceSink(Protocol):
     def record(self, kind: str, status: str, context: dict[str, Any] | None = None) -> None: ...
 
 
+@dataclass(frozen=True)
+class MemoryContext:
+    text: str = ""
+    info: dict[str, Any] = field(default_factory=dict)
+
+
 class MemoryContextPort(Protocol):
-    def build_context(self, event: RuntimeInput) -> str: ...
+    def build_context(self, event: RuntimeInput) -> MemoryContext: ...
 
 
 class ActionPort(Protocol):
