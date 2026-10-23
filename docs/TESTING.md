@@ -81,6 +81,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 ## Staging and model probes
 
 ```bash
+python3 scripts/snapshot_db.py --source /path/to/memory.db --destination /tmp/staging.db
 python3 scripts/live_probe.py --db /path/to/memory.db --label live --json
 python3 benchmarks/real_eval.py --cases benchmarks/data/extraction_smoke.jsonl --dry-run
 ```

@@ -557,4 +557,4 @@ An extraction item may include an optional `supersedes` exact-text hint. After t
 
 ## Evaluation and live probe
 
-`scripts/live_probe.py` opens a database in SQLite read-only mode and reports source/node/persona counts, extraction states and ledger validity. `benchmarks/real_eval.py` runs extraction against an OpenAI-compatible endpoint and reports parse/schema/expected-text recall; it is manual and not part of CI.
+`scripts/snapshot_db.py --source ... --destination ...` creates a WAL-consistent SQLite snapshot. `scripts/live_probe.py` opens a database in SQLite read-only mode and reports source/node/persona counts, extraction states and ledger validity. `benchmarks/real_eval.py` runs extraction against an OpenAI-compatible endpoint and reports parse/schema/expected-text recall; it is manual and not part of CI.
