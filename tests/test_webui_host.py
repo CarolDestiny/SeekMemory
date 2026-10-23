@@ -261,6 +261,10 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             event, SimpleNamespace(role="assistant", completion_text="ok")
         )
         self.assertEqual(self.plugin.checkpoint.pending(), 1)
+        pending = self.plugin.db.pending_extractions()
+        self.assertTrue(any(
+            row["role"] == "assistant" and row["text"] == "ok" for row in pending
+        ))
 
     async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")

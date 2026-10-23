@@ -80,11 +80,12 @@ class Buffer:
         source: Source | None = None,
         turn_id: str = "",
         deferred: bool = False,
+        role: str = "user",
     ) -> DialogueTurn | None:
         text = str(text or "").strip()
         if not text:
             return None
-        turn = DialogueTurn(str(umo or ""), str(sender or ""), "user", text,
+        turn = DialogueTurn(str(umo or ""), str(sender or ""), str(role or "user"), text,
                             str(at or ""), str(source_id or ""))
         previous = self._last_for_session(turn.session_id)
         turn = DialogueTurn(turn.session_id, turn.speaker_id, turn.role, turn.text,

@@ -70,6 +70,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Expired/future validity is ignored by recall | covered by `tests/test_temporal.py` |
 | Old database migration only checked a column | covered by `tests/test_migration.py` |
 | No continuous extraction-to-recall correction case | covered by `tests/test_continuity.py` |
+| Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
 
 ## What tests cannot fully prove
 
