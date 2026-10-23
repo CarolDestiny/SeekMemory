@@ -49,6 +49,19 @@ class DisclosureFactorTest(unittest.TestCase):
         self.assertGreater(scope_prior(shared), scope_prior(private))
         self.assertGreater(scope_prior(private), scope_prior(shadow))
 
+    def test_disclosure_thresholds_remain_monotonic(self):
+        art = make("memory", {"text": "shared"}, scope="shared", shareable="public")
+        scene = RecallScene("g1", "u1", "u1", ("u1",))
+        levels = []
+        for relevance in (0.62, 0.30, 0.04, 0.03):
+            levels.append(decide(art, scene, relevance, ("g1",)).level)
+        self.assertEqual(levels, [
+            DisclosureLevel.FULL,
+            DisclosureLevel.PARAPHRASE,
+            DisclosureLevel.HINT,
+            DisclosureLevel.SILENCE,
+        ])
+
     def test_origin_is_bonus_not_gate(self):
         art = make("memory", {"text": "private"}, scope="private", subject_id="u1")
         origin = RecallScene("g1", "u1", "u1", ("u1",))
