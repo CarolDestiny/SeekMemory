@@ -118,6 +118,21 @@ class RunTraceTests(unittest.TestCase):
         self.assertFalse(store.persistence_error)
         self.assertEqual(store.snapshot()["events"][0]["event"], "agent_done")
 
+    def test_invalid_utf8_lines_are_ignored_on_reload(self) -> None:
+        event = Event()
+        self.tracer.begin(event)
+        with self.path.open("ab") as stream:
+            stream.write(b"\xff\n")
+        restored = TraceStore(self.path, clock=lambda: self.now)
+        self.assertEqual(restored.snapshot()["runs"][0]["event_count"], 1)
+
+    def test_stale_unfinished_run_is_interrupted_after_restart(self) -> None:
+        event = Event()
+        self.tracer.begin(event)
+        restored = TraceStore(self.path, clock=lambda: self.now + 60)
+        run = restored.snapshot()["runs"][0]
+        self.assertEqual(run["status"], "interrupted")
+
     def test_missing_middle_event_marks_timeline_partial(self):
         event = Event()
         self.tracer.begin(event)

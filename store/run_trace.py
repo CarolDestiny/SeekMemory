@@ -37,7 +37,8 @@ class TraceStore:
                         try:
                             self.events.append(clean_event(json.loads(line)))
                             self.events = self.events[-self.max_rows:]
-                        except (ValueError, TypeError, KeyError, AttributeError):
+                        except (ValueError, TypeError, KeyError, AttributeError,
+                                UnicodeDecodeError):
                             continue
                 self.events = self._retained(self.events)
                 self._persist(self.events)
@@ -79,7 +80,7 @@ class TraceStore:
                         stream.write(json.dumps(row, ensure_ascii=False) + "\n")
                 self.events = rows
                 self.persistence_error = False
-            except (OSError, ValueError, TypeError, KeyError):
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
                 self.persistence_error = True
 
     def snapshot(self, state: str = "all") -> dict:
