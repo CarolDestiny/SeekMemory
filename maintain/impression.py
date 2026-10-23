@@ -56,6 +56,8 @@ def _rivals(cache: Cache, art: Artifact) -> list[Artifact]:
                 continue
             if old.header.scope != art.header.scope:
                 continue
+            if str(old.header.subject_id or "") != str(art.header.subject_id or ""):
+                continue
             out.append(old)
         except Exception:  # noqa: BLE001
             continue
