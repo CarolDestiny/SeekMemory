@@ -57,6 +57,9 @@ class SocialState:
     read_through_seq: int = 0
     reply_count: int = 0
     ignored_streak: int = 0
+    dispatch_attempts: int = 0
+    next_retry_at: float = 0.0
+    last_dispatched_source_id: str = ""
     last_action: str = ""
     last_reason: str = ""
     reply_cooldown_seconds: float = 30.0

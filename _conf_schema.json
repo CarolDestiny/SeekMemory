@@ -181,5 +181,15 @@
     "description": "Runtime scheduler tick interval in seconds.",
     "type": "int",
     "default": 5
+  },
+  "runtime_dispatch_max_attempts": {
+    "description": "Maximum deferred reply attempts for one ambient source.",
+    "type": "int",
+    "default": 3
+  },
+  "runtime_dispatch_backoff_seconds": {
+    "description": "Base retry backoff for deferred reply failures.",
+    "type": "int",
+    "default": 2
   }
 }

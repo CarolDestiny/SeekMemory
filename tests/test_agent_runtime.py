@@ -250,6 +250,20 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(state.read_through_seq, 7)
         self.assertEqual(state.unread_count, 0)
 
+    def test_dispatch_claim_and_retry_are_bounded(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        self.assertEqual(runtime.claim_dispatch("s1", "src1", now=100), 1)
+        self.assertEqual(runtime.claim_dispatch("s1", "src1", now=100), 2)
+        state = runtime.schedule_retry("s1", 100, attempts=2, max_attempts=3)
+        self.assertGreater(state.wait_until, 100)
+        self.assertEqual(state.next_retry_at, state.wait_until)
+        dead = runtime.schedule_retry("s1", 100, attempts=3, max_attempts=3)
+        self.assertEqual(dead.wait_until, 0.0)
+        self.assertEqual(dead.next_retry_at, 0.0)
+        self.assertEqual(dead.last_reason, "dispatch_dead")
+        self.assertEqual(runtime.claim_dispatch("s1", "src2", now=110), 1)
+
     def test_ambient_observe_sets_wait_deadline(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 100, wait_seconds=5)

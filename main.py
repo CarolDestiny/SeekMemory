@@ -417,6 +417,10 @@ class Main(star.Star):
                     "pending save failed",
                     context={"error": self.buffer.save_error},
                 )
+            try:
+                self._self_id = str(event.get_self_id())
+            except Exception:
+                pass
             event.set_extra("_seekmemory_turn_id", turn_id)
             event.set_extra("_seekmemory_source_id", source_id)
             decision = self.runtime.observe(
@@ -916,44 +920,73 @@ class Main(star.Star):
                 except Exception:
                     continue
 
+    def _record_deferred_assistant_source(self, session_id: str, text: str,
+                                          reply_to: str, at: str) -> str:
+        bot_id = str(getattr(self, "_self_id", "") or "bot")
+        turn_id = str(reply_to or make_source_id(
+            session_id=session_id, speaker_id=bot_id, role="assistant",
+            text=text, at=at,
+        ))
+        source_id = make_source_id(
+            event_id=f"{turn_id}:deferred",
+            session_id=session_id,
+            speaker_id=bot_id,
+            role="assistant",
+            text=text,
+        )
+        source = Source(source_id, turn_id, session_id, bot_id, "assistant",
+                        text, at, reply_to=reply_to)
+        if self.db is not None:
+            self.db.append_sources([source])
+        if self.buffer is not None:
+            self.buffer.add(session_id, text, bot_id, source_id, at,
+                            source=source, turn_id=turn_id, role="assistant")
+        return source_id
+
     async def _dispatch_deferred(self, session_id: str, now: float) -> None:
         """Generate one deferred group reply after the ambient wait expires."""
         state = self.runtime.store.get(session_id)
         if state.wait_until <= 0 or state.wait_until > now:
             return
+        if state.next_retry_at and state.next_retry_at > now:
+            return
         source = self.db.latest_user_source(session_id) if self.db is not None else None
-        # Claim the wait before any await so a slow provider or send cannot
-        # cause the same ambient turn to be dispatched twice.
-        self.runtime.clear_wait(session_id, now)
         if not source:
+            self.runtime.clear_wait(session_id, now)
             return
         text = str(source.get("text") or "").strip()
         if not text:
+            self.runtime.clear_wait(session_id, now)
             return
+        source_id = str(source.get("id") or "")
+        attempts = self.runtime.claim_dispatch(session_id, source_id, now)
         runtime_input = RuntimeInput(
             session_id=session_id,
             text=text,
             private=False,
             at=now,
         )
-        context = self.runtime.build_context(runtime_input)
         try:
+            context = self.runtime.build_context(runtime_input)
             provider = await self.context.get_using_provider_async(session_id)
             if provider is None:
-                self.trace.record("runtime", "deferred_no_provider", {})
-                return
+                raise RuntimeError("no_provider")
             response = await provider.text_chat(
                 prompt=text,
                 system_prompt=context.text or None,
             )
             reply = str(getattr(response, "completion_text", "") or "").strip()
             if not reply:
-                self.trace.record("runtime", "deferred_empty_response", {})
-                return
+                raise RuntimeError("empty_response")
             sent = await self.actions.send(session_id, reply)
             if sent is False:
                 raise RuntimeError("send_failed")
         except Exception as exc:  # noqa: BLE001 - runtime action is fail-open
+            self.runtime.schedule_retry(
+                session_id, now, attempts,
+                max_attempts=int(self._c("runtime_dispatch_max_attempts", 3)),
+                base_seconds=float(self._c("runtime_dispatch_backoff_seconds", 2)),
+            )
             self.episode_recorder.record(
                 RuntimeEpisode(
                     session_id=session_id,
@@ -964,28 +997,35 @@ class Main(star.Star):
                     delivered=False,
                     outcome="error",
                     error=type(exc).__name__,
-                    user_source_id=str(source.get("id") or ""),
+                    user_source_id=source_id,
                 )
             )
             self.trace.record(
-                "runtime", "deferred_failed", {"error": type(exc).__name__}
+                "runtime", "deferred_failed",
+                {"error": type(exc).__name__, "attempt": attempts},
             )
             return
+        at = datetime.datetime.now().isoformat(timespec="seconds")
+        assistant_source_id = self._record_deferred_assistant_source(
+            session_id, reply, source_id, at
+        )
         self.runtime.mark_delivered(session_id, now)
         self.episode_recorder.record(
             RuntimeEpisode(
                 session_id=session_id,
-                at=datetime.datetime.now().isoformat(timespec="seconds"),
+                at=at,
                 decision="wait",
                 reason="deferred_wait",
                 action="reply",
                 delivered=True,
                 response_chars=len(reply),
                 outcome="ok",
-                user_source_id=str(source.get("id") or ""),
+                user_source_id=source_id,
+                assistant_source_id=assistant_source_id,
             )
         )
-        self.trace.record("runtime", "deferred_delivered", {"chars": len(reply)})
+        self.trace.record("runtime", "deferred_delivered",
+                          {"chars": len(reply), "attempt": attempts})
 
     async def _runtime_loop(self) -> None:
         while True:

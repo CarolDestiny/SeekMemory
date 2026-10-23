@@ -469,7 +469,16 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(actions.sent, [(session_id, "deferred reply")])
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(rows[0]["reason"], "deferred_wait")
+        self.assertTrue(rows[0]["assistant_source_id"])
         self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        source_row = self.plugin.db.conn.execute(
+            "SELECT role FROM sources WHERE id = ?", (rows[0]["assistant_source_id"],)
+        ).fetchone()
+        self.assertEqual(source_row["role"], "assistant")
+        self.assertTrue(any(
+            turn.role == "assistant" and turn.text == "deferred reply"
+            for turn in self.plugin.buffer.items
+        ))
 
     async def test_runtime_tick_dedupes_deferred_dispatch(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
@@ -503,7 +512,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await self.plugin._runtime_scheduler_tick()
         self.assertEqual(actions.sent, [(session_id, "tick reply")])
 
-    async def test_deferred_provider_failure_clears_wait_and_is_private(self) -> None:
+    async def test_deferred_provider_failure_schedules_retry_and_is_private(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-provider-fail"
         now = time.time()
@@ -520,12 +529,14 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.trace.rows.clear()
         await self.plugin._dispatch_deferred(session_id, now)
-        self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertGreater(state.wait_until, now)
+        self.assertGreater(state.next_retry_at, now)
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(rows[0]["outcome"], "error")
         self.assertNotIn("secret", json.dumps([row.context for row in self.plugin.trace.rows]))
 
-    async def test_deferred_send_failure_records_failure_and_clears_wait(self) -> None:
+    async def test_deferred_send_failure_schedules_retry(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-send-fail"
         now = time.time()
@@ -550,10 +561,38 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = Actions()
         await self.plugin._dispatch_deferred(session_id, now)
-        self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertGreater(state.wait_until, now)
+        self.assertGreater(state.next_retry_at, now)
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(rows[0]["outcome"], "error")
         self.assertEqual(rows[0]["error"], "RuntimeError")
+
+    async def test_deferred_retry_exhaustion_enters_dead_state(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-retry-dead"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-retry", turn_id="turn-retry", session_id=session_id,
+            speaker_id="u1", role="user", text="retry me",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        async def provider_for(session):
+            raise RuntimeError("fail once")
+
+        self.plugin.context.get_using_provider_async = provider_for
+        for _ in range(4):
+            state = self.plugin.runtime.store.get(session_id)
+            await self.plugin._dispatch_deferred(session_id, state.wait_until or now)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertEqual(state.wait_until, 0.0)
+        self.assertEqual(state.next_retry_at, 0.0)
+        self.assertEqual(state.last_reason, "dispatch_dead")
+        self.assertEqual(state.dispatch_attempts, 3)
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(len(rows), 3)
 
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace
