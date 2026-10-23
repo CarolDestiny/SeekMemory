@@ -249,6 +249,14 @@ owner_umo
 observe_groups
 ```
 
+To enable the single-node AgentRuntime, set:
+
+```text
+runtime_gate_enabled: true
+runtime_wait_seconds: 5
+runtime_tick_seconds: 5
+```
+
 插件数据目录中的运行时文件：
 
 ```text

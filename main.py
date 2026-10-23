@@ -127,7 +127,10 @@ class Main(star.Star):
                 trace=self.trace,
                 clock=time.time,
                 memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
-                wait_seconds=int(self._c("runtime_wait_seconds", 5)),
+                wait_seconds=(
+                    int(self._c("runtime_wait_seconds", 5))
+                    if bool(self._c("runtime_gate_enabled", False)) else 0
+                ),
             )
             self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
         else:
@@ -136,7 +139,10 @@ class Main(star.Star):
                 trace=self.trace,
                 clock=time.time,
                 memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
-                wait_seconds=int(self._c("runtime_wait_seconds", 5)),
+                wait_seconds=(
+                    int(self._c("runtime_wait_seconds", 5))
+                    if bool(self._c("runtime_gate_enabled", False)) else 0
+                ),
             )
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
@@ -974,7 +980,7 @@ class Main(star.Star):
         return bool(self.dream is not None and self.dream.enabled)
 
     async def _runtime_scheduler_tick(self) -> None:
-        if self.db is None:
+        if self.db is None or not bool(self._c("runtime_gate_enabled", False)):
             return
         async with self._runtime_tick_lock:
             now = time.time()
@@ -1033,6 +1039,8 @@ class Main(star.Star):
 
     async def _dispatch_deferred(self, session_id: str, now: float) -> None:
         """Generate one deferred group reply after the ambient wait expires."""
+        if not bool(self._c("runtime_gate_enabled", False)):
+            return
         state = self.runtime.store.get(session_id)
         if state.wait_until <= 0 or state.wait_until > now:
             return
