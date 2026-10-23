@@ -6,6 +6,11 @@ labels: enhancement
 assignees: ""
 ---
 
+## Language / Bilingual requirement
+
+Write the issue in English first. Add a complete Chinese translation under a
+`## Chinese translation` heading in the same issue. Keep code identifiers and paths in English.
+
 ## Why this issue / Why now
 
 Explain the user-visible or architectural reason. Link the current context: what is thin,

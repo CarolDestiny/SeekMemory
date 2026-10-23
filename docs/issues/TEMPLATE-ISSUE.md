@@ -11,6 +11,11 @@
 | 影响版本 | commit / tag |
 | GitHub | 待同步 |
 
+## Language requirement
+
+Write this issue in English first, then add a complete Chinese translation under a
+`## Chinese translation` heading in the same issue. Keep code identifiers and paths unchanged.
+
 ## Why this issue
 
 Explain why this must be handled now: user-visible problem, architectural coupling, or a
