@@ -6,6 +6,24 @@ labels: enhancement
 assignees: ""
 ---
 
+## Why this issue / Why now
+
+Explain the user-visible or architectural reason. Link the current context: what is thin,
+what is coupled, what becomes possible after this change, and why it should not remain
+implicit in `main.py`.
+
+## Current constraints / Evidence
+
+- Current entry points and files:
+- What is mixed together today:
+- What cannot be tested or changed safely today:
+
+## Adapter boundary
+
+Describe the host boundary explicitly. AstrBot remains the host; the new layer must depend
+on ports rather than AstrBot event classes. State what is adapter-only and what is
+runtime/domain logic.
+
 ## Problem / 问题
 
 这解决了什么用户可见或架构问题？
