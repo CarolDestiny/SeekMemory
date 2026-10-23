@@ -247,6 +247,33 @@ export interface components {
                 [key: string]: number;
             };
         };
+        ContextBudget: {
+            injection_chars: number;
+            system_chars: number;
+            group_context_messages: number;
+            history_messages: number;
+            estimate_tokens: number;
+        };
+        DreamRun: {
+            date: string;
+            status: string;
+            started_at: string;
+            finished_at: string;
+            batches: number;
+            written: number;
+            errors: string[];
+            summary: {
+                [key: string]: unknown;
+            };
+        };
+        DreamStatus: {
+            enabled: boolean;
+            at: string;
+            today: string;
+            today_run: components["schemas"]["DreamRun"] | null;
+            due: boolean;
+            recent: components["schemas"]["DreamRun"][];
+        };
         RuntimeStatus: {
             ready: boolean;
             checks: {
@@ -269,6 +296,8 @@ export interface components {
                 maxTopicsPerBatch: number;
             };
             capacity: components["schemas"]["CapacityStatus"] | null;
+            budget?: components["schemas"]["ContextBudget"] | null;
+            dream?: components["schemas"]["DreamStatus"] | null;
             checkpointPending: number | null;
             schedulerCount: number;
             config: components["schemas"]["JsonObject"];

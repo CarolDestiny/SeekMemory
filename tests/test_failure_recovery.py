@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.contracts import DialogueTurn  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from perceive.absorb import absorb  # noqa: E402
+from app.flush_policy import chunk_turns  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import ExtractionParseError, parse_response, parse_response_checked  # noqa: E402
 from store.cache import Cache  # noqa: E402
@@ -104,6 +105,33 @@ class BufferRecoveryTest(unittest.TestCase):
         self.assertEqual(len(buf.items), 250)
         self.assertEqual(len(Buffer(path).items), 250)
 
+
+
+class OversizedTopicTest(unittest.TestCase):
+    def test_chunk_turns_preserves_the_tail(self) -> None:
+        turns = [_turn(f"message {index}") for index in range(250)]
+        chunks = chunk_turns(turns)
+        self.assertEqual([len(chunk) for chunk in chunks], [120, 120, 10])
+        self.assertEqual([turn for chunk in chunks for turn in chunk], turns)
+
+
+class PendingFileRecoveryTest(unittest.TestCase):
+    def test_corrupt_pending_file_is_quarantined(self) -> None:
+        path = os.path.join(tempfile.mkdtemp(prefix="seekmem_pending_"), "pending.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{not json")
+        buf = Buffer(path)
+        self.assertTrue(buf.load_error)
+        self.assertFalse(os.path.exists(path))
+        self.assertTrue(os.path.exists(path + ".corrupt"))
+
+    def test_save_failure_is_visible(self) -> None:
+        parent = os.path.join(tempfile.mkdtemp(prefix="seekmem_save_"), "not-a-dir")
+        with open(parent, "w", encoding="utf-8") as handle:
+            handle.write("x")
+        buf = Buffer(os.path.join(parent, "pending.json"))
+        buf.add("umo:a", "hello")
+        self.assertTrue(buf.save_error)
 
 if __name__ == "__main__":
     unittest.main()

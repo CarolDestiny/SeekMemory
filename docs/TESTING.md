@@ -54,8 +54,10 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Shared impression is pinned and bypasses disclosure | privacy output: pinned cross-session |
 | Bad JSON was treated as an empty extraction | covered by `tests/test_failure_recovery.py` |
 | Partial commit cleared the whole batch | covered by `tests/test_failure_recovery.py` |
-| A batch above the topic limit loses unprocessed turns | queue recovery: oversized topic |
+| A batch above the topic limit loses unprocessed turns | covered by `tests/test_failure_recovery.py` |
 | Legacy buffer dropped rows above 200 | covered by `tests/test_failure_recovery.py` |
+| Corrupt pending JSON silently becomes an empty queue | covered by `tests/test_failure_recovery.py` |
+| Pending save failure is silent | covered by `tests/test_failure_recovery.py` |
 | Cached candidate is reinforced after budget trimming | reinforcement truth: final assembled ids only |
 | Request failure still records a hit | reinforcement truth: failed delivery |
 | Same memory counts twice inside cooldown | reinforcement truth: cooldown |
