@@ -248,6 +248,10 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await self.plugin.buffer_message(observe_event)
         self.assertTrue(observe_event.call_llm)
         self.assertEqual(observe_event.extras["_seekmemory_runtime_action"], "observe")
+        self.assertEqual(
+            self.plugin.runtime.store.get(observe_event.unified_msg_origin).wait_until,
+            0.0,
+        )
 
         self.plugin.cfg["runtime_gate_enabled"] = True
         self.plugin.runtime.wait_seconds = 0
@@ -450,6 +454,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_runtime_scheduler_tick_is_isolated_and_private(self) -> None:
         now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
         self.plugin.db.put_runtime_state(
             "s-wait",
             {
@@ -496,6 +501,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-defer"
         now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
         src = source_module.Source(
             id="src-defer", turn_id="turn-defer", session_id=session_id,
             speaker_id="u1", role="user", text="ambient deferred message",
@@ -548,6 +554,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-tick-defer"
         now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
         self.plugin.db.append_sources([source_module.Source(
             id="src-tick", turn_id="turn-tick", session_id=session_id,
             speaker_id="u1", role="user", text="tick deferred",
@@ -580,6 +587,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-provider-fail"
         now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
         self.plugin.db.append_sources([source_module.Source(
             id="src-fail", turn_id="turn-fail", session_id=session_id,
             speaker_id="u1", role="user", text="secret provider input",
@@ -604,6 +612,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-send-fail"
         now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
         self.plugin.db.append_sources([source_module.Source(
             id="src-send-fail", turn_id="turn-send-fail", session_id=session_id,
             speaker_id="u1", role="user", text="send failure input",
@@ -636,6 +645,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-retry-dead"
         now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
         self.plugin.db.append_sources([source_module.Source(
             id="src-retry", turn_id="turn-retry", session_id=session_id,
             speaker_id="u1", role="user", text="retry me",

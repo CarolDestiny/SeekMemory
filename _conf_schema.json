@@ -183,7 +183,7 @@
     "default": 5000
   },
   "runtime_wait_seconds": {
-    "description": "Ambient group debounce wait before a deferred reply attempt.",
+    "description": "Ambient group debounce wait; only active when runtime_gate_enabled is true.",
     "type": "int",
     "default": 5
   },
