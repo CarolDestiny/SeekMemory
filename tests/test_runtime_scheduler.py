@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -142,6 +143,77 @@ class SchedulerPolicyTest(unittest.TestCase):
         self.assertEqual(skips.action, WakeAction.OBSERVE)
         self.assertEqual(skips.reason, "proactive_skip")
 
+    def test_evaluate_combines_quiet_wait_and_proactive(self) -> None:
+        state = SocialState(
+            session_id="s1",
+            last_seen_at=100.0,
+            quiet_until=105.0,
+            proactive_idle_seconds=60.0,
+            proactive_probability=1.0,
+        )
+        decisions = self.policy.evaluate(state, now=100.0, wait_until=101.0)
+        self.assertEqual(
+            [decision.event for decision in decisions],
+            [SchedulerEvent.QUIET, SchedulerEvent.WAIT, SchedulerEvent.PROACTIVE],
+        )
+        self.assertEqual(decisions[0].action, WakeAction.IGNORE)
+        self.assertEqual(decisions[1].action, WakeAction.WAIT)
+        self.assertEqual(decisions[1].wait_seconds, 1.0)
+        self.assertEqual(decisions[2].reason, "quiet_window")
+
+    def test_evaluate_reads_forward_compatible_state_wait_until(self) -> None:
+        state = SocialState(session_id="s1", last_seen_at=100.0)
+        state.wait_until = 130.0  # type: ignore[attr-defined]
+        decisions = self.policy.evaluate(state, now=100.0)
+        self.assertEqual(decisions[1].event, SchedulerEvent.WAIT)
+        self.assertEqual(decisions[1].wait_seconds, 30.0)
+
+    def test_wait_and_quiet_boundaries_are_due(self) -> None:
+        wait = self.policy.evaluate_wait(wait_until=100.0, now=100.0)
+        self.assertTrue(wait.due)
+        self.assertEqual(wait.wait_seconds, 0.0)
+        state = SocialState(session_id="s1", quiet_until=100.0)
+        quiet = self.policy.evaluate_quiet(state, now=100.0)
+        self.assertTrue(quiet.due)
+        self.assertEqual(quiet.reason, "quiet_clear")
+
+    def test_cooldown_override_and_disabled(self) -> None:
+        state = SocialState(session_id="s1", last_spoke_at=100.0,
+                            reply_cooldown_seconds=30.0)
+        self.assertEqual(self.policy.cooldown_remaining(state, now=105.0), 25.0)
+        self.assertTrue(self.policy.is_rate_limited(state, now=105.0))
+        self.assertFalse(self.policy.is_rate_limited(state, now=130.0))
+        self.assertFalse(SchedulerPolicy(cooldown_seconds=0).is_rate_limited(
+            state, now=101.0
+        ))
+        self.assertTrue(SchedulerPolicy(cooldown_seconds=10).is_rate_limited(
+            state, now=105.0
+        ))
+
+    def test_proactive_rate_limit_uses_last_spoke_at(self) -> None:
+        state = SocialState(
+            session_id="s1",
+            last_spoke_at=990.0,
+            last_seen_at=900.0,
+            proactive_idle_seconds=60.0,
+            proactive_probability=1.0,
+            reply_cooldown_seconds=30.0,
+        )
+        decision = self.policy.evaluate_proactive(state, now=1000.0)
+        self.assertEqual(decision.action, WakeAction.IGNORE)
+        self.assertEqual(decision.reason, "rate_limited")
+
+    def test_proactive_implicit_seed_is_stable(self) -> None:
+        state = SocialState(
+            session_id="s1",
+            last_seen_at=100.0,
+            proactive_idle_seconds=60.0,
+            proactive_probability=0.5,
+        )
+        first = self.policy.evaluate_proactive(state, now=1000.0)
+        second = self.policy.evaluate_proactive(state, now=1000.0)
+        self.assertEqual(first, second)
+
     def test_evaluate_returns_stable_event_order(self) -> None:
         state = SocialState(
             session_id="s1",
@@ -157,6 +229,19 @@ class SchedulerPolicyTest(unittest.TestCase):
         )
         self.assertEqual(decisions[1].reason, "wait_due")
         self.assertEqual(decisions[2].action, WakeAction.PROACTIVE)
+
+    def test_evaluate_does_not_mutate_state(self) -> None:
+        state = SocialState(
+            session_id="s1",
+            last_seen_at=100.0,
+            last_spoke_at=90.0,
+            quiet_until=105.0,
+            proactive_idle_seconds=60.0,
+            proactive_probability=0.5,
+        )
+        before = asdict(state)
+        self.policy.evaluate(state, now=100.0, wait_until=101.0, seed=7)
+        self.assertEqual(asdict(state), before)
 
     def test_scheduler_module_has_no_host_or_io_dependencies(self) -> None:
         source = (
