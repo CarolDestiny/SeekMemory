@@ -58,10 +58,10 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Legacy buffer dropped rows above 200 | covered by `tests/test_failure_recovery.py` |
 | Corrupt pending JSON silently becomes an empty queue | covered by `tests/test_failure_recovery.py` |
 | Pending save failure is silent | covered by `tests/test_failure_recovery.py` |
-| Cached candidate is reinforced after budget trimming | reinforcement truth: final assembled ids only |
-| Request failure still records a hit | reinforcement truth: failed delivery |
+| Cached candidate was reinforced after budget trimming | covered by `tests/test_reinforcement.py` |
+| Request failure recorded a hit | covered by `tests/test_webui_host.py` (host layer) |
 | Designated output bypasses disclosure | covered by `tests/test_privacy_outputs.py` |
-| Same memory counts twice inside cooldown | reinforcement truth: cooldown |
+| Same memory counted twice inside cooldown | covered by `tests/test_reinforcement.py` |
 | Source ids collided across sessions | covered by `tests/test_identity_isolation.py` |
 | Revision lineage points to itself | lineage consistency |
 | Cache removal succeeds after DB commit failure | cache/DB consistency |

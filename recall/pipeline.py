@@ -13,7 +13,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..app.ports import Retriever
     from ..core.disclosure import DisclosureLevel, RecallScene, decide, safe_text
     from ..core.graph import Graph
-    from ..recall.assemble import build as assemble_text
+    from ..recall.assemble import build_with_meta as assemble_text_meta
     from ..recall.designated import deliverable, mark_given
     from ..recall.drift import best_of as drift_best
     from ..recall.drift import should_drift
@@ -32,7 +32,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from store.cache import Cache
     from store.db import DB
 
-    from recall.assemble import build as assemble_text
+    from recall.assemble import build_with_meta as assemble_text_meta
     from recall.designated import deliverable, mark_given
     from recall.drift import best_of as drift_best
     from recall.drift import should_drift
@@ -238,7 +238,7 @@ def build_block(
                     notes[art.header.id] = note
         except Exception:  # noqa: BLE001 - trajectory is optional
             continue
-    block = assemble_text(
+    block, final_ids, dropped_ids = assemble_text_meta(
         safe_pinned + safe_designated + picked,
         budget=int(budget * (1.4 if mode == "loose" else 1.0)),
         text=text,
@@ -255,6 +255,8 @@ def build_block(
         "chars": len(block),
         "drift": bool(picked) and not designated,
         "picked_ids": tuple(a.header.id for a in picked),
+        "final_ids": final_ids,
+        "dropped_ids": dropped_ids,
         "disclosure": disclosure_info,
         "pinned_ids": tuple(a.header.id for a in safe_pinned),
         "fallback": fallback,

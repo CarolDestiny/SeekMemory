@@ -218,6 +218,50 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(row["text"] for row in rows), ["New plan", "Plan A"])
         self.assertFalse(plugin._flushing)
 
+    async def test_reinforcement_waits_for_successful_response(self) -> None:
+        from types import SimpleNamespace
+
+        artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
+        art = artifact.make(
+            "memory",
+            {"text": "shared recall phrase", "level": "fact"},
+            scope="shared",
+            subject_id="u1",
+        )
+        self.plugin.db.commit(art, expected_revision=0, op="create")
+        self.plugin.cache.put(art)
+
+        class Event:
+            unified_msg_origin = "bot:GroupMessage:g1"
+            message_str = "shared recall phrase"
+
+            def __init__(self):
+                self.extras = {}
+
+            def is_private_chat(self):
+                return False
+
+            def get_sender_id(self):
+                return "u1"
+
+            def get_self_id(self):
+                return "bot"
+
+            def get_extra(self, key, default=None):
+                return self.extras.get(key, default)
+
+            def set_extra(self, key, value):
+                self.extras[key] = value
+
+        event = Event()
+        await self.plugin.inject_memory(event, SimpleNamespace(system_prompt=""))
+        self.assertTrue(event.get_extra("_seekmemory_recall_ids"))
+        self.assertEqual(self.plugin.checkpoint.pending(), 0)
+        await self.plugin.capture_reply(
+            event, SimpleNamespace(role="assistant", completion_text="ok")
+        )
+        self.assertEqual(self.plugin.checkpoint.pending(), 1)
+
     async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
         store = importlib.import_module(f"{ROOT.name}.store.db")

@@ -14,19 +14,28 @@ MAX_WEIGHT = 3.0
 
 
 class CheckpointManager:
-    def __init__(self, store, cache, interval: int = 1800) -> None:
+    def __init__(self, store, cache, interval: int = 1800,
+                 cooldown_seconds: int | None = None) -> None:
         self.store = store
         self.cache = cache
         self.interval = max(1, int(interval))
+        self.cooldown_seconds = max(0, int(interval if cooldown_seconds is None else cooldown_seconds))
         self.last_flush = time.monotonic()
         self._dirty: dict[str, dict] = {}
+        self._last_hit: dict[str, float] = {}
 
-    def record(self, art: Artifact, at: str = "") -> None:
+    def record(self, art: Artifact, at: str = "") -> bool:
+        now = time.monotonic()
+        last = self._last_hit.get(art.header.id)
+        if last is not None and self.cooldown_seconds and now - last < self.cooldown_seconds:
+            return False
+        self._last_hit[art.header.id] = now
         if art.header.id not in self._dirty:
             self._dirty[art.header.id] = {"revision": art.header.revision, "hits": 0}
         self._dirty[art.header.id]["hits"] += 1
         if at:
             self._dirty[art.header.id]["at"] = at
+        return True
 
     def due(self) -> bool:
         return bool(self._dirty) and time.monotonic() - self.last_flush >= self.interval

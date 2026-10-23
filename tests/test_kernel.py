@@ -152,7 +152,7 @@ class CheckpointTest(unittest.TestCase):
         art = _memory()
         db.commit(art, expected_revision=0, op="create")
         cache.put(art)
-        mgr = CheckpointManager(db, cache)
+        mgr = CheckpointManager(db, cache, cooldown_seconds=0)
         mgr.record(art)
         mgr.record(art)
         self.assertEqual(mgr.flush(), 1)
