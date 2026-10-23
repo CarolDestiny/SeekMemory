@@ -85,6 +85,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |
 | Persona revision timeline was not exposed | covered by `tests/test_webui_host.py` (host layer) |
 | Repeated bot behavior had no self-impression path | covered by `tests/test_self_impression.py` |
+| Wait, quiet, proactive and per-session rate-limit scheduling were untested | covered by `tests/test_runtime_scheduler.py` |
 
 ## Staging and model probes
 

@@ -13,6 +13,7 @@ from .contracts import (
 )
 from .episode import DBEpisodeStore, EpisodeRecorder, JsonlEpisodeStore, RuntimeEpisode
 from .runtime import AgentRuntime
+from .scheduler import RandomSource, SchedulerDecision, SchedulerEvent, SchedulerPolicy
 from .state import DBStateStore, InMemoryStateStore, JsonStateStore
 from .tools import ToolCall, ToolPolicy
 from .wake import WakePolicy
@@ -29,7 +30,11 @@ __all__ = [
     "JsonStateStore",
     "MemoryContextPort",
     "RuntimeInput",
+    "RandomSource",
     "RuntimeResult",
+    "SchedulerDecision",
+    "SchedulerEvent",
+    "SchedulerPolicy",
     "SocialState",
     "StateStore",
     "ToolCall",
