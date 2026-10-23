@@ -80,6 +80,30 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(decision.reason, "waiting")
         self.assertEqual(decision.wait_seconds, 50)
 
+    def test_wait_takes_priority_over_direct_attention(self) -> None:
+        # Documented product decision in #44: an active wait suppresses even a
+        # direct mention until the wait deadline.
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "hello", mentioned=True, at=150), self.state, 150
+        )
+        self.assertEqual(decision.action, WakeAction.WAIT)
+        self.assertEqual(decision.wait_seconds, 50)
+
+    def test_wait_expires_at_exact_deadline(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "hello", mentioned=True, at=200), self.state, 200
+        )
+        self.assertEqual(decision.action, WakeAction.REPLY)
+
+    def test_cooldown_expires_at_exact_deadline(self) -> None:
+        self.state.cooldown_until = 130
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "ambient", at=130), self.state, 130
+        )
+        self.assertEqual(decision.action, WakeAction.OBSERVE)
+
     def test_ambient_message_observes(self) -> None:
         self.assertEqual(
             self.policy.evaluate(RuntimeInput("s1", "ambient", at=10), self.state, 10).action,
@@ -182,6 +206,17 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(state.read_through_seq, 5)
         self.assertEqual(state.unread_count, 2)
         state = runtime.mark_delivered("s1", now=200)
+        self.assertEqual(state.read_through_seq, 7)
+        self.assertEqual(state.unread_count, 0)
+
+    def test_mark_read_clamps_to_latest_sequence_and_is_monotonic(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        runtime.observe(RuntimeInput("s1", "hello", unread_seq=7, unread_count=3))
+        state = runtime.mark_read("s1", 99)
+        self.assertEqual(state.read_through_seq, 7)
+        self.assertEqual(state.unread_count, 0)
+        state = runtime.mark_read("s1", 3)
         self.assertEqual(state.read_through_seq, 7)
         self.assertEqual(state.unread_count, 0)
 

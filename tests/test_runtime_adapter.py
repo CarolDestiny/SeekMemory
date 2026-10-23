@@ -45,6 +45,16 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(result.unread_count, 4)
         self.assertEqual(result.unread_seq, 9)
 
+    def test_invalid_timestamp_and_negative_watermarks_are_clamped(self) -> None:
+        event = Event(False)
+        event.created_at = "not-a-timestamp"
+        result = AstrBotRuntimeAdapter.from_event(
+            event, "ambient", "g1", "u1", unread_count=-3, unread_seq=-2
+        )
+        self.assertEqual(result.at, 0.0)
+        self.assertEqual(result.unread_count, 0)
+        self.assertEqual(result.unread_seq, 0)
+
     def test_group_event_is_not_direct(self) -> None:
         result = AstrBotRuntimeAdapter.from_event(
             Event(False), "ambient", "g1", "u1"

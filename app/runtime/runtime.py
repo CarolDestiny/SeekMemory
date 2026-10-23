@@ -89,7 +89,10 @@ class AgentRuntime:
     def mark_read(self, session_id: str, through_seq: int,
                   now: float | None = None) -> SocialState:
         state = self.store.get(session_id)
-        state.read_through_seq = max(state.read_through_seq, int(through_seq))
+        requested = max(0, int(through_seq))
+        # Never let the watermark move beyond the newest observed sequence.
+        watermark = min(requested, max(0, int(state.last_unread_seq)))
+        state.read_through_seq = max(state.read_through_seq, watermark)
         state.unread_count = max(
             0, int(state.last_unread_seq) - state.read_through_seq
         )
