@@ -128,7 +128,7 @@ def _majority(arts: list[Artifact], key: str, default: str) -> str:
 def merge_similar(
     db: DB, cache: Cache, threshold: float = 0.6, limit: int = 50
 ) -> int:
-    """active 的 scene/detail 超过 500 时，合并最旧一批中的相似项，返回新 impression 数。"""
+    """Merge active scene/detail rows only inside the same subject and scope."""
     pool = [
         art
         for art in list(cache.by_level("scene")) + list(cache.by_level("detail"))
@@ -137,57 +137,78 @@ def merge_similar(
     if len(pool) <= MAX_ACTIVE:
         return 0
 
-    pool.sort(key=lambda art: art.header.time.created or art.header.time.updated or "")
-    batch = pool[: max(int(limit), 3)]
-    texts = [_text_of(art) for art in batch]
-    clusters = _cluster_indices(texts, threshold)
+    groups: dict[tuple[str, str], list[Artifact]] = {}
+    for art in pool:
+        key = (str(art.header.subject_id or ""), str(art.header.scope or "private"))
+        groups.setdefault(key, []).append(art)
+
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M")
     made = 0
+    per_group_limit = max(int(limit), 3)
+    ordered = sorted(
+        groups.values(),
+        key=lambda group: min(
+            art.header.time.created or art.header.time.updated or "" for art in group
+        ),
+    )
 
-    for indices in clusters:
-        members = [batch[index] for index in indices]
-        strengths = [art.header.strength for art in members]
-        count = len(members)
-        payload = {
-            "text": _summarize_texts([texts[index] for index in indices]),
-            "level": "impression",
-            "shape": "pattern",
-            "chrono": "once",
-            "about": _majority(members, "about", "other"),
-            "first": False,
-        }
-        sources = tuple(
-            dict.fromkeys(source for art in members for source in art.header.lineage.sources)
+    for group in ordered:
+        group.sort(
+            key=lambda art: art.header.time.created or art.header.time.updated or ""
         )
-        art = make(
-            "memory",
-            payload,
-            scope="shared"
-            if all(member.header.scope == "shared" for member in members)
-            else "private",
-            strength=Strength(
-                weight=max(item.weight for item in strengths) * 1.2,
-                confidence=max(item.confidence for item in strengths),
-                arousal=sum(item.arousal for item in strengths) / count,
-                valence=sum(item.valence for item in strengths) / count,
-                funny=sum(item.funny for item in strengths) / count,
-            ),
-            lineage=Lineage(
-                sources=sources,
-                derived_from=tuple(member.header.id for member in members),
-            ),
-            time=TimeSpan(created=now, updated=now),
-            said_by="inferred",
-        )
-        db.commit(art, expected_revision=0, op="merge",
-                  reason=f"merge {count} memories into impression",
-                  source_ids=sources)
-        cache.put(art)
-        for member in members:
-            updated = revise(member, state="merged")
-            db.commit(updated, expected_revision=member.header.revision, op="merge",
-                      reason=f"merged into {art.header.id}",
-                      source_ids=tuple(member.header.lineage.sources))
-            cache.remove(member.header.id)
-        made += 1
+        batch = group[:per_group_limit]
+        if len(batch) < 3:
+            continue
+        texts = [_text_of(art) for art in batch]
+        clusters = _cluster_indices(texts, threshold)
+        for indices in clusters:
+            members = [batch[index] for index in indices]
+            strengths = [art.header.strength for art in members]
+            count = len(members)
+            payload = {
+                "text": _summarize_texts([texts[index] for index in indices]),
+                "level": "impression",
+                "shape": "pattern",
+                "chrono": "once",
+                "about": _majority(members, "about", "other"),
+                "first": False,
+            }
+            owner_umo = _majority(members, "owner_umo", "")
+            if owner_umo:
+                payload["owner_umo"] = owner_umo
+            sources = tuple(
+                dict.fromkeys(
+                    source for art in members for source in art.header.lineage.sources
+                )
+            )
+            art = make(
+                "memory",
+                payload,
+                scope=members[0].header.scope,
+                strength=Strength(
+                    weight=max(item.weight for item in strengths) * 1.2,
+                    confidence=max(item.confidence for item in strengths),
+                    arousal=sum(item.arousal for item in strengths) / count,
+                    valence=sum(item.valence for item in strengths) / count,
+                    funny=sum(item.funny for item in strengths) / count,
+                ),
+                lineage=Lineage(
+                    sources=sources,
+                    derived_from=tuple(member.header.id for member in members),
+                ),
+                time=TimeSpan(created=now, updated=now),
+                said_by="inferred",
+                subject_id=str(members[0].header.subject_id or ""),
+            )
+            db.commit(art, expected_revision=0, op="merge",
+                      reason=f"merge {count} memories into impression",
+                      source_ids=sources)
+            cache.put(art)
+            for member in members:
+                updated = revise(member, state="merged")
+                db.commit(updated, expected_revision=member.header.revision, op="merge",
+                          reason=f"merged into {art.header.id}",
+                          source_ids=tuple(member.header.lineage.sources))
+                cache.remove(member.header.id)
+            made += 1
     return made

@@ -164,6 +164,25 @@ def existing_texts(cache: Cache | None) -> list[str]:
         return []
 
 
+def _boundary(scope: str, subject_id: str) -> str:
+    return f"{scope}\x1f{subject_id}"
+
+
+def existing_texts_by_subject(cache: Cache | None) -> dict[str, list[str]]:
+    """Existing memory text grouped by subject and scope boundary."""
+    if cache is None:
+        return {}
+    out: dict[str, list[str]] = {}
+    try:
+        for art in cache.active("memory"):
+            boundary = _boundary(str(art.header.scope or "private"),
+                                 str(art.header.subject_id or ""))
+            out.setdefault(boundary, []).append(content_of(art))
+    except Exception:  # noqa: BLE001 - a broken cache view means no dedupe history
+        return {}
+    return out
+
+
 def owner_of(items: list[DialogueTurn]) -> str:
     sessions = {turn.session_id for turn in items if turn.session_id}
     return next(iter(sessions)) if len(sessions) == 1 else ""
@@ -226,21 +245,30 @@ async def absorb(
         log(f"模型调用失败： {type(exc).__name__}")
         return WriteOutcome(errors=(f"model: {exc}",), model_failed=True)
 
-    with stage("response.parse"):
-        parsed = parse_response(raw)
-    with stage("memory.deduplicate"):
-        parsed = filter_duplicates(parsed, existing_texts(cache))
-    if not parsed:
-        return WriteOutcome(skipped=len(items))
-
     owner = owner_of(items)
     source_ids = tuple(turn.source_id for turn in items if turn.source_id)
     group = ":GroupMessage:" in owner
+    scope = "shared" if group or not owner else "private"
     senders = {turn.speaker_id for turn in items if turn.speaker_id}
     said_by = "owner"
     if group:
         said_by = next(iter(senders)) if len(senders) == 1 else "group"
     default_subject = next(iter(senders), owner or "")
+
+    def boundary_of(item: dict) -> str:
+        return _boundary(scope, _subject_id(item, owner, default_subject, owner_id))
+
+    with stage("response.parse"):
+        parsed = parse_response(raw)
+    with stage("memory.deduplicate"):
+        parsed = filter_duplicates(
+            parsed,
+            existing_by_subject=existing_texts_by_subject(cache),
+            subject_of=boundary_of,
+        )
+    if not parsed:
+        return WriteOutcome(skipped=len(items))
+
     written_ids: list[str] = []
     skipped = 0
     errors: list[str] = []
@@ -262,7 +290,7 @@ async def absorb(
                     "memory",
                     payload,
                     strength=strength,
-                    scope="shared" if group or not owner else "private",
+                    scope=scope,
                     said_by=said_by,
                     subject_id=_subject_id(item, owner, default_subject, owner_id),
                     lineage=Lineage(sources=source_ids),

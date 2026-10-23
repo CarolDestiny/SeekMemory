@@ -43,14 +43,14 @@ python3 -m unittest discover -s tests -p 'test_*.py' -q
 6. Do not use the legacy `upsert` path to prepare a scenario that production writes through `commit`.
 7. Prefer a small scenario matrix over duplicated copies of the same assertion.
 
-## Current coverage gaps
+## Coverage tracker
 
-The following are known gaps and should be added as regression tests before or with the related fixes:
+The table tracks covered regressions and known gaps. Rows marked as covered already have a regression test; the others should be added before or with the related fix.
 
 | Gap | Target test |
 |---|---|
-| Same sentence from two users is deduplicated globally | identity isolation: subject/session scoped dedupe |
-| Similar impressions from two users cross-revise | identity isolation: impression revision scoped by subject |
+| Same sentence from two users was deduplicated globally | covered by `tests/test_identity_isolation.py` |
+| Similar impressions from two users cross-revised | covered by `tests/test_identity_isolation.py` |
 | Shared impression is pinned and bypasses disclosure | privacy output: pinned cross-session |
 | Bad JSON is treated as an empty extraction | failure recovery: malformed vs empty |
 | Partial commit clears the whole batch | failure recovery: partial commit retention |
@@ -58,9 +58,10 @@ The following are known gaps and should be added as regression tests before or w
 | Cached candidate is reinforced after budget trimming | reinforcement truth: final assembled ids only |
 | Request failure still records a hit | reinforcement truth: failed delivery |
 | Same memory counts twice inside cooldown | reinforcement truth: cooldown |
-| Source ids collide across sessions | source identity: session/role in id |
+| Source ids collided across sessions | covered by `tests/test_identity_isolation.py` |
 | Revision lineage points to itself | lineage consistency |
 | Cache removal succeeds after DB commit failure | cache/DB consistency |
+| Similar scenes from different subjects merged together | covered by `tests/test_identity_isolation.py` |
 | Relative date in query is not resolved | temporal scenario |
 | Cancelled plan remains active | temporal scenario |
 | Old database migration only checks a column | migration scenario |
