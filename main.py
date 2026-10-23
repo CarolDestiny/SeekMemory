@@ -1236,7 +1236,7 @@ class Main(star.Star):
             items, int(cap or self._c("max_sessions_per_flush", 6))
         )
 
-    async def _flush(self, reason: str) -> None:
+    async def _flush(self, reason: str, limit: int = 0) -> tuple[int, int]:
         """按上游会话与结果契约抽取，处理成功前保留缓冲。
 
         Args:
