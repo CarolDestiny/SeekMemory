@@ -97,10 +97,15 @@ class DBStateStore:
 
     def __init__(self, db) -> None:
         self.db = db
+        self.last_error = ""
 
     def get(self, session_id: str) -> SocialState:
         key = str(session_id or "")
-        raw = self.db.get_runtime_state(key)
+        try:
+            raw = self.db.get_runtime_state(key)
+        except Exception as exc:  # noqa: BLE001 - runtime state is fail-open
+            self.last_error = type(exc).__name__
+            return SocialState(session_id=key)
         if not isinstance(raw, dict) or not raw:
             return SocialState(session_id=key)
         data = {
@@ -115,4 +120,8 @@ class DBStateStore:
             return SocialState(session_id=key)
 
     def put(self, state: SocialState) -> None:
-        self.db.put_runtime_state(str(state.session_id or ""), asdict(state))
+        try:
+            self.db.put_runtime_state(str(state.session_id or ""), asdict(state))
+            self.last_error = ""
+        except Exception as exc:  # noqa: BLE001 - runtime state is fail-open
+            self.last_error = type(exc).__name__

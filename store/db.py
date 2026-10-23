@@ -1040,3 +1040,28 @@ class DB:
                 (size,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def prune_runtime_episodes(self, retention_days: int = 30,
+                               max_rows: int = 5000) -> int:
+        """Trim runtime audit rows by age and count; never touches Source.
+        Returns the number of deleted rows."""
+        days = max(0, int(retention_days))
+        limit = max(1, int(max_rows))
+        deleted = 0
+        with self.conn:
+            if days:
+                cutoff = (
+                    datetime.datetime.now() - datetime.timedelta(days=days)
+                ).isoformat(timespec="seconds")
+                cur = self.conn.execute(
+                    "DELETE FROM runtime_episodes WHERE at < ?", (cutoff,)
+                )
+                deleted += int(cur.rowcount or 0)
+            cur = self.conn.execute(
+                "DELETE FROM runtime_episodes WHERE id IN ("
+                "SELECT id FROM runtime_episodes ORDER BY at DESC, id DESC "
+                "LIMIT -1 OFFSET ?)",
+                (limit,),
+            )
+            deleted += int(cur.rowcount or 0)
+        return deleted

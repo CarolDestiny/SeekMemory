@@ -63,9 +63,14 @@ class DBEpisodeStore:
 
     def __init__(self, db) -> None:
         self.db = db
+        self.last_error = ""
 
     def append(self, episode: RuntimeEpisode) -> None:
         payload = asdict(episode)
         payload["id"] = f"ep_{time.time_ns()}"
         payload["tool_calls"] = list(episode.tool_calls)
-        self.db.append_runtime_episode(payload)
+        try:
+            self.db.append_runtime_episode(payload)
+            self.last_error = ""
+        except Exception as exc:  # noqa: BLE001 - episode logging is fail-open
+            self.last_error = type(exc).__name__

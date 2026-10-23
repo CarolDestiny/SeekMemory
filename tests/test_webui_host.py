@@ -313,6 +313,19 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(
             row["role"] == "assistant" and row["text"] == "ok" for row in pending
         ))
+        await self.plugin.record_delivery(event)
+        episodes = self.plugin.db.list_runtime_episodes("bot:GroupMessage:g1")
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0]["delivered"], 1)
+        self.assertNotIn("text", episodes[0])
+
+        failure_event = Event()
+        await self.plugin.observe_agent_done(
+            failure_event, None, SimpleNamespace(role="err")
+        )
+        failures = self.plugin.db.list_runtime_episodes("bot:GroupMessage:g1")
+        self.assertEqual(len(failures), 2)
+        self.assertEqual(failures[0]["outcome"], "error")
 
     async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")

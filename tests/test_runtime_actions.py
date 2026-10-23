@@ -105,6 +105,38 @@ class ActionTest(unittest.TestCase):
         self.assertEqual(rows[0]["decision"], "reply")
         self.assertIn("memory_search", rows[0]["tool_calls"])
 
+    def test_db_episode_pruning_and_fail_open(self) -> None:
+        db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_prune_"), "memory.db"))
+        recorder = EpisodeRecorder(DBEpisodeStore(db))
+        for i in range(3):
+            recorder.record(RuntimeEpisode(
+                session_id="s1", at=f"2026-01-0{i + 1}T00:00:00",
+                decision="observe", reason="ambient", action="reply",
+                delivered=True, outcome="ok",
+            ))
+        self.assertGreaterEqual(db.prune_runtime_episodes(retention_days=0, max_rows=2), 1)
+        self.assertEqual(len(db.list_runtime_episodes("s1")), 2)
+
+        class BrokenDB:
+            def get_runtime_state(self, session_id):
+                raise RuntimeError("busy")
+
+            def put_runtime_state(self, session_id, payload):
+                raise RuntimeError("busy")
+
+            def append_runtime_episode(self, payload):
+                raise RuntimeError("busy")
+
+        broken = BrokenDB()
+        state_store = DBStateStore(broken)
+        self.assertEqual(state_store.get("s1").session_id, "s1")
+        state_store.put(state_store.get("s1"))
+        self.assertEqual(state_store.last_error, "RuntimeError")
+        episode_store = DBEpisodeStore(broken)
+        episode_store.append(RuntimeEpisode(session_id="s1", at="t", decision="x",
+                                           reason="y", action="z", delivered=False))
+        self.assertEqual(episode_store.last_error, "RuntimeError")
+
     def test_episode_jsonl_has_no_message_body(self) -> None:
         path = os.path.join(tempfile.mkdtemp(prefix="seekmem_episode_"), "episodes.jsonl")
         recorder = EpisodeRecorder(JsonlEpisodeStore(path))

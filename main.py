@@ -114,6 +114,13 @@ class Main(star.Star):
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
             )
         if self.db is not None:
+            try:
+                self.db.prune_runtime_episodes(
+                    retention_days=int(self._c("runtime_episode_retention_days", 30)),
+                    max_rows=int(self._c("runtime_episode_max_rows", 5000)),
+                )
+            except Exception:
+                pass
             self.dream = DreamCycle(
                 self.db, self._c,
                 log=lambda msg: logger.info(f"[seekmemory] {msg}"),
@@ -421,24 +428,40 @@ class Main(star.Star):
                     if art is not None and art.header.family == "memory":
                         self.checkpoint.record(art)
                 event.set_extra("_seekmemory_recall_ids", ())
-            self.runtime.mark_delivered(umo)
-            self.episode_recorder.record(
-                RuntimeEpisode(
-                    session_id=umo,
-                    at=now,
-                    decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
-                    reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
-                    action="reply",
-                    delivered=True,
-                    response_chars=len(text),
-                    tool_calls=tuple(event.get_extra("_seekmemory_tool_calls", ()) or ()),
-                    outcome="ok",
-                    user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
-                    assistant_source_id=source_id,
-                )
-            )
+            event.set_extra("_seekmemory_assistant_source_id", source_id)
+            event.set_extra("_seekmemory_reply_chars", len(text))
         except Exception:
             pass
+
+    @filter.after_message_sent()
+    async def record_delivery(self, event) -> None:
+        if not self._may_observe(event) or self.db is None:
+            return
+        assistant_source_id = str(
+            event.get_extra("_seekmemory_assistant_source_id", "") or ""
+        )
+        if not assistant_source_id:
+            return
+        if event.get_extra("_seekmemory_episode_recorded", False):
+            return
+        umo = str(getattr(event, "unified_msg_origin", "") or "")
+        self.runtime.mark_delivered(umo)
+        self.episode_recorder.record(
+            RuntimeEpisode(
+                session_id=umo,
+                at=datetime.datetime.now().isoformat(timespec="seconds"),
+                decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
+                reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+                action="reply",
+                delivered=True,
+                response_chars=int(event.get_extra("_seekmemory_reply_chars", 0) or 0),
+                tool_calls=tuple(event.get_extra("_seekmemory_tool_calls", ()) or ()),
+                outcome="ok",
+                user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+                assistant_source_id=assistant_source_id,
+            )
+        )
+        event.set_extra("_seekmemory_episode_recorded", True)
 
     @filter.on_agent_begin()
     async def observe_agent_begin(self, event, run_context) -> None:
