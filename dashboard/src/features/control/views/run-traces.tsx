@@ -139,7 +139,7 @@ export function RunTraces({
   const vm = useRunTraces(client)
   return (
     <section className="mx-auto w-full max-w-7xl space-y-5 p-5 sm:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="workspace-intro flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">运行轨迹 · Run Trace</h1>
           <p className="mt-2 text-sm text-muted-foreground">
