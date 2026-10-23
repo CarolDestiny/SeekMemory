@@ -9,7 +9,7 @@
 ## 对外接口
 
 ```python
-from perceive.extract import build_prompt, parse_response, filter_duplicates
+from perceive.extract import build_prompt, parse_response_checked, filter_duplicates
 from perceive.compress import build_compress_prompt, parse_compress
 
 prompt = build_prompt(["用户：今天又加班", "她：你最近好累"])
@@ -29,3 +29,8 @@ summary = parse_compress(model_text)
 - 提示词里明确层级：`impression` 印象 → `scene` 场景 → `detail` 细节；不按“事实/偏好/事件”分类。
 - 宁可少抽，不要抽碎；模型没有值得记的内容时应返回 `[]`。
 - 三行压缩的键固定为英文 `emotion` / `unfinished` / `facts`，事实最多两条，`无` 归一成空值。
+
+
+## Failure parsing
+
+Use `parse_response_checked()` when the caller must preserve pending input on malformed model output. It returns `[]` only for a valid empty array and raises `ExtractionParseError` for empty text or bad JSON. The legacy `parse_response()` wrapper still returns `[]` for compatibility.
