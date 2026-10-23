@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.runtime import (  # noqa: E402
     AgentRuntime,
     InMemoryStateStore,
+    JsonStateStore,
     RuntimeInput,
     SocialState,
     WakeAction,
@@ -104,6 +106,18 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(state.unread_count, 0)
         self.assertEqual(state.last_spoke_at, 200)
         self.assertEqual(state.reply_count, 1)
+
+    def test_json_state_store_survives_instances(self) -> None:
+        path = os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_state_"), "state.json")
+        first = JsonStateStore(path)
+        state = first.get("s1")
+        state.quiet_until = 123
+        state.unread_count = 4
+        first.put(state)
+        second = JsonStateStore(path)
+        loaded = second.get("s1")
+        self.assertEqual(loaded.quiet_until, 123)
+        self.assertEqual(loaded.unread_count, 4)
 
     def test_runtime_package_does_not_import_astrbot(self) -> None:
         root = Path(__file__).resolve().parents[1] / "app" / "runtime"
