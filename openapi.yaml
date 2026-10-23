@@ -849,6 +849,42 @@ components:
       - due
       - recent
       additionalProperties: false
+    PersonaTimeline:
+      type: object
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 0
+        text:
+          type: string
+        revisions:
+          type: array
+          items:
+            type: object
+            properties:
+              revision:
+                type: integer
+                minimum: 0
+              at:
+                type: string
+              op:
+                type: string
+              text:
+                type: string
+            required:
+            - revision
+            - at
+            - op
+            - text
+            additionalProperties: false
+      required:
+      - id
+      - revision
+      - text
+      - revisions
+      additionalProperties: false
     RuntimeStatus:
       type: object
       properties:
@@ -916,6 +952,10 @@ components:
         capacity:
           anyOf:
           - $ref: '#/components/schemas/CapacityStatus'
+          - type: 'null'
+        persona:
+          anyOf:
+          - $ref: '#/components/schemas/PersonaTimeline'
           - type: 'null'
         budget:
           anyOf:

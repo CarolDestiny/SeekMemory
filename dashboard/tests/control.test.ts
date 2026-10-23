@@ -97,6 +97,7 @@ void test("runtime status supports an unavailable engine while retaining diagnos
       },
       queue: { pending: 8, retrying: 0, deferred: 0, extracted: 24, dead: 0 },
     },
+    persona: null,
     checkpointPending: null,
     schedulerCount: 0,
     config: {},

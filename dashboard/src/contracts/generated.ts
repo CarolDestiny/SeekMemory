@@ -274,6 +274,17 @@ export interface components {
             due: boolean;
             recent: components["schemas"]["DreamRun"][];
         };
+        PersonaTimeline: {
+            id: string;
+            revision: number;
+            text: string;
+            revisions: {
+                revision: number;
+                at: string;
+                op: string;
+                text: string;
+            }[];
+        };
         RuntimeStatus: {
             ready: boolean;
             checks: {
@@ -296,6 +307,7 @@ export interface components {
                 maxTopicsPerBatch: number;
             };
             capacity: components["schemas"]["CapacityStatus"] | null;
+            persona?: components["schemas"]["PersonaTimeline"] | null;
             budget?: components["schemas"]["ContextBudget"] | null;
             dream?: components["schemas"]["DreamStatus"] | null;
             checkpointPending: number | null;

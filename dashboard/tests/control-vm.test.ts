@@ -48,6 +48,7 @@ const idle: RuntimeStatus = {
     },
     queue: { pending: 8, retrying: 0, deferred: 0, extracted: 24, dead: 0 },
   },
+  persona: null,
   checkpointPending: null,
   schedulerCount: 3,
   config: {},
