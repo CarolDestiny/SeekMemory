@@ -520,3 +520,8 @@ A cache removal follows a successful retirement commit; a failed commit leaves t
 `query_window()` resolves common relative expressions (`today`, `tomorrow`, `next week`, `next month`, etc.)
 into an inclusive date range; memory candidates outside that range are excluded when the query contains one.
 Invalid or missing dates fail open for ordinary queries, while an explicit temporal window requires a usable event date.
+
+
+## Database migration and continuity
+
+Opening an older database adds missing node columns and copies legacy `versions` rows into `artifact_versions` with `op=migrate`. Existing payloads remain readable through `history()`. The continuity regression covers extraction, commit, recall and a corrected revision in one sequence.

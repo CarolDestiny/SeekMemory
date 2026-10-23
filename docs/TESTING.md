@@ -68,7 +68,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Similar scenes from different subjects merged together | covered by `tests/test_identity_isolation.py` |
 | Relative date in query was not resolved | covered by `tests/test_temporal.py` |
 | Expired/future validity is ignored by recall | covered by `tests/test_temporal.py` |
-| Old database migration only checks a column | migration scenario |
+| Old database migration only checked a column | covered by `tests/test_migration.py` |
+| No continuous extraction-to-recall correction case | covered by `tests/test_continuity.py` |
 
 ## What tests cannot fully prove
 
