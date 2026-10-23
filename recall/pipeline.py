@@ -22,6 +22,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.intent import intent_of, is_profile_recall, is_topic_recall
     from ..recall.retriever import GraphRetriever, HybridRetriever
     from ..recall.scope import visible
+    from ..recall.temporal import filter_valid, in_window, query_window
     from ..recall.score import select
     from ..store.cache import Cache
     from ..store.db import DB
@@ -41,6 +42,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from recall.intent import intent_of, is_profile_recall, is_topic_recall
     from recall.retriever import GraphRetriever, HybridRetriever
     from recall.scope import visible
+    from recall.temporal import filter_valid, in_window, query_window
     from recall.score import select
 
 Conf = Callable[[str, Any], Any]
@@ -125,6 +127,13 @@ def build_block(
         for a in visible(cache.active(), umo, owner_umo, lookup)
         if deliverable(a, text, private)
     ]
+    pool = filter_valid(pool)
+    window = query_window(text)
+    if window is not None:
+        pool = [
+            art for art in pool
+            if art.header.family != "memory" or in_window(art, window)
+        ]
     if not pool and not pinned_arts:
         return "", {
             "mode": "none",

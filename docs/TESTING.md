@@ -66,8 +66,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Revision lineage pointed to itself | covered by `tests/test_lineage_consistency.py` |
 | Cache removal succeeded after DB commit failure | covered by `tests/test_lineage_consistency.py` |
 | Similar scenes from different subjects merged together | covered by `tests/test_identity_isolation.py` |
-| Relative date in query is not resolved | temporal scenario |
-| Cancelled plan remains active | temporal scenario |
+| Relative date in query was not resolved | covered by `tests/test_temporal.py` |
+| Expired/future validity is ignored by recall | covered by `tests/test_temporal.py` |
 | Old database migration only checks a column | migration scenario |
 
 ## What tests cannot fully prove
