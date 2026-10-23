@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from benchmarks.real_eval import load_cases, score_items  # noqa: E402
 from core.artifact import make  # noqa: E402
 from scripts.live_probe import probe  # noqa: E402
+from scripts.snapshot_db import snapshot  # noqa: E402
 from store.db import DB  # noqa: E402
 
 
@@ -28,6 +29,19 @@ class EvalHarnessTest(unittest.TestCase):
         cases = load_cases("benchmarks/data/extraction_smoke.jsonl")
         self.assertGreaterEqual(len(cases), 2)
         self.assertEqual(cases[0]["id"], "plan_change")
+
+
+class SnapshotTest(unittest.TestCase):
+    def test_snapshot_preserves_counts(self) -> None:
+        directory = tempfile.mkdtemp(prefix="seekmem_snapshot_")
+        source = os.path.join(directory, "source.db")
+        target = os.path.join(directory, "target.db")
+        db = DB(source)
+        db.commit(make("memory", {"text": "snapshot fact", "level": "fact"}),
+                  expected_revision=0, op="create")
+        db.close()
+        snapshot(source, target)
+        self.assertEqual(probe(source)["active_nodes"], probe(target)["active_nodes"])
 
 
 class LiveProbeTest(unittest.TestCase):

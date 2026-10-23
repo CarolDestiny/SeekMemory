@@ -46,7 +46,8 @@ Add a regression test for every behavior change. P0/P1 changes need an issue and
 
 ## Read-only live probe
 
-    python3 scripts/live_probe.py --db /path/to/memory.db --label live --json
+    python3 scripts/snapshot_db.py --source /path/to/memory.db --destination /tmp/staging.db
+python3 scripts/live_probe.py --db /path/to/memory.db --label live --json
 
 ## Real model extraction probe
 

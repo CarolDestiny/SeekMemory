@@ -1,2 +1,2 @@
-{"id": "plan_change", "dialogue": "[2026-10-20T10:00:00] user(1): I will go to Hangzhou next week, not Shanghai", "expected": {"texts": ["Hangzhou", "next week"]}}
-{"id": "fact_correction", "dialogue": "[2026-10-20T11:00:00] user(1): I moved to Shanghai, previously lived in Hangzhou", "expected": {"texts": ["Shanghai", "Hangzhou"]}}
+{"id": "plan_change", "dialogue": "[2026-10-20T10:00:00] user(1): I will go to Hangzhou next week, not Shanghai", "expected": {"texts": ["杭州", "下周"]}}
+{"id": "fact_correction", "dialogue": "[2026-10-20T11:00:00] user(1): I moved to Shanghai, previously lived in Hangzhou", "expected": {"texts": ["上海", "杭州"]}}
