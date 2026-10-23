@@ -513,3 +513,10 @@ overrides. Source deletion is never a capacity action.
 When an impression is reinforced or reworded, `lineage.sources` is the union of the old and incoming evidence.
 `lineage.derived_from` records the incoming abstraction; it never records the artifact's own id.
 A cache removal follows a successful retirement commit; a failed commit leaves the active cache entry intact.
+
+## Temporal validity and query windows
+
+`recall.temporal.valid_at()` excludes Artifacts outside `valid_from`, `valid_to` or `expires` before retrieval.
+`query_window()` resolves common relative expressions (`today`, `tomorrow`, `next week`, `next month`, etc.)
+into an inclusive date range; memory candidates outside that range are excluded when the query contains one.
+Invalid or missing dates fail open for ordinary queries, while an explicit temporal window requires a usable event date.
