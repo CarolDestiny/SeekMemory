@@ -258,6 +258,10 @@ class AgentRuntimeTest(unittest.TestCase):
         state = runtime.schedule_retry("s1", 100, attempts=2, max_attempts=3)
         self.assertGreater(state.wait_until, 100)
         self.assertEqual(state.next_retry_at, state.wait_until)
+        dead = runtime.schedule_retry("s1", 100, attempts=3, max_attempts=3)
+        self.assertEqual(dead.wait_until, 0.0)
+        self.assertEqual(dead.next_retry_at, 0.0)
+        self.assertEqual(dead.last_reason, "dispatch_dead")
         self.assertEqual(runtime.claim_dispatch("s1", "src2", now=110), 1)
 
     def test_ambient_observe_sets_wait_deadline(self) -> None:

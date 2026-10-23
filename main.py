@@ -966,8 +966,8 @@ class Main(star.Star):
             private=False,
             at=now,
         )
-        context = self.runtime.build_context(runtime_input)
         try:
+            context = self.runtime.build_context(runtime_input)
             provider = await self.context.get_using_provider_async(session_id)
             if provider is None:
                 raise RuntimeError("no_provider")
