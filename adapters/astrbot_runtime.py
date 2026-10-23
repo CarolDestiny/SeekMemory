@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from app.runtime.contracts import RuntimeInput, WakeDecision
+try:
+    from ..app.runtime.contracts import RuntimeInput, WakeDecision
+except ImportError:
+    from app.runtime.contracts import RuntimeInput, WakeDecision
 
 
 class AstrBotRuntimeAdapter:
