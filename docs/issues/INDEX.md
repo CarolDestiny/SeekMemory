@@ -33,6 +33,8 @@
 | [ISSUE-0026](ISSUE-0026.md) | Recall feel fallback and shared disclosure | P1 | open | Explicit recall fallback plus same-session shared exposure. |
 | [ISSUE-0027](ISSUE-0027.md) | Public interface guide and contract tests | P2 | open | GitHub #13 contributor infrastructure. |
 | [ISSUE-0028](ISSUE-0028.md) | Capacity governance and Source-backed pending projection | P2 | in_progress | GitHub #12; Governor + extraction_state migration. |
+| [ISSUE-0030](ISSUE-0030.md) | 人格进化应该是「做梦」，不是实时进化 | P1 | open | 白天只缓冲；dream 一次批量抽取/合并/修订印象/沉淀人格，可重放可续跑。 |
+| [ISSUE-0031](ISSUE-0031.md) | 上下文预算：语料与群聊上下文该有上限 | P2 | open | 单次调用 15k tokens 中语料占 4.5k；实测 248→166 对质量不变（3.79→3.77）。 |
 
 ## 关系图（读的顺序）
 
