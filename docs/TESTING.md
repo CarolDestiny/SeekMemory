@@ -51,7 +51,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 |---|---|
 | Same sentence from two users was deduplicated globally | covered by `tests/test_identity_isolation.py` |
 | Similar impressions from two users cross-revised | covered by `tests/test_identity_isolation.py` |
-| Shared impression is pinned and bypasses disclosure | privacy output: pinned cross-session |
+| Shared impression was pinned and bypassed disclosure | covered by `tests/test_privacy_outputs.py` |
 | Bad JSON was treated as an empty extraction | covered by `tests/test_failure_recovery.py` |
 | Partial commit cleared the whole batch | covered by `tests/test_failure_recovery.py` |
 | A batch above the topic limit loses unprocessed turns | covered by `tests/test_failure_recovery.py` |
@@ -60,6 +60,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Pending save failure is silent | covered by `tests/test_failure_recovery.py` |
 | Cached candidate is reinforced after budget trimming | reinforcement truth: final assembled ids only |
 | Request failure still records a hit | reinforcement truth: failed delivery |
+| Designated output bypasses disclosure | covered by `tests/test_privacy_outputs.py` |
 | Same memory counts twice inside cooldown | reinforcement truth: cooldown |
 | Source ids collided across sessions | covered by `tests/test_identity_isolation.py` |
 | Revision lineage points to itself | lineage consistency |
