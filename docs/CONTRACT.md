@@ -530,3 +530,8 @@ Opening an older database adds missing node columns and copies legacy `versions`
 ## Two-sided episodes
 
 Assistant replies are appended as Source rows and then enter the same extraction projection as user turns with `role=assistant`. This keeps the exact reply available for bot-behavior extraction without duplicating message text.
+
+
+## Self-impressions and persona
+
+Assistant replies enter extraction with `role=assistant`. Optional `bot_action`, `bot_tone`, `bot_boundary` and `outcome` fields are preserved in memory payloads. The weekly maintenance job aggregates repeated behavior into `family=memory`, `level=impression`, `about=self`, `subject_id=bot:self` artifacts. `distill_self_persona()` composes persona only from those self-impressions and keeps one stable persona id across revisions.

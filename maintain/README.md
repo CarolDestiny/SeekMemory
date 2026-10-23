@@ -39,3 +39,6 @@ if should_reflect(result):
 - 写入顺序统一为“先 `db.upsert`，再更新 `cache`”；被淘汰/合并的节点必须从 cache 移除。
 - 所有公开函数带类型标注和中文 docstring；单文件控制在 200 行以内。
 - 维护任务失败不应影响聊天：调用方负责 fail-open，本目录只抛真实错误，不吞掉业务异常。
+
+
+Self-impression note: `maintain/self_impression.py` aggregates repeated `bot_action` fields into `subject_id=bot:self`; `distill_self_persona()` is the production persona path. `distill_persona()` remains a legacy compatibility path for per-user impressions.

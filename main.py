@@ -852,7 +852,8 @@ class Main(star.Star):
     async def _weekly(self) -> dict:
         from .maintain.decay import decay_all
         from .maintain.merge import merge_similar
-        from .maintain.persona import distill_persona
+        from .maintain.persona import distill_self_persona
+        from .maintain.self_impression import build_self_impressions
 
         if self.db is None or self.cache is None:
             return {}
@@ -863,8 +864,11 @@ class Main(star.Star):
         with self.journal.span("weekly", "merge", threshold=0.6) as metrics:
             merged = merge_similar(self.db, self.cache, threshold=0.6)
             metrics["merged"] = merged
+        with self.journal.span("weekly", "self_impression") as metrics:
+            self_made = build_self_impressions(self.db, self.cache, today=today)
+            metrics["made"] = self_made
         with self.journal.span("weekly", "persona") as metrics:
-            persona = distill_persona(self.db, self.cache, today, self.owner_umo)
+            persona = distill_self_persona(self.db, self.cache, today)
             metrics["updated"] = bool(persona)
         self.journal.record(
             "weekly",
@@ -876,4 +880,5 @@ class Main(star.Star):
             f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组，"
             f"人格 {'已更新' if persona else '无变化'}"
         )
-        return {"forgotten": dropped, "merged": merged, "persona": bool(persona)}
+        return {"forgotten": dropped, "merged": merged,
+                "self_impressions": self_made, "persona": bool(persona)}

@@ -95,14 +95,12 @@ def _sources(impressions: list[Artifact]) -> tuple[str, ...]:
     )
 
 
-def distill_persona(
+def _distill_candidates(
     db: DB,
     cache: Cache,
-    today: str | None = None,
-    only_umo: str = "",
+    impressions: list[Artifact],
 ) -> Artifact | None:
-    """选稳定的 impression 并沉淀成 persona；没有候选时保留旧人格不动。"""
-    impressions = promote_candidates(cache, today=today, only_umo=only_umo)
+    """Compose one stable persona from supplied candidates."""
     if not impressions:
         return None
     text = compose(impressions)
@@ -151,3 +149,26 @@ def distill_persona(
                   source_ids=tuple(previous.header.lineage.sources))
         cache.remove(previous.header.id)
     return persona
+
+
+def distill_persona(
+    db: DB,
+    cache: Cache,
+    today: str | None = None,
+    only_umo: str = "",
+) -> Artifact | None:
+    """Legacy per-user impression path, kept for compatibility tests."""
+    return _distill_candidates(
+        db, cache, promote_candidates(cache, today=today, only_umo=only_umo)
+    )
+
+
+def distill_self_persona(
+    db: DB,
+    cache: Cache,
+    today: str | None = None,
+) -> Artifact | None:
+    """Compose persona only from bot:self self-impressions."""
+    from .self_impression import promote_self_candidates
+
+    return _distill_candidates(db, cache, promote_self_candidates(cache, today))
