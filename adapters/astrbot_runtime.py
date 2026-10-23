@@ -21,12 +21,13 @@ class AstrBotRuntimeAdapter:
         except Exception:  # noqa: BLE001 - unknown host event defaults to group
             private = False
         value = str(text or "")
+        direct = bool(getattr(event, "is_at_or_wake_command", False))
         return RuntimeInput(
             session_id=str(umo or ""),
             text=value,
             speaker_id=str(sender or ""),
             private=private,
-            mentioned=private,
+            mentioned=private or direct,
             question=("?" in value or "\uff1f" in value),
             unread_count=max(0, int(unread_count)),
         )

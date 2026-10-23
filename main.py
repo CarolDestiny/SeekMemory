@@ -415,6 +415,7 @@ class Main(star.Star):
                     if art is not None and art.header.family == "memory":
                         self.checkpoint.record(art)
                 event.set_extra("_seekmemory_recall_ids", ())
+            self.runtime.mark_delivered(umo)
             self.episode_recorder.record(
                 RuntimeEpisode(
                     session_id=umo,
@@ -432,6 +433,37 @@ class Main(star.Star):
             )
         except Exception:
             pass
+
+    @filter.on_agent_begin()
+    async def observe_agent_begin(self, event, run_context) -> None:
+        self.trace.record(
+            "runtime",
+            "agent_begin",
+            {
+                "decision": str(event.get_extra("_seekmemory_runtime_action", "") or ""),
+                "reason": str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+            },
+        )
+
+    @filter.on_agent_done()
+    async def observe_agent_done(self, event, run_context, response) -> None:
+        role = str(getattr(response, "role", "") or "")
+        self.trace.record("runtime", "agent_done", {"role": role})
+        if role != "err":
+            return
+        self.episode_recorder.record(
+            RuntimeEpisode(
+                session_id=str(getattr(event, "unified_msg_origin", "") or ""),
+                at=datetime.datetime.now().isoformat(timespec="seconds"),
+                decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
+                reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+                action="reply",
+                delivered=False,
+                outcome="error",
+                error="agent_error",
+                user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+            )
+        )
 
     @filter.on_using_llm_tool()
     async def observe_tool(self, event, tool, tool_args) -> None:
