@@ -10,6 +10,15 @@ FULL_MIN = 0.55
 PARAPHRASE_MIN = 0.18
 HINT_MIN = 0.03
 
+# Continuous priors, not visibility gates. Private memory participates in
+# retrieval globally; it is simply less likely to be quoted verbatim.
+_SCOPE_PRIOR = {
+    "shared": 1.0,
+    "private": 0.8,
+    "shadow": 0.5,
+    "secret": 0.1,
+}
+
 
 class DisclosureLevel(str, Enum):
     FULL = "full"
@@ -33,24 +42,42 @@ class DisclosureDecision:
     reason: str
 
 
+def scope_prior(art: Artifact) -> float:
+    """Return the continuous disclosure prior for a memory scope."""
+    scope = str(art.header.scope or "private")
+    return _SCOPE_PRIOR.get(scope, 0.4)
+
+
 def sensitivity_of(art: Artifact) -> float:
+    """Legacy sensitivity helper retained for secret/shadow compatibility."""
     if art.header.family == "secret":
         return 1.0
     scope = str(art.header.scope or "private")
     return {"shared": 0.1, "private": 0.2, "shadow": 0.9}.get(scope, 0.4)
 
 
-def audience_overlap(art: Artifact, scene: RecallScene,
-                    origin_sessions: Iterable[str] = ()) -> float:
+def context_affinity(art: Artifact, scene: RecallScene,
+                     origin_sessions: Iterable[str] = ()) -> float:
+    """How strongly this memory belongs to the current context.
+
+    Session origin is a bonus, not a gate. A private memory can still reach a
+    different conversation when its subject is the current speaker.
+    """
     origins = {str(x) for x in origin_sessions if x}
     if scene.session_id and scene.session_id in origins:
         return 1.0
     subject = str(art.header.subject_id or "")
     if subject and subject == scene.speaker_id:
-        return 0.50
+        return 0.70
     if subject and subject in scene.present_ids:
-        return 0.25
-    return 0.05
+        return 0.50
+    return 0.22
+
+
+def audience_overlap(art: Artifact, scene: RecallScene,
+                     origin_sessions: Iterable[str] = ()) -> float:
+    """Backward-compatible alias for the continuous context factor."""
+    return context_affinity(art, scene, origin_sessions)
 
 
 def subject_fit(art: Artifact, scene: RecallScene) -> float:
@@ -59,22 +86,25 @@ def subject_fit(art: Artifact, scene: RecallScene) -> float:
     if shareable == "public":
         return 1.0
     if scope == "shared" and shareable != "secret":
-        return 0.7
+        return 0.8
     subject = str(art.header.subject_id or "")
     if not subject:
         return 0.5
     if subject == scene.speaker_id:
         return 1.0
     if subject == scene.owner_id and subject in scene.present_ids:
-        return 0.7
-    return 0.2
+        return 0.8
+    return 0.35
 
 
 def exposure(art: Artifact, scene: RecallScene, relevance: float,
              origin_sessions: Iterable[str] = ()) -> float:
     topic = max(0.0, min(1.0, float(relevance)))
-    score = audience_overlap(art, scene, origin_sessions)
-    score *= subject_fit(art, scene) * topic * (1.0 - sensitivity_of(art))
+    score = context_affinity(art, scene, origin_sessions)
+    score *= subject_fit(art, scene)
+    score *= scope_prior(art)
+    score *= max(0.0, 1.0 - sensitivity_of(art))
+    score *= topic
     return max(0.0, min(1.0, score))
 
 

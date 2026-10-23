@@ -46,19 +46,25 @@ def owner_of(art: Artifact, lookup: Lookup | None = None) -> str:
 
 def visible(pool: Iterable[Artifact], umo: str, owner_umo: str = "",
             lookup: Lookup | None = None) -> list[Artifact]:
-    """按当前会话 umo 过滤候选池：shared / shadow 全放，private 只给归属会话。"""
+    """Return the global memory pool while preserving explicit delivery scope.
+
+    Session provenance remains useful for evidence and disclosure weighting, but
+    ordinary private/shared/shadow memory is global. ``secret`` and explicitly
+    delivered ``designated`` artifacts keep their stricter delivery boundary.
+    """
     viewer = str(umo or "")
     fallback = str(owner_umo or "")
     kept: list[Artifact] = []
     for art in pool:
-        scope = str(art.header.scope or "private")
-        if scope in ("shared", "shadow"):
-            kept.append(art)
+        family = str(art.header.family or "")
+        if family == "secret":
             continue
-        own = owner_of(art, lookup)
-        if own:
-            if own == viewer:
-                kept.append(art)
-        elif fallback and viewer == fallback:
-            kept.append(art)
+        if family == "designated":
+            own = owner_of(art, lookup)
+            if own:
+                if own != viewer:
+                    continue
+            elif not fallback or viewer != fallback:
+                continue
+        kept.append(art)
     return kept

@@ -42,10 +42,10 @@ store/ perceive/: SQLite, cache, LLM adapter
 
 Recall reads from in-memory indexes. Disclosure is one universal score:
 
-exposure = audience_overlap * subject_fit * topic_fit * (1 - sensitivity)
+exposure = context_affinity * subject_fit * scope_prior * topic_fit * (1 - sensitivity)
 
 Levels: full >= 0.55, paraphrase >= 0.18, hint >= 0.03, otherwise silence.
-Paraphrase uses a generic safe sentence, never raw content or extractor tags. Cross-session text is never injected as a direct quote.
+Paraphrase uses a generic safe sentence, never raw content or extractor tags. Scope is a continuous prior, not a visibility gate. Cross-session text is only injected as a direct quote when context/subject affinity is high enough.
 
 ## I/O targets
 

@@ -8,7 +8,14 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.artifact import make
-from core.disclosure import DisclosureLevel, RecallScene, exposure, decide
+from core.disclosure import (
+    DisclosureLevel,
+    RecallScene,
+    context_affinity,
+    decide,
+    exposure,
+    scope_prior,
+)
 from core.graph import Graph
 from core.source import Source
 from recall.pipeline import build_block
@@ -33,6 +40,24 @@ class DisclosureShareTest(unittest.TestCase):
                    scope="shared")
         scene = RecallScene("g1", "u1", "u1", ("u1",))
         self.assertEqual(decide(art, scene, 1.0, ("g1",)).level, DisclosureLevel.SILENCE)
+
+class DisclosureFactorTest(unittest.TestCase):
+    def test_scope_is_a_continuous_prior(self):
+        shared = make("memory", {"text": "shared"}, scope="shared")
+        private = make("memory", {"text": "private"}, scope="private")
+        shadow = make("memory", {"text": "shadow"}, scope="shadow")
+        self.assertGreater(scope_prior(shared), scope_prior(private))
+        self.assertGreater(scope_prior(private), scope_prior(shadow))
+
+    def test_origin_is_bonus_not_gate(self):
+        art = make("memory", {"text": "private"}, scope="private", subject_id="u1")
+        origin = RecallScene("g1", "u1", "u1", ("u1",))
+        cross = RecallScene("g2", "u1", "u1", ("u1",))
+        self.assertEqual(context_affinity(art, origin, ("g1",)), 1.0)
+        self.assertGreater(context_affinity(art, cross, ("g1",)), 0.0)
+        self.assertGreater(exposure(art, origin, 1.0, ("g1",)),
+                           exposure(art, cross, 1.0, ("g1",)))
+
 
 class RecallFallbackTest(unittest.TestCase):
     def setUp(self):

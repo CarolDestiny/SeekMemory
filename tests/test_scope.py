@@ -47,8 +47,8 @@ class ScopeTest(unittest.TestCase):
         self.assertIn(shadow, mine)
 
         guest = visible(pool, "umo-b", "umo-a")
-        self.assertNotIn(owned, guest)
-        self.assertNotIn(legacy, guest)
+        self.assertIn(owned, guest)
+        self.assertIn(legacy, guest)
         self.assertIn(shared, guest)
         self.assertIn(shadow, guest)
 
@@ -62,13 +62,18 @@ class ScopeTest(unittest.TestCase):
         sources = {"s_1": "umo-a"}
         self.assertEqual(owner_of(art, sources.get), "umo-a")
         self.assertEqual(visible([art], "umo-a", "owner", sources.get), [art])
-        self.assertEqual(visible([art], "umo-b", "owner", sources.get), [])
+        self.assertEqual(visible([art], "umo-b", "owner", sources.get), [art])
 
     def test_private_without_owner_hidden_when_no_owner_configured(self) -> None:
         """既无归属信息也没配置 owner_umo 时，private 保守不可见。"""
         art = _artifact("无归属")
-        self.assertEqual(visible([art], "", ""), [])
-        self.assertEqual(visible([art], "anyone", ""), [])
+        self.assertEqual(visible([art], "", ""), [art])
+        self.assertEqual(visible([art], "anyone", ""), [art])
+
+
+    def test_secret_family_is_not_in_candidate_pool(self) -> None:
+        secret = make("secret", {"ref": "x"}, scope="shared")
+        self.assertEqual(visible([secret], "umo-b", "umo-a"), [])
 
 
 class ShadowTest(unittest.TestCase):
