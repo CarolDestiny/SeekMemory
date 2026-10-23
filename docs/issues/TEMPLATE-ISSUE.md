@@ -11,6 +11,30 @@
 | 影响版本 | commit / tag |
 | GitHub | 待同步 |
 
+## Why this issue
+
+Explain why this must be handled now: user-visible problem, architectural coupling, or a
+prerequisite for future capability. Do not write only "add a module".
+
+## Current context
+
+List current entry points, files, call chain and mixed responsibilities. Distinguish facts
+from guesses. Use file:line where possible.
+
+## Change scope and boundary
+
+| Item | In scope | Not in scope |
+|---|---|---|
+| New module | | |
+| Adapter | | |
+| Entry-point changes | | |
+| Data/protocol | | |
+
+## Adapter boundary
+
+State what the host provides, which ports the runtime depends on, and what host types must
+never leak into core/runtime code.
+
 ## 症状
 
 <!-- 用户或调用方看到什么？错误信息、错误行为、缺失行为。只写现象，不写猜测的原因。 -->
