@@ -60,6 +60,15 @@ class ActionTest(unittest.TestCase):
         asyncio.run(actions.wait(0))
         self.assertEqual(context.sent, [("s1", "hello"), ("s1", "later")])
 
+    def test_send_reports_host_false_as_failure(self) -> None:
+        class Context:
+            async def send_message(self, session, chain):
+                return False
+
+        actions = AstrBotActionPort(Context(), message_factory=lambda text: text)
+        self.assertFalse(asyncio.run(actions.send("s1", "hello")))
+        self.assertFalse(asyncio.run(actions.send("s1", "")))
+
     def test_runtime_quiet_window(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 100)
@@ -73,6 +82,12 @@ class ActionTest(unittest.TestCase):
         self.assertTrue(event.call_llm)
         AstrBotRuntimeAdapter.apply_llm_gate(event, decision, True)
         self.assertFalse(event.call_llm)
+
+    def test_llm_gate_honors_must_reply(self) -> None:
+        event = Event()
+        decision = WakeDecision(WakeAction.WAIT, "deferred", must_reply=True)
+        AstrBotRuntimeAdapter.apply_llm_gate(event, decision, True)
+        self.assertTrue(event.call_llm)
 
     def test_tool_policy_and_trace(self) -> None:
         event = Event()
@@ -92,6 +107,7 @@ class ActionTest(unittest.TestCase):
         state.quiet_until = 321
         state_store.put(state)
         self.assertEqual(DBStateStore(db).get("s1").quiet_until, 321)
+        self.assertEqual(db.list_runtime_state_sessions(), ["s1"])
 
         recorder = EpisodeRecorder(DBEpisodeStore(db))
         recorder.record(RuntimeEpisode(

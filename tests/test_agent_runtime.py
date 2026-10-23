@@ -12,8 +12,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.runtime import (  # noqa: E402
     AgentRuntime,
+    AttentionLevel,
     InMemoryStateStore,
     JsonStateStore,
+    MemoryContext,
     RuntimeInput,
     SocialState,
     WakeAction,
@@ -62,13 +64,75 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(decision.action, WakeAction.IGNORE)
         self.assertEqual(decision.reason, "reply_cooldown")
 
-    def test_quiet_window_ignores_direct_message(self) -> None:
+    def test_quiet_window_does_not_ignore_direct_attention(self) -> None:
         self.state.quiet_until = 200
         decision = self.policy.evaluate(
             RuntimeInput("s1", "hello", mentioned=True, at=150), self.state, 150
         )
-        self.assertEqual(decision.action, WakeAction.IGNORE)
-        self.assertEqual(decision.reason, "quiet_window")
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.reason, "direct_attention")
+
+    def test_private_always_replies_even_during_wait(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "hello", private=True, at=150), self.state, 150
+        )
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.reason, "private_message")
+        self.assertTrue(decision.must_reply)
+
+    def test_group_ambient_waits_and_direct_breaks_wait(self) -> None:
+        self.state.wait_until = 200
+        ambient = self.policy.evaluate(RuntimeInput("s1", "ambient", at=150), self.state, 150)
+        direct = self.policy.evaluate(
+            RuntimeInput("s1", "hello", private=False, mentioned=True, at=150),
+            self.state,
+            150,
+        )
+        self.assertEqual(ambient.action, WakeAction.WAIT)
+        self.assertEqual(direct.action, WakeAction.REPLY)
+
+    def test_addressed_question_breaks_wait(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "what happened?", question=True, at=150),
+            self.state,
+            150,
+        )
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.attention, AttentionLevel.ADDRESSED)
+
+    def test_wait_decision_carries_defer_deadline(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "ambient", at=150), self.state, 150
+        )
+        self.assertEqual(decision.action, WakeAction.WAIT)
+        self.assertEqual(decision.reason, "waiting")
+        self.assertEqual(decision.wait_seconds, 50)
+        self.assertEqual(decision.defer_until, 200)
+
+    def test_direct_attention_breaks_wait(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "hello", mentioned=True, at=150), self.state, 150
+        )
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.reason, "direct_attention")
+
+    def test_wait_expires_at_exact_deadline(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "hello", mentioned=True, at=200), self.state, 200
+        )
+        self.assertEqual(decision.action, WakeAction.REPLY)
+
+    def test_cooldown_expires_at_exact_deadline(self) -> None:
+        self.state.cooldown_until = 130
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "ambient", at=130), self.state, 130
+        )
+        self.assertEqual(decision.action, WakeAction.OBSERVE)
 
     def test_ambient_message_observes(self) -> None:
         self.assertEqual(
@@ -98,11 +162,121 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(len(trace.rows), 1)
         self.assertNotIn("hello", str(trace.rows[0]))
 
+    def test_memory_context_port_is_delegated(self) -> None:
+        seen = []
+        expected = MemoryContext(text="block", info={"final_ids": ("a1",)})
+
+        class Memory:
+            def build_context(self, event):
+                seen.append(event)
+                return expected
+
+        event = RuntimeInput("s1", "hello")
+        runtime = AgentRuntime(InMemoryStateStore(), memory_context=Memory())
+        context = runtime.build_context(event)
+        self.assertIs(context, expected)
+        self.assertIs(seen[0], event)
+        self.assertEqual(context.text, "block")
+        self.assertEqual(context.info["final_ids"], ("a1",))
+
+    def test_missing_memory_context_returns_empty_context(self) -> None:
+        runtime = AgentRuntime(InMemoryStateStore())
+        first = runtime.build_context(RuntimeInput("s1", "hello"))
+        second = runtime.build_context(RuntimeInput("s1", "again"))
+        self.assertEqual(first.text, "")
+        self.assertEqual(first.info, {})
+        self.assertIsNot(first.info, second.info)
+
     def test_observe_uses_runtime_clock_when_event_has_no_timestamp(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 500)
         runtime.observe(RuntimeInput("s1", "ambient"))
         self.assertEqual(store.get("s1").last_seen_at, 500)
+
+    def test_runtime_cooldown_uses_real_timestamps(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        runtime.observe(RuntimeInput("s1", "hello", at=100, mentioned=True))
+        runtime.mark_delivered("s1", now=100)
+        self.assertEqual(store.get("s1").cooldown_until, 130)
+        self.assertEqual(
+            runtime.observe(RuntimeInput("s1", "ambient", at=110)).action,
+            WakeAction.IGNORE,
+        )
+        self.assertEqual(
+            runtime.observe(RuntimeInput("s1", "ambient", at=140)).action,
+            WakeAction.OBSERVE,
+        )
+
+    def test_runtime_quiet_and_wait_transitions(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        runtime.quiet("s1", 30, now=100)
+        self.assertEqual(
+            runtime.observe(RuntimeInput("s1", "hello", at=110)).action,
+            WakeAction.IGNORE,
+        )
+        runtime.wait("s1", 30, now=140)
+        self.assertEqual(
+            runtime.observe(RuntimeInput("s1", "ambient", at=150)).action,
+            WakeAction.WAIT,
+        )
+        self.assertEqual(
+            runtime.observe(RuntimeInput("s1", "ambient", at=180)).action,
+            WakeAction.OBSERVE,
+        )
+
+    def test_runtime_advances_read_through_watermark(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        runtime.observe(
+            RuntimeInput("s1", "hello", unread_count=3, unread_seq=7)
+        )
+        state = runtime.mark_read("s1", 5)
+        self.assertEqual(state.read_through_seq, 5)
+        self.assertEqual(state.unread_count, 2)
+        state = runtime.mark_delivered("s1", now=200)
+        self.assertEqual(state.read_through_seq, 7)
+        self.assertEqual(state.unread_count, 0)
+
+    def test_mark_read_clamps_to_latest_sequence_and_is_monotonic(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        runtime.observe(RuntimeInput("s1", "hello", unread_seq=7, unread_count=3))
+        state = runtime.mark_read("s1", 99)
+        self.assertEqual(state.read_through_seq, 7)
+        self.assertEqual(state.unread_count, 0)
+        state = runtime.mark_read("s1", 3)
+        self.assertEqual(state.read_through_seq, 7)
+        self.assertEqual(state.unread_count, 0)
+
+    def test_dispatch_claim_and_retry_are_bounded(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        self.assertEqual(runtime.claim_dispatch("s1", "src1", now=100), 1)
+        self.assertEqual(runtime.claim_dispatch("s1", "src1", now=100), 2)
+        state = runtime.schedule_retry("s1", 100, attempts=2, max_attempts=3)
+        self.assertGreater(state.wait_until, 100)
+        self.assertEqual(state.next_retry_at, state.wait_until)
+        dead = runtime.schedule_retry("s1", 100, attempts=3, max_attempts=3)
+        self.assertEqual(dead.wait_until, 0.0)
+        self.assertEqual(dead.next_retry_at, 0.0)
+        self.assertEqual(dead.last_reason, "dispatch_dead")
+        self.assertEqual(runtime.claim_dispatch("s1", "src2", now=110), 1)
+
+    def test_ambient_observe_sets_wait_deadline(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100, wait_seconds=5)
+        runtime.observe(RuntimeInput("s1", "ambient"))
+        self.assertEqual(store.get("s1").wait_until, 105)
+
+    def test_ambient_wait_extends_on_new_traffic(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100, wait_seconds=5)
+        runtime.observe(RuntimeInput("s1", "first", at=100))
+        self.assertEqual(store.get("s1").wait_until, 105)
+        runtime.observe(RuntimeInput("s1", "second", at=102))
+        self.assertEqual(store.get("s1").wait_until, 107)
 
     def test_delivery_clears_unread_and_updates_last_spoke(self) -> None:
         store = InMemoryStateStore()

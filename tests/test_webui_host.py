@@ -7,6 +7,7 @@ import importlib
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -154,7 +155,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.plugin.initialize()
         await self.plugin.start_jobs()
-        expected_schedulers = 3 if self.plugin._dream_on else 5
+        expected_schedulers = 4 if self.plugin._dream_on else 6
         self.assertEqual(len(self.plugin._schedulers), expected_schedulers)
         tasks = list(self.plugin._schedulers)
         await self.plugin.terminate()
@@ -249,6 +250,8 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observe_event.extras["_seekmemory_runtime_action"], "observe")
 
         self.plugin.cfg["runtime_gate_enabled"] = True
+        self.plugin.runtime.wait_seconds = 0
+        self.plugin.runtime.clear_wait(observe_event.unified_msg_origin)
         gated_event = Event()
         await self.plugin.buffer_message(gated_event)
         self.assertFalse(gated_event.call_llm)
@@ -265,6 +268,331 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(timeline["id"], first.header.id)
         self.assertEqual(timeline["text"], "second persona")
         self.assertEqual([row["revision"] for row in timeline["revisions"]], [1, 2])
+
+    async def test_inject_memory_preserves_context_contract(self) -> None:
+        class Event:
+            unified_msg_origin = "bot:FriendMessage:alice"
+            message_str = "hello"
+
+            def __init__(self):
+                self.extras = {}
+
+            def is_private_chat(self):
+                return True
+
+            def get_sender_id(self):
+                return "u1"
+
+            def get_extra(self, key, default=None):
+                return self.extras.get(key, default)
+
+            def set_extra(self, key, value):
+                self.extras[key] = value
+
+        calls = []
+
+        def recall_block(text, umo="", private=False, speaker=""):
+            calls.append((text, umo, private, speaker))
+            return "memory block", {
+                "mode": "normal",
+                "picked": 2,
+                "chars": 12,
+                "pinned": 1,
+                "final_ids": ["a1", 2],
+            }
+
+        self.plugin.cfg["open_to"] = "everyone"
+        self.plugin._recall_block = recall_block
+        event = Event()
+        req = SimpleNamespace(system_prompt="base")
+        await self.plugin.inject_memory(event, req)
+
+        self.assertEqual(calls, [("hello", "bot:FriendMessage:alice", True, "u1")])
+        self.assertEqual(event.get_extra("_seekmemory_recall_ids"), ("a1", "2"))
+        self.assertEqual(req.system_prompt, "base\n\nmemory block\n")
+        self.assertEqual(self.plugin._last_context_chars, len("memory block"))
+        journal_event = next(
+            row for row in reversed(self.plugin.journal.events)
+            if row["kind"] == "recall" and row["stage"] == "assemble"
+        )
+        self.assertEqual(journal_event["status"], "info")
+        self.assertEqual(
+            journal_event["context"],
+            {"mode": "normal", "picked": 2, "chars": 12},
+        )
+        with open(self.plugin._calls_path(), encoding="utf-8") as stream:
+            logged = json.loads(stream.readlines()[-1])
+        self.assertEqual(
+            (logged["kind"], logged["mode"], logged["picked"], logged["chars"]),
+            ("FriendMessage", "normal", 2, 12),
+        )
+        self.assertNotIn("memory block", json.dumps(logged))
+
+        def empty_recall(text, umo="", private=False, speaker=""):
+            return "", {
+                "mode": "strict",
+                "picked": 0,
+                "chars": 0,
+                "final_ids": ("a1",),
+            }
+
+        self.plugin._recall_block = empty_recall
+        empty_event = Event()
+        empty_req = SimpleNamespace(system_prompt="base")
+        await self.plugin.inject_memory(empty_event, empty_req)
+        self.assertEqual(empty_req.system_prompt, "base")
+        self.assertEqual(empty_event.get_extra("_seekmemory_recall_ids"), ("a1",))
+        self.assertEqual(self.plugin._last_context_chars, 0)
+
+    async def test_inject_memory_fails_open_without_leaking_error_detail(self) -> None:
+        class Event:
+            unified_msg_origin = "bot:FriendMessage:alice"
+            message_str = "private message body"
+
+            def __init__(self):
+                self.extras = {}
+
+            def is_private_chat(self):
+                return True
+
+            def get_sender_id(self):
+                return "u1"
+
+            def get_extra(self, key, default=None):
+                return self.extras.get(key, default)
+
+            def set_extra(self, key, value):
+                self.extras[key] = value
+
+        def fail_recall(text, umo="", private=False, speaker=""):
+            raise RuntimeError("db path /secret")
+
+        self.plugin.cfg["open_to"] = "everyone"
+        self.plugin._recall_block = fail_recall
+        event = Event()
+        req = SimpleNamespace(system_prompt="base")
+        await self.plugin.inject_memory(event, req)
+
+        self.assertEqual(req.system_prompt, "base")
+        self.assertIsNone(event.get_extra("_seekmemory_recall_ids"))
+        journal_event = self.plugin.journal.events[-1]
+        self.assertEqual(
+            (journal_event["kind"], journal_event["status"]), ("recall", "failed")
+        )
+        self.assertEqual(journal_event["error"]["type"], "RuntimeError")
+        serialized = json.dumps(journal_event)
+        self.assertNotIn("private message body", serialized)
+        self.assertNotIn("/secret", serialized)
+
+    async def test_runtime_scheduler_tick_is_isolated_and_private(self) -> None:
+        now = time.time()
+        self.plugin.db.put_runtime_state(
+            "s-wait",
+            {
+                "session_id": "s-wait",
+                "last_seen_at": now,
+                "wait_until": now + 120,
+                "quiet_until": 0.0,
+            },
+        )
+        self.plugin.db.put_runtime_state(
+            "s-proactive",
+            {
+                "session_id": "s-proactive",
+                "last_seen_at": now - 1000,
+                "proactive_idle_seconds": 1.0,
+                "proactive_probability": 1.0,
+                "quiet_until": 0.0,
+            },
+        )
+        self.plugin.db.put_runtime_state(
+            "s-bad", {"session_id": "s-bad", "last_seen_at": now}
+        )
+        original_get = self.plugin.runtime.store.get
+
+        def flaky_get(session_id):
+            if session_id == "s-bad":
+                raise RuntimeError("secret message body")
+            return original_get(session_id)
+
+        self.plugin.trace.rows.clear()
+        self.plugin.runtime.store.get = flaky_get
+        try:
+            await self.plugin._runtime_scheduler_tick()
+        finally:
+            self.plugin.runtime.store.get = original_get
+        rows = list(self.plugin.trace.rows)
+        statuses = {row.status for row in rows}
+        self.assertIn("scheduler_wait", statuses)
+        self.assertIn("scheduler_proactive", statuses)
+        self.assertNotIn("secret message body", json.dumps([row.context for row in rows]))
+        self.assertNotIn("s-bad", json.dumps([row.context for row in rows]))
+
+    async def test_deferred_wait_dispatches_once(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-defer"
+        now = time.time()
+        src = source_module.Source(
+            id="src-defer", turn_id="turn-defer", session_id=session_id,
+            speaker_id="u1", role="user", text="ambient deferred message",
+            at="2026-01-01T00:00:00",
+        )
+        self.plugin.db.append_sources([src])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        class Provider:
+            def __init__(self):
+                self.calls = []
+
+            async def text_chat(self, prompt, system_prompt=None):
+                self.calls.append((prompt, system_prompt))
+                return SimpleNamespace(completion_text="deferred reply")
+
+        class Actions:
+            def __init__(self):
+                self.sent = []
+
+            async def send(self, session, text):
+                self.sent.append((session, text))
+
+        provider = Provider()
+
+        async def provider_for(session):
+            return provider
+
+        actions = Actions()
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.actions = actions
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(provider.calls[0][0], "ambient deferred message")
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(actions.sent, [(session_id, "deferred reply")])
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(rows[0]["reason"], "deferred_wait")
+        self.assertTrue(rows[0]["assistant_source_id"])
+        self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        source_row = self.plugin.db.conn.execute(
+            "SELECT role FROM sources WHERE id = ?", (rows[0]["assistant_source_id"],)
+        ).fetchone()
+        self.assertEqual(source_row["role"], "assistant")
+        self.assertTrue(any(
+            turn.role == "assistant" and turn.text == "deferred reply"
+            for turn in self.plugin.buffer.items
+        ))
+
+    async def test_runtime_tick_dedupes_deferred_dispatch(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-tick-defer"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-tick", turn_id="turn-tick", session_id=session_id,
+            speaker_id="u1", role="user", text="tick deferred",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        class Provider:
+            async def text_chat(self, prompt, system_prompt=None):
+                return SimpleNamespace(completion_text="tick reply")
+
+        class Actions:
+            def __init__(self):
+                self.sent = []
+
+            async def send(self, session, text):
+                self.sent.append((session, text))
+
+        async def provider_for(session):
+            return Provider()
+
+        actions = Actions()
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.actions = actions
+        await self.plugin._runtime_scheduler_tick()
+        await self.plugin._runtime_scheduler_tick()
+        self.assertEqual(actions.sent, [(session_id, "tick reply")])
+
+    async def test_deferred_provider_failure_schedules_retry_and_is_private(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-provider-fail"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-fail", turn_id="turn-fail", session_id=session_id,
+            speaker_id="u1", role="user", text="secret provider input",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        async def provider_for(session):
+            raise RuntimeError("provider leaked secret")
+
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.trace.rows.clear()
+        await self.plugin._dispatch_deferred(session_id, now)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertGreater(state.wait_until, now)
+        self.assertGreater(state.next_retry_at, now)
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(rows[0]["outcome"], "error")
+        self.assertNotIn("secret", json.dumps([row.context for row in self.plugin.trace.rows]))
+
+    async def test_deferred_send_failure_schedules_retry(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-send-fail"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-send-fail", turn_id="turn-send-fail", session_id=session_id,
+            speaker_id="u1", role="user", text="send failure input",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        class Provider:
+            async def text_chat(self, prompt, system_prompt=None):
+                return SimpleNamespace(completion_text="will fail")
+
+        class Actions:
+            async def send(self, session, text):
+                return False
+
+        async def provider_for(session):
+            return Provider()
+
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.actions = Actions()
+        await self.plugin._dispatch_deferred(session_id, now)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertGreater(state.wait_until, now)
+        self.assertGreater(state.next_retry_at, now)
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(rows[0]["outcome"], "error")
+        self.assertEqual(rows[0]["error"], "RuntimeError")
+
+    async def test_deferred_retry_exhaustion_enters_dead_state(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-retry-dead"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-retry", turn_id="turn-retry", session_id=session_id,
+            speaker_id="u1", role="user", text="retry me",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        async def provider_for(session):
+            raise RuntimeError("fail once")
+
+        self.plugin.context.get_using_provider_async = provider_for
+        for _ in range(4):
+            state = self.plugin.runtime.store.get(session_id)
+            await self.plugin._dispatch_deferred(session_id, state.wait_until or now)
+        state = self.plugin.runtime.store.get(session_id)
+        self.assertEqual(state.wait_until, 0.0)
+        self.assertEqual(state.next_retry_at, 0.0)
+        self.assertEqual(state.last_reason, "dispatch_dead")
+        self.assertEqual(state.dispatch_attempts, 3)
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(len(rows), 3)
 
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace
@@ -301,9 +629,25 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             def set_extra(self, key, value):
                 self.extras[key] = value
 
+        class ToolSet:
+            def __init__(self):
+                self.tools = [
+                    SimpleNamespace(name="memory_search"),
+                    SimpleNamespace(name="shell_exec"),
+                ]
+                self.removed = []
+
+            def remove_tool(self, name):
+                self.removed.append(name)
+                self.tools = [tool for tool in self.tools if tool.name != name]
+
+        tools = ToolSet()
         event = Event()
         await self.plugin.observe_agent_begin(event, None)
-        await self.plugin.inject_memory(event, SimpleNamespace(system_prompt=""))
+        req = SimpleNamespace(system_prompt="", func_tool=tools)
+        await self.plugin.inject_memory(event, req)
+        self.assertEqual(tools.removed, ["shell_exec"])
+        self.assertEqual([tool.name for tool in tools.tools], ["memory_search"])
         self.assertTrue(event.get_extra("_seekmemory_recall_ids"))
         self.assertEqual(self.plugin.checkpoint.pending(), 0)
         await self.plugin.capture_reply(

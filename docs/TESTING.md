@@ -76,15 +76,25 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
 | AgentRuntime policy was coupled to AstrBot | covered by `tests/test_agent_runtime.py` |
 | Runtime social state was process-local only | covered by `tests/test_agent_runtime.py` |
+| Runtime timestamps/cooldown/quiet/wait/read-through were untested | covered by `tests/test_agent_runtime.py` |
+| AstrBot timestamp and unread mapping were untested | covered by `tests/test_runtime_adapter.py` |
 | AstrBot event mapping was untested | covered by `tests/test_runtime_adapter.py` |
 | Runtime actions, episodes and tool policy were untested | covered by `tests/test_runtime_actions.py` |
 | Observe-only mode could accidentally change LLM gating | covered by `tests/test_webui_host.py` (host layer) |
 | Runtime delivery was recorded before actual send | covered by `tests/test_webui_host.py` (host layer) |
+| Runtime memory context was coupled to main injection | covered by `tests/test_agent_runtime.py`, `tests/test_seekmemory_context.py` |
+| Private/direct attention was suppressed by wait | covered by `tests/test_agent_runtime.py` |
+| Tool guard was advisory in the request path | covered by `tests/test_webui_host.py` (host layer) |
+| Scheduler policy was not run over persisted sessions | covered by `tests/test_runtime_actions.py` DB session listing |
+| Due ambient wait had no reply dispatch | covered by `tests/test_webui_host.py` (host layer) |
+| Deferred dispatch failure duplicated or retried forever | covered by `tests/test_webui_host.py`, `tests/test_agent_runtime.py` |
+| Deferred assistant reply was not written back to memory | covered by `tests/test_webui_host.py` (host layer) |
 | Runtime DB failures could break replies | covered by `tests/test_runtime_actions.py` |
 | Runtime episode retention was unbounded | covered by `tests/test_runtime_actions.py` |
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |
 | Persona revision timeline was not exposed | covered by `tests/test_webui_host.py` (host layer) |
 | Repeated bot behavior had no self-impression path | covered by `tests/test_self_impression.py` |
+| Wait, quiet, proactive and per-session rate-limit scheduling were untested | covered by `tests/test_runtime_scheduler.py` |
 
 ## Staging and model probes
 

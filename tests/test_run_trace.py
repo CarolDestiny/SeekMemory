@@ -14,6 +14,9 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.runtime.tracing import RunTracer
+from app.runtime import AgentRuntime, MemoryContext
+from adapters.astrbot_runtime import AstrBotRuntimeAdapter
+from adapters.seekmemory_context import SeekMemoryContextAdapter
 from store.run_trace import TraceStore
 
 
@@ -180,15 +183,18 @@ class RunTraceTests(unittest.TestCase):
         # This protects our mapping; it is NOT real-host integration verification.
         source = ast.parse((Path(__file__).resolve().parents[1] / "main.py").read_text())
         main = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == "Main")
-        names = {"inject_memory", "capture_reply", "record_delivery", "observe_agent_begin"}
-        methods = [n for n in main.body if isinstance(n, ast.AsyncFunctionDef) and n.name in names]
+        names = {"inject_memory", "_runtime_memory_context", "capture_reply",
+                 "record_delivery", "observe_agent_begin"}
+        methods = [n for n in main.body
+                   if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n.name in names]
         for method in methods:
             method.decorator_list = []
         main.body = methods
         main.bases = []
         main.decorator_list = []
         module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), main], type_ignores=[])
-        namespace = {"is_private": lambda event: True, "log_call": Mock(), "logger": Mock()}
+        namespace = {"AstrBotRuntimeAdapter": AstrBotRuntimeAdapter,
+                     "MemoryContext": MemoryContext, "log_call": Mock(), "logger": Mock()}
         exec(compile(ast.fix_missing_locations(module), "main.py", "exec"), namespace)
         plugin = namespace["Main"]()
         plugin.ready, plugin.cache, plugin.db = True, {}, None
@@ -197,6 +203,9 @@ class RunTraceTests(unittest.TestCase):
         plugin._calls_path = lambda: "unused"
         plugin._c = lambda key, default: default
         plugin._recall_block = lambda *args: ("SAFE MEMORY", {"final_ids": ["n_1"], "mode": "strict", "picked": 1, "chars": 11})
+        plugin.runtime = AgentRuntime(
+            store=Mock(), memory_context=SeekMemoryContextAdapter(plugin._runtime_memory_context)
+        )
         event = Event()
         event.message_str = "PRIVATE QUESTION"
         event.get_sender_id = lambda: "PRIVATE USER"

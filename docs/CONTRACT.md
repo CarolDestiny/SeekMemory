@@ -565,6 +565,17 @@ An extraction item may include an optional `supersedes` exact-text hint. After t
 `JsonStateStore` persists SocialState atomically in the plugin data directory, so observe-only runtime state survives restarts. `adapters/astrbot_runtime.py` is the only place that maps host message events into `RuntimeInput`; `app/runtime` remains host-agnostic.
 
 
+## Runtime scheduler
+
+`app/runtime/scheduler.py` exposes a pure `SchedulerPolicy` over `SocialState` and an explicit
+`now` value. `evaluate_wait(wait_until, now)` distinguishes `wait_due` from `wait_not_due`;
+`evaluate_quiet(state, now)` reports `quiet_window` or `quiet_clear`; and
+`evaluate_proactive(state, now, *, rng=None, seed=None)` applies the idle threshold,
+quiet window, per-session cooldown and proactive probability. Seeded decisions are stable
+and an injectable random source is supported. The policy performs no I/O, sleeping, host
+imports or state mutation; `evaluate()` returns decisions in the stable order
+quiet, wait (when supplied), proactive.
+
 ## Runtime actions and episodes
 
 `AstrBotActionPort` provides send/wait/proactive host actions. `DBStateStore` and `DBEpisodeStore` persist mutable social state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
@@ -586,3 +597,17 @@ model used memory in its answer. `delivered` records the separate host message-s
 Tool-return status stays unknown; uncorrelated or overlapping tool calls have no guessed duration.
 Writes fail open and expose persistence_error; missing diagnostic events never retry business
 operations or alter recall/disclosure/tool policy. This log is not an immutable business ledger.
+
+
+## Runtime timing and unread state
+
+`RuntimeInput.at` must be populated from the host event timestamp. `SocialState` tracks `wait_until`, `quiet_until`, `cooldown_until`, `last_unread_seq`, and `read_through_seq`; `WakePolicy` returns `WAIT` during an active wait, `IGNORE` during quiet/cooldown, and `mark_delivered()` advances the read-through watermark. These are runtime state, not Source or Artifact fields.
+
+## Runtime memory context
+
+`inject_memory` now asks `AgentRuntime.build_context()` through `MemoryContextPort`; `SeekMemoryContextAdapter` delegates to the existing recall pipeline. Runtime owns the boundary and host injection no longer calls `build_block` directly.
+
+
+## Runtime integration policy
+
+Wake attention is prioritized as private > direct (@ / reply-to-bot) > addressed (name / question / keyword) > ambient. Private and direct attention cannot be muted by wait, quiet or cooldown. `wait` is a defer for ambient group traffic and must carry a reply path; it is never a hard mute for direct attention. `PolicyToolGuard` removes disallowed tools from `req.func_tool` before the model sees them. The runtime loop runs `SchedulerPolicy` over persisted runtime sessions; a due ambient wait dispatches a deferred reply through the host provider, persists the assistant Source, records an episode, and retries provider/send failures with bounded per-session backoff (`runtime_dispatch_max_attempts`, `runtime_dispatch_backoff_seconds`). Proactive decisions remain trace-only for now.

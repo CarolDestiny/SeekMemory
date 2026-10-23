@@ -15,12 +15,16 @@ class AstrBotRuntimeAdapter:
 
     @staticmethod
     def from_event(event, text: str, umo: str, sender: str,
-                   unread_count: int = 0) -> RuntimeInput:
+                   unread_count: int = 0, unread_seq: int = 0) -> RuntimeInput:
         try:
             private = bool(event.is_private_chat())
         except Exception:  # noqa: BLE001 - unknown host event defaults to group
             private = False
         value = str(text or "")
+        try:
+            created_at = float(getattr(event, "created_at", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            created_at = 0.0
         direct = bool(getattr(event, "is_at_or_wake_command", False))
         return RuntimeInput(
             session_id=str(umo or ""),
@@ -30,6 +34,8 @@ class AstrBotRuntimeAdapter:
             mentioned=private or direct,
             question=("?" in value or "\uff1f" in value),
             unread_count=max(0, int(unread_count)),
+            unread_seq=max(0, int(unread_seq)),
+            at=created_at,
         )
 
     @staticmethod
@@ -37,6 +43,7 @@ class AstrBotRuntimeAdapter:
         try:
             event.set_extra("_seekmemory_runtime_action", decision.action.value)
             event.set_extra("_seekmemory_runtime_reason", decision.reason)
+            event.set_extra("_seekmemory_runtime_defer_until", decision.defer_until)
         except Exception:  # noqa: BLE001 - observability must not break the host
             return
 
@@ -45,7 +52,10 @@ class AstrBotRuntimeAdapter:
         if not enabled:
             return
         try:
-            event.should_call_llm(decision.action in (WakeAction.REPLY, WakeAction.PROACTIVE))
+            event.should_call_llm(
+                decision.must_reply
+                or decision.action in (WakeAction.REPLY, WakeAction.PROACTIVE)
+            )
         except Exception:  # noqa: BLE001 - host version may not expose the gate
             return
 

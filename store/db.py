@@ -1065,3 +1065,22 @@ class DB:
             )
             deleted += int(cur.rowcount or 0)
         return deleted
+
+    def list_runtime_state_sessions(self, limit: int = 1000) -> list[str]:
+        """List sessions that have persisted runtime state."""
+        rows = self.conn.execute(
+            "SELECT session_id FROM runtime_state ORDER BY updated_at DESC LIMIT ?",
+            (max(1, min(10000, int(limit))),),
+        ).fetchall()
+        return [str(row["session_id"]) for row in rows]
+
+    def latest_user_source(self, session_id: str) -> dict[str, Any] | None:
+        """Return the newest user Source metadata/text for a session."""
+        row = self.conn.execute(
+            "SELECT s.id, s.umo, s.at, s.role, b.content AS text "
+            "FROM sources s JOIN blobs b ON b.hash = s.blob "
+            "WHERE s.umo = ? AND s.role = 'user' "
+            "ORDER BY s.at DESC, s.id DESC LIMIT 1",
+            (str(session_id or ""),),
+        ).fetchone()
+        return dict(row) if row is not None else None
