@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Callable
 
 from .contracts import (
+    MemoryContext,
+    MemoryContextPort,
     RuntimeInput,
     SocialState,
     StateStore,
@@ -24,11 +26,18 @@ class AgentRuntime:
         policy: WakePolicy | None = None,
         trace: TraceSink | None = None,
         clock: Callable[[], float] | None = None,
+        memory_context: MemoryContextPort | None = None,
     ) -> None:
         self.store = store
         self.policy = policy or WakePolicy()
         self.trace = trace
         self.clock = clock or (lambda: 0.0)
+        self.memory_context = memory_context
+
+    def build_context(self, event: RuntimeInput) -> MemoryContext:
+        if self.memory_context is None:
+            return MemoryContext()
+        return self.memory_context.build_context(event)
 
     def observe(self, event: RuntimeInput) -> WakeDecision:
         now = event.at or self.clock()

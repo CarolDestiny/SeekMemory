@@ -266,6 +266,121 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(timeline["text"], "second persona")
         self.assertEqual([row["revision"] for row in timeline["revisions"]], [1, 2])
 
+    async def test_inject_memory_preserves_context_contract(self) -> None:
+        class Event:
+            unified_msg_origin = "bot:FriendMessage:alice"
+            message_str = "hello"
+
+            def __init__(self):
+                self.extras = {}
+
+            def is_private_chat(self):
+                return True
+
+            def get_sender_id(self):
+                return "u1"
+
+            def get_extra(self, key, default=None):
+                return self.extras.get(key, default)
+
+            def set_extra(self, key, value):
+                self.extras[key] = value
+
+        calls = []
+
+        def recall_block(text, umo="", private=False, speaker=""):
+            calls.append((text, umo, private, speaker))
+            return "memory block", {
+                "mode": "normal",
+                "picked": 2,
+                "chars": 12,
+                "pinned": 1,
+                "final_ids": ["a1", 2],
+            }
+
+        self.plugin.cfg["open_to"] = "everyone"
+        self.plugin._recall_block = recall_block
+        event = Event()
+        req = SimpleNamespace(system_prompt="base")
+        await self.plugin.inject_memory(event, req)
+
+        self.assertEqual(calls, [("hello", "bot:FriendMessage:alice", True, "u1")])
+        self.assertEqual(event.get_extra("_seekmemory_recall_ids"), ("a1", "2"))
+        self.assertEqual(req.system_prompt, "base\n\nmemory block\n")
+        self.assertEqual(self.plugin._last_context_chars, len("memory block"))
+        journal_event = next(
+            row for row in reversed(self.plugin.journal.events)
+            if row["kind"] == "recall" and row["stage"] == "assemble"
+        )
+        self.assertEqual(journal_event["status"], "info")
+        self.assertEqual(
+            journal_event["context"],
+            {"mode": "normal", "picked": 2, "chars": 12},
+        )
+        with open(self.plugin._calls_path(), encoding="utf-8") as stream:
+            logged = json.loads(stream.readlines()[-1])
+        self.assertEqual(
+            (logged["kind"], logged["mode"], logged["picked"], logged["chars"]),
+            ("FriendMessage", "normal", 2, 12),
+        )
+        self.assertNotIn("memory block", json.dumps(logged))
+
+        def empty_recall(text, umo="", private=False, speaker=""):
+            return "", {
+                "mode": "strict",
+                "picked": 0,
+                "chars": 0,
+                "final_ids": ("a1",),
+            }
+
+        self.plugin._recall_block = empty_recall
+        empty_event = Event()
+        empty_req = SimpleNamespace(system_prompt="base")
+        await self.plugin.inject_memory(empty_event, empty_req)
+        self.assertEqual(empty_req.system_prompt, "base")
+        self.assertEqual(empty_event.get_extra("_seekmemory_recall_ids"), ("a1",))
+        self.assertEqual(self.plugin._last_context_chars, 0)
+
+    async def test_inject_memory_fails_open_without_leaking_error_detail(self) -> None:
+        class Event:
+            unified_msg_origin = "bot:FriendMessage:alice"
+            message_str = "private message body"
+
+            def __init__(self):
+                self.extras = {}
+
+            def is_private_chat(self):
+                return True
+
+            def get_sender_id(self):
+                return "u1"
+
+            def get_extra(self, key, default=None):
+                return self.extras.get(key, default)
+
+            def set_extra(self, key, value):
+                self.extras[key] = value
+
+        def fail_recall(text, umo="", private=False, speaker=""):
+            raise RuntimeError("db path /secret")
+
+        self.plugin.cfg["open_to"] = "everyone"
+        self.plugin._recall_block = fail_recall
+        event = Event()
+        req = SimpleNamespace(system_prompt="base")
+        await self.plugin.inject_memory(event, req)
+
+        self.assertEqual(req.system_prompt, "base")
+        self.assertIsNone(event.get_extra("_seekmemory_recall_ids"))
+        journal_event = self.plugin.journal.events[-1]
+        self.assertEqual(
+            (journal_event["kind"], journal_event["status"]), ("recall", "failed")
+        )
+        self.assertEqual(journal_event["error"]["type"], "RuntimeError")
+        serialized = json.dumps(journal_event)
+        self.assertNotIn("private message body", serialized)
+        self.assertNotIn("/secret", serialized)
+
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace
 

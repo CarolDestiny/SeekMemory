@@ -2,6 +2,7 @@
 
 from .contracts import (
     ActionPort,
+    MemoryContext,
     MemoryContextPort,
     RuntimeInput,
     RuntimeResult,
@@ -26,6 +27,7 @@ __all__ = [
     "JsonlEpisodeStore",
     "RuntimeEpisode",
     "InMemoryStateStore",
+    "MemoryContext",
     "JsonStateStore",
     "MemoryContextPort",
     "RuntimeInput",

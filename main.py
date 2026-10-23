@@ -31,6 +31,7 @@ from .app.runtime import (
     EpisodeRecorder,
     JsonStateStore,
     JsonlEpisodeStore,
+    MemoryContext,
     RuntimeEpisode,
     ToolPolicy,
 )
@@ -51,11 +52,11 @@ from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
 from .perceive.calls import log_call
 from .perceive.model import ProviderChatModel
-from .recall.designated import is_private
 from .recall.pipeline import build_block
 from .recall.retriever import HybridRetriever
 from .adapters.astrbot_actions import AstrBotActionPort
 from .adapters.astrbot_runtime import AstrBotRuntimeAdapter
+from .adapters.seekmemory_context import SeekMemoryContextAdapter
 from .store.cache import Cache
 from .store.db import DB
 from .webui.jobs import Jobs
@@ -106,7 +107,10 @@ class Main(star.Star):
         self._init_engine()
         if self.db is not None:
             self.runtime = AgentRuntime(
-                DBStateStore(self.db), trace=self.trace, clock=time.time
+                DBStateStore(self.db),
+                trace=self.trace,
+                clock=time.time,
+                memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
             )
             self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
         else:
@@ -114,6 +118,7 @@ class Main(star.Star):
                 JsonStateStore(str(self.data_path.parent / "runtime_state.json")),
                 trace=self.trace,
                 clock=time.time,
+                memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
             )
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
@@ -278,9 +283,11 @@ class Main(star.Star):
                 return
 
             umo = str(getattr(event, "unified_msg_origin", "") or "")
-            block, info = self._recall_block(
-                text, umo, is_private(event), str(event.get_sender_id())
+            runtime_input = AstrBotRuntimeAdapter.from_event(
+                event, text, umo, str(event.get_sender_id())
             )
+            context = self.runtime.build_context(runtime_input)
+            block, info = context.text, context.info
             self._last_context_chars = len(block)
             log_call(self._calls_path(), umo, info)
             event.set_extra(
@@ -301,6 +308,12 @@ class Main(star.Star):
         except Exception as e:  # noqa: BLE001
             self.journal.record("recall", "failed", "召回失败", error=e)
             logger.error(f"[seekmemory] 注入失败（不影响回复）：{e}")
+
+    def _runtime_memory_context(self, event: RuntimeInput) -> MemoryContext:
+        block, info = self._recall_block(
+            event.text, event.session_id, event.private, event.speaker_id
+        )
+        return MemoryContext(text=block, info=info)
 
     def _calls_path(self) -> str:
         """调用日志路径：和数据目录放一起。"""
