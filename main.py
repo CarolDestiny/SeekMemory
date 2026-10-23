@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import time
 from functools import partial
 from pathlib import Path
 
@@ -101,14 +102,18 @@ class Main(star.Star):
         self._last_context_chars = 0
         self._backpressure = False
         self._deferred_rows = 0
+        self._last_runtime_prune_at = 0.0
         self._init_engine()
         if self.db is not None:
-            self.runtime = AgentRuntime(DBStateStore(self.db), trace=self.trace)
+            self.runtime = AgentRuntime(
+                DBStateStore(self.db), trace=self.trace, clock=time.time
+            )
             self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
         else:
             self.runtime = AgentRuntime(
                 JsonStateStore(str(self.data_path.parent / "runtime_state.json")),
                 trace=self.trace,
+                clock=time.time,
             )
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
@@ -121,6 +126,7 @@ class Main(star.Star):
                 )
             except Exception:
                 pass
+            self._last_runtime_prune_at = time.time()
             self.dream = DreamCycle(
                 self.db, self._c,
                 log=lambda msg: logger.info(f"[seekmemory] {msg}"),
@@ -137,6 +143,22 @@ class Main(star.Star):
             return type(default)(v)
         except Exception:
             return default
+
+    def _maybe_prune_runtime_episodes(self) -> None:
+        """Keep runtime audit bounded without doing work on every message."""
+        if self.db is None:
+            return
+        now = time.time()
+        if now - self._last_runtime_prune_at < 60:
+            return
+        try:
+            self.db.prune_runtime_episodes(
+                retention_days=int(self._c("runtime_episode_retention_days", 30)),
+                max_rows=int(self._c("runtime_episode_max_rows", 5000)),
+            )
+            self._last_runtime_prune_at = now
+        except Exception:
+            pass
 
     def _threshold_overrides(self) -> dict:
         """Read ``capacity_thresholds`` as a dict or a JSON object string."""
@@ -462,6 +484,7 @@ class Main(star.Star):
             )
         )
         event.set_extra("_seekmemory_episode_recorded", True)
+        self._maybe_prune_runtime_episodes()
 
     @filter.on_agent_begin()
     async def observe_agent_begin(self, event, run_context) -> None:
@@ -493,6 +516,7 @@ class Main(star.Star):
                 user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
             )
         )
+        self._maybe_prune_runtime_episodes()
 
     @filter.on_using_llm_tool()
     async def observe_tool(self, event, tool, tool_args) -> None:
@@ -501,8 +525,12 @@ class Main(star.Star):
         )
         self.trace.record(
             "tool",
-            "allowed" if call.allowed else "blocked",
-            {"tool": call.name, "argKeys": len(call.args_keys)},
+            "allowed" if call.allowed else "advisory_denied",
+            {
+                "tool": call.name,
+                "argKeys": len(call.args_keys),
+                "enforced": False,
+            },
         )
 
     @filter.on_llm_tool_respond()
