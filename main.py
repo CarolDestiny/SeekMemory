@@ -344,7 +344,16 @@ class Main(star.Star):
                 context={key: info[key] for key in ("mode", "picked", "chars")},
             )
             if block:
-                req.system_prompt = (req.system_prompt or "") + "\n\n" + block + "\n"
+                # 给记忆块加个明确的框：模型才知道这些是"自己记得的事"，
+                # 而不是散落在系统提示里的匿名文本。
+                framed = (
+                    "\n\n【你的记忆】\n"
+                    "下面是你自己记得的事，来自你的记忆库。自然带出来，别逐条复述，"
+                    "也别说「根据记忆」。没有这一段，就说明你此刻没想起来。\n"
+                    + block
+                    + "\n"
+                )
+                req.system_prompt = (req.system_prompt or "") + framed
                 if self._c("debug_log", False):
                     logger.info(f"[seekmemory] 注入 {len(block)} 字")
             trace_info, trace_status = info, "ok"
@@ -630,7 +639,10 @@ class Main(star.Star):
             self._dream_loop,
             self._runtime_loop,
         ]
-        if not self._dream_on:  # 兼容旧行为：梦境关掉才保留白天/夜间抽取
+        if self._dream_on:
+            # 白天也要批量入库：只抽取、不进化，进化留给 dream。
+            operations.append(self._ingest_loop)
+        else:  # 兼容旧行为：梦境关掉才保留白天/夜间抽取
             operations += [self._nightly_loop, self._idle_loop]
         self._schedulers = [
             asyncio.create_task(operation()) for operation in operations
@@ -1145,6 +1157,27 @@ class Main(star.Star):
                 logger.error(f"[seekmemory] 空闲抽取失败：{e}")
                 self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
 
+    async def _ingest_loop(self) -> None:
+        """白天批量入库：积压够多就按批抽取，让记忆跟得上聊天。
+
+        和 dream 分工——这里只负责"抽取成记忆"，合并/修订印象/沉淀人格
+        仍然只在 dream 里做，避免白天人格漂移。
+        """
+        while True:
+            interval = max(120, int(self._c("ingest_interval_seconds", 600)))
+            await asyncio.sleep(interval)
+            try:
+                if self.buffer is None or not self.buffer.items:
+                    continue
+                if not self._c("ingest_enabled", True):
+                    continue
+                if len(self.buffer.items) < int(self._c("ingest_min_pending", 20)):
+                    continue
+                cap = max(1, int(self._c("ingest_batch_topics", 20)))
+                self.jobs.submit("ingest", lambda: self._flush("定时批量", limit=cap))
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"[seekmemory] 定时批量抽取失败：{e}")
+
     async def _dream_loop(self) -> None:
         """每天 dream_time 跑一次进化；启动时若已过点且没做，立刻补一次。"""
         if self.dream is not None and self.dream.due():
@@ -1223,7 +1256,8 @@ class Main(star.Star):
         try:
             capacity = self._observe_capacity()
             topics = self._split_topics(
-                list(self.buffer.items), cap=self._batch_cap(capacity)
+                list(self.buffer.items),
+                cap=limit or self._batch_cap(capacity),
             )
             ready_ids = self.db.ready_extraction_ids()
             ready = []

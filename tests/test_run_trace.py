@@ -229,7 +229,8 @@ class RunTraceTests(unittest.TestCase):
         asyncio.run(plugin.observe_agent_begin(event, None))
         asyncio.run(plugin.capture_reply(event, SimpleNamespace(role="assistant")))
         asyncio.run(plugin.record_delivery(event))
-        self.assertEqual(req.system_prompt, "original\n\nSAFE MEMORY\n")
+        self.assertTrue(req.system_prompt.startswith("original\n\n【你的记忆】"))
+        self.assertIn("SAFE MEMORY", req.system_prompt)
         run = self.store.snapshot()["runs"][0]
         self.assertTrue(run["delivered"])
         self.assertFalse(run["partial"])
