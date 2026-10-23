@@ -548,3 +548,13 @@ Lifecycle expiry and retention decay also use one `commit_many()` transaction: e
 ## Persona timeline
 
 The status response exposes an optional `persona` object with the current stable persona id, revision, text, and ordered revision history. The WebUI renders it as a read-only timeline; no revision write is initiated from the panel.
+
+
+## Superseding extraction
+
+An extraction item may include an optional `supersedes` exact-text hint. After the new Artifact commits, `absorb()` finds an active memory with the same subject and scope whose text matches that hint and sets its `valid_to` to yesterday, so recall excludes the old fact while the Source and version history remain intact.
+
+
+## Evaluation and live probe
+
+`scripts/live_probe.py` opens a database in SQLite read-only mode and reports source/node/persona counts, extraction states and ledger validity. `benchmarks/real_eval.py` runs extraction against an OpenAI-compatible endpoint and reports parse/schema/expected-text recall; it is manual and not part of CI.

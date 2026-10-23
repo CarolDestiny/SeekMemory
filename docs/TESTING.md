@@ -70,12 +70,24 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Expired/future validity is ignored by recall | covered by `tests/test_temporal.py` |
 | Old database migration only checked a column | covered by `tests/test_migration.py` |
 | No continuous extraction-to-recall correction case | covered by `tests/test_continuity.py` |
+| Explicit plan/fact replacement did not expire the old row | covered by `tests/test_continuity.py` |
 | Batch merge left partial state after a member failure | covered by `tests/test_maintain.py` |
 | Lifecycle expiry left partial forgotten state | covered by `tests/test_lifecycle.py` |
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |
 | Persona revision timeline was not exposed | covered by `tests/test_webui_host.py` (host layer) |
 | Repeated bot behavior had no self-impression path | covered by `tests/test_self_impression.py` |
+
+## Staging and model probes
+
+```bash
+python3 scripts/live_probe.py --db /path/to/memory.db --label live --json
+python3 benchmarks/real_eval.py --cases benchmarks/data/extraction_smoke.jsonl --dry-run
+```
+
+`live_probe` is read-only and reports counts, extraction states, persona revision and ledger validity.
+`real_eval` uses an OpenAI-compatible endpoint configured through `SEEKMEMORY_EVAL_BASE_URL`,
+`SEEKMEMORY_EVAL_API_KEY` and `SEEKMEMORY_EVAL_MODEL`; it is a manual staging probe, not a CI replacement.
 
 ## What tests cannot fully prove
 
