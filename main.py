@@ -23,6 +23,7 @@ from .app.checkpoint import CheckpointManager
 from .app.contracts import DialogueTurn
 from .app.dream import DreamCycle
 from .app.flush_policy import chunk_turns, decide_flush, select_topic_batches
+from .app.runtime import AgentRuntime, InMemoryStateStore, RuntimeInput
 from .core.capacity import (
     NORMAL,
     PROTECTIVE,
@@ -76,6 +77,7 @@ class Main(star.Star):
         )
         self.journal = Journal(self.data_path.parent / "lifecycle.jsonl")
         self.trace = Trace()
+        self.runtime = AgentRuntime(InMemoryStateStore(), trace=self.trace)
         self.jobs = Jobs(self.journal)
         artifact_limit = max(1, int(self._c("max_episodes", 500)))
         self.capacity = CapacityGovernor(self._thresholds(artifact_limit))
@@ -326,6 +328,18 @@ class Main(star.Star):
                 )
             event.set_extra("_seekmemory_turn_id", turn_id)
             event.set_extra("_seekmemory_source_id", source_id)
+            self.runtime.observe(
+                RuntimeInput(
+                    session_id=umo,
+                    text=text,
+                    speaker_id=sender,
+                    private=is_private(event),
+                    mentioned=is_private(event),
+                    question=("?" in text or "？" in text),
+                    unread_count=len(self.buffer.items),
+                    at=datetime.datetime.now().timestamp(),
+                )
+            )
         except Exception:
             pass
 

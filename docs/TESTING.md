@@ -74,6 +74,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Batch merge left partial state after a member failure | covered by `tests/test_maintain.py` |
 | Lifecycle expiry left partial forgotten state | covered by `tests/test_lifecycle.py` |
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
+| AgentRuntime policy was coupled to AstrBot | covered by `tests/test_agent_runtime.py` |
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |
 | Persona revision timeline was not exposed | covered by `tests/test_webui_host.py` (host layer) |
 | Repeated bot behavior had no self-impression path | covered by `tests/test_self_impression.py` |
