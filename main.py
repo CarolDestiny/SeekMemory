@@ -110,6 +110,8 @@ class Main(star.Star):
         self._backpressure = False
         self._deferred_rows = 0
         self._last_runtime_prune_at = 0.0
+        self._runtime_dispatching: set[str] = set()
+        self._runtime_tick_lock = asyncio.Lock()
         self._init_engine()
         if self.db is not None:
             self.runtime = AgentRuntime(
@@ -882,40 +884,51 @@ class Main(star.Star):
     async def _runtime_scheduler_tick(self) -> None:
         if self.db is None:
             return
-        now = time.time()
-        for session_id in self.db.list_runtime_state_sessions(limit=100):
-            try:
-                state = self.runtime.store.get(session_id)
-                decisions = self.scheduler.evaluate(state, now)
-                for decision in decisions:
-                    if decision.action.value not in ("proactive", "wait"):
-                        continue
-                    self.trace.record(
-                        "runtime",
-                        "scheduler_" + decision.action.value,
-                        {
-                            "event": decision.event.value,
-                            "reason": decision.reason,
-                            "due": bool(decision.due),
-                        },
+        async with self._runtime_tick_lock:
+            now = time.time()
+            for session_id in self.db.list_runtime_state_sessions(limit=100):
+                if session_id in self._runtime_dispatching:
+                    continue
+                try:
+                    state = self.runtime.store.get(session_id)
+                    decisions = self.scheduler.evaluate(state, now)
+                    for decision in decisions:
+                        if decision.action.value not in ("proactive", "wait"):
+                            continue
+                        self.trace.record(
+                            "runtime",
+                            "scheduler_" + decision.action.value,
+                            {
+                                "event": decision.event.value,
+                                "reason": decision.reason,
+                                "due": bool(decision.due),
+                            },
+                        )
+                    wait_due = any(
+                        item.event.value == "wait" and item.due for item in decisions
                     )
-                wait_due = any(
-                    item.event.value == "wait" and item.due for item in decisions
-                )
-                if wait_due and state.wait_until and state.wait_until <= now:
-                    await self._dispatch_deferred(session_id, now)
-            except Exception:
-                continue
+                    if wait_due and state.wait_until and state.wait_until <= now:
+                        self._runtime_dispatching.add(session_id)
+                        try:
+                            await self._dispatch_deferred(session_id, now)
+                        finally:
+                            self._runtime_dispatching.discard(session_id)
+                except Exception:
+                    continue
 
     async def _dispatch_deferred(self, session_id: str, now: float) -> None:
         """Generate one deferred group reply after the ambient wait expires."""
+        state = self.runtime.store.get(session_id)
+        if state.wait_until <= 0 or state.wait_until > now:
+            return
         source = self.db.latest_user_source(session_id) if self.db is not None else None
+        # Claim the wait before any await so a slow provider or send cannot
+        # cause the same ambient turn to be dispatched twice.
+        self.runtime.clear_wait(session_id, now)
         if not source:
-            self.runtime.clear_wait(session_id, now)
             return
         text = str(source.get("text") or "").strip()
         if not text:
-            self.runtime.clear_wait(session_id, now)
             return
         runtime_input = RuntimeInput(
             session_id=session_id,
@@ -924,19 +937,40 @@ class Main(star.Star):
             at=now,
         )
         context = self.runtime.build_context(runtime_input)
-        provider = await self.context.get_using_provider_async(session_id)
-        if provider is None:
-            self.runtime.clear_wait(session_id, now)
+        try:
+            provider = await self.context.get_using_provider_async(session_id)
+            if provider is None:
+                self.trace.record("runtime", "deferred_no_provider", {})
+                return
+            response = await provider.text_chat(
+                prompt=text,
+                system_prompt=context.text or None,
+            )
+            reply = str(getattr(response, "completion_text", "") or "").strip()
+            if not reply:
+                self.trace.record("runtime", "deferred_empty_response", {})
+                return
+            sent = await self.actions.send(session_id, reply)
+            if sent is False:
+                raise RuntimeError("send_failed")
+        except Exception as exc:  # noqa: BLE001 - runtime action is fail-open
+            self.episode_recorder.record(
+                RuntimeEpisode(
+                    session_id=session_id,
+                    at=datetime.datetime.now().isoformat(timespec="seconds"),
+                    decision="wait",
+                    reason="deferred_wait",
+                    action="reply",
+                    delivered=False,
+                    outcome="error",
+                    error=type(exc).__name__,
+                    user_source_id=str(source.get("id") or ""),
+                )
+            )
+            self.trace.record(
+                "runtime", "deferred_failed", {"error": type(exc).__name__}
+            )
             return
-        response = await provider.text_chat(
-            prompt=text,
-            system_prompt=context.text or None,
-        )
-        reply = str(getattr(response, "completion_text", "") or "").strip()
-        if not reply:
-            self.runtime.clear_wait(session_id, now)
-            return
-        await self.actions.send(session_id, reply)
         self.runtime.mark_delivered(session_id, now)
         self.episode_recorder.record(
             RuntimeEpisode(

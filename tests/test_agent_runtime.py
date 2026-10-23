@@ -256,6 +256,14 @@ class AgentRuntimeTest(unittest.TestCase):
         runtime.observe(RuntimeInput("s1", "ambient"))
         self.assertEqual(store.get("s1").wait_until, 105)
 
+    def test_ambient_wait_extends_on_new_traffic(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100, wait_seconds=5)
+        runtime.observe(RuntimeInput("s1", "first", at=100))
+        self.assertEqual(store.get("s1").wait_until, 105)
+        runtime.observe(RuntimeInput("s1", "second", at=102))
+        self.assertEqual(store.get("s1").wait_until, 107)
+
     def test_delivery_clears_unread_and_updates_last_spoke(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 200)

@@ -60,12 +60,13 @@ class AgentRuntime:
             state.ignored_streak = 0
         elif decision.action is WakeAction.IGNORE:
             state.ignored_streak += 1
-        if (
-            decision.action is WakeAction.OBSERVE
-            and self.wait_seconds > 0
-            and state.wait_until <= now
+        if self.wait_seconds > 0 and decision.action in (
+            WakeAction.OBSERVE,
+            WakeAction.WAIT,
         ):
-            state.wait_until = now + self.wait_seconds
+            # Debounce new ambient traffic: every ambient event extends the
+            # pending wait instead of letting an earlier deadline fire.
+            state.wait_until = max(state.wait_until, now + self.wait_seconds)
         self.store.put(state)
         if self.trace is not None:
             self.trace.record(

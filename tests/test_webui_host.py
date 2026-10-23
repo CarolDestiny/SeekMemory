@@ -441,8 +441,50 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.runtime.wait(session_id, -1, now=now)
 
         class Provider:
+            def __init__(self):
+                self.calls = []
+
             async def text_chat(self, prompt, system_prompt=None):
+                self.calls.append((prompt, system_prompt))
                 return SimpleNamespace(completion_text="deferred reply")
+
+        class Actions:
+            def __init__(self):
+                self.sent = []
+
+            async def send(self, session, text):
+                self.sent.append((session, text))
+
+        provider = Provider()
+
+        async def provider_for(session):
+            return provider
+
+        actions = Actions()
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.actions = actions
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(provider.calls[0][0], "ambient deferred message")
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(actions.sent, [(session_id, "deferred reply")])
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(rows[0]["reason"], "deferred_wait")
+        self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+
+    async def test_runtime_tick_dedupes_deferred_dispatch(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-tick-defer"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-tick", turn_id="turn-tick", session_id=session_id,
+            speaker_id="u1", role="user", text="tick deferred",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        class Provider:
+            async def text_chat(self, prompt, system_prompt=None):
+                return SimpleNamespace(completion_text="tick reply")
 
         class Actions:
             def __init__(self):
@@ -457,11 +499,61 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         actions = Actions()
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
+        await self.plugin._runtime_scheduler_tick()
+        await self.plugin._runtime_scheduler_tick()
+        self.assertEqual(actions.sent, [(session_id, "tick reply")])
+
+    async def test_deferred_provider_failure_clears_wait_and_is_private(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-provider-fail"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-fail", turn_id="turn-fail", session_id=session_id,
+            speaker_id="u1", role="user", text="secret provider input",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        async def provider_for(session):
+            raise RuntimeError("provider leaked secret")
+
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.trace.rows.clear()
         await self.plugin._dispatch_deferred(session_id, now)
-        self.assertEqual(actions.sent, [(session_id, "deferred reply")])
-        rows = self.plugin.db.list_runtime_episodes(session_id)
-        self.assertEqual(rows[0]["reason"], "deferred_wait")
         self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(rows[0]["outcome"], "error")
+        self.assertNotIn("secret", json.dumps([row.context for row in self.plugin.trace.rows]))
+
+    async def test_deferred_send_failure_records_failure_and_clears_wait(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-send-fail"
+        now = time.time()
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-send-fail", turn_id="turn-send-fail", session_id=session_id,
+            speaker_id="u1", role="user", text="send failure input",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, -1, now=now)
+
+        class Provider:
+            async def text_chat(self, prompt, system_prompt=None):
+                return SimpleNamespace(completion_text="will fail")
+
+        class Actions:
+            async def send(self, session, text):
+                return False
+
+        async def provider_for(session):
+            return Provider()
+
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.actions = Actions()
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
+        rows = self.plugin.db.list_runtime_episodes(session_id)
+        self.assertEqual(rows[0]["outcome"], "error")
+        self.assertEqual(rows[0]["error"], "RuntimeError")
 
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace
