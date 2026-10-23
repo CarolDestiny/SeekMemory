@@ -15,6 +15,12 @@ class WakePolicy:
         text = str(event.text or "").strip()
         if not text:
             return WakeDecision(WakeAction.IGNORE, "empty_text")
+        if state.wait_until > moment:
+            return WakeDecision(
+                WakeAction.WAIT,
+                "waiting",
+                wait_seconds=state.wait_until - moment,
+            )
         if state.quiet_until > moment:
             return WakeDecision(WakeAction.IGNORE, "quiet_window")
 
@@ -26,7 +32,10 @@ class WakePolicy:
         if event.keyword_hit:
             return WakeDecision(WakeAction.REPLY, "keyword_match")
 
-        if state.last_spoke_at and moment - state.last_spoke_at < state.reply_cooldown_seconds:
+        cooldown_until = state.cooldown_until
+        if not cooldown_until and state.last_spoke_at:
+            cooldown_until = state.last_spoke_at + state.reply_cooldown_seconds
+        if cooldown_until > moment:
             return WakeDecision(WakeAction.IGNORE, "reply_cooldown")
 
         return WakeDecision(WakeAction.OBSERVE, "ambient_message", confidence=0.5)

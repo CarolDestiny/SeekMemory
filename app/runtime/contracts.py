@@ -30,6 +30,7 @@ class RuntimeInput:
     reply_to_bot: bool = False
     keyword_hit: bool = False
     unread_count: int = 0
+    unread_seq: int = 0
     at: float = 0.0
 
 
@@ -42,7 +43,11 @@ class SocialState:
     last_spoke_at: float = 0.0
     last_wake_at: float = 0.0
     quiet_until: float = 0.0
+    wait_until: float = 0.0
+    cooldown_until: float = 0.0
     unread_count: int = 0
+    last_unread_seq: int = 0
+    read_through_seq: int = 0
     reply_count: int = 0
     ignored_streak: int = 0
     last_action: str = ""

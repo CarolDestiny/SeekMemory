@@ -16,6 +16,7 @@ class Event:
     def __init__(self, private: bool) -> None:
         self.private = private
         self.extras = {}
+        self.created_at = 0.0
 
     def is_private_chat(self) -> bool:
         return self.private
@@ -33,6 +34,16 @@ class AdapterTest(unittest.TestCase):
         self.assertTrue(result.mentioned)
         self.assertTrue(result.question)
         self.assertEqual(result.unread_count, 3)
+
+    def test_event_timestamp_and_unread_watermark_are_mapped(self) -> None:
+        event = Event(False)
+        event.created_at = 123.5
+        result = AstrBotRuntimeAdapter.from_event(
+            event, "ambient", "g1", "u1", unread_count=4, unread_seq=9
+        )
+        self.assertEqual(result.at, 123.5)
+        self.assertEqual(result.unread_count, 4)
+        self.assertEqual(result.unread_seq, 9)
 
     def test_group_event_is_not_direct(self) -> None:
         result = AstrBotRuntimeAdapter.from_event(

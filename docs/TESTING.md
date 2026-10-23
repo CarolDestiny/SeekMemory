@@ -76,6 +76,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
 | AgentRuntime policy was coupled to AstrBot | covered by `tests/test_agent_runtime.py` |
 | Runtime social state was process-local only | covered by `tests/test_agent_runtime.py` |
+| Runtime timestamps/cooldown/quiet/wait/read-through were untested | covered by `tests/test_agent_runtime.py` |
+| AstrBot timestamp and unread mapping were untested | covered by `tests/test_runtime_adapter.py` |
 | AstrBot event mapping was untested | covered by `tests/test_runtime_adapter.py` |
 | Runtime actions, episodes and tool policy were untested | covered by `tests/test_runtime_actions.py` |
 | Observe-only mode could accidentally change LLM gating | covered by `tests/test_webui_host.py` (host layer) |
