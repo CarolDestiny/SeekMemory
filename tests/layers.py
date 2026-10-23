@@ -35,6 +35,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
         "test_e2e_kernel.py",
         "test_failure_recovery.py",
         "test_group_memory.py",
+        "test_privacy_outputs.py",
         "test_identity_isolation.py",
         "test_kernel.py",
         "test_recall.py",

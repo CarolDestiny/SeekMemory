@@ -182,40 +182,64 @@ def build_block(
 
     overrides: dict[str, str] = {}
     disclosure_info: dict[str, str] = {}
-    safe_picked = []
-    for art in picked:
-        try:
-            source_ids = list(art.header.lineage.sources)
-            origins = (
-                tuple(db.source_umos(source_ids).values()) if db is not None else ()
-            )
-            relevance = 1.0 if mode != "none" else 0.5
-            decision = decide(art, scene, relevance, origins)
-            disclosure_info[art.header.id] = decision.level.value
-            if decision.level == DisclosureLevel.SILENCE:
-                continue
-            if decision.level != DisclosureLevel.FULL:
-                safe = safe_text(art, decision.level)
-                if not safe:
+
+    def apply_disclosure(arts: list, relevance: float) -> list:
+        safe_arts = []
+        for art in arts:
+            try:
+                if art.header.family == "persona":
+                    disclosure_info[art.header.id] = "full"
+                    safe_arts.append(art)
                     continue
-                overrides[art.header.id] = safe
-            safe_picked.append(art)
-        except Exception:
-            continue
+                source_ids = list(art.header.lineage.sources)
+                origins = (
+                    tuple(db.source_umos(source_ids).values()) if db is not None else ()
+                )
+                if art.header.family == "designated":
+                    owner_ref = str(
+                        art.payload.get("owner_umo")
+                        or art.payload.get("owner")
+                        or ""
+                    )
+                    if owner_ref in (umo, owner_umo) or umo in origins:
+                        disclosure_info[art.header.id] = "full"
+                        safe_arts.append(art)
+                    else:
+                        disclosure_info[art.header.id] = "silence"
+                    continue
+                decision = decide(art, scene, relevance, origins)
+                disclosure_info[art.header.id] = decision.level.value
+                if decision.level == DisclosureLevel.SILENCE:
+                    continue
+                if decision.level != DisclosureLevel.FULL:
+                    safe = safe_text(art, decision.level)
+                    if not safe:
+                        continue
+                    overrides[art.header.id] = safe
+                safe_arts.append(art)
+            except Exception:
+                continue
+        return safe_arts
+
+    safe_pinned = apply_disclosure(pinned_arts, 1.0)
+    safe_designated = apply_disclosure(designated, 1.0)
+    safe_picked = apply_disclosure(
+        picked, 1.0 if mode != "none" else 0.5
+    )
     picked = safe_picked
 
     budget = int(conf("budget_chars", 600))
     notes = {}
-    for art in pinned_arts + picked:
+    for art in safe_pinned + picked:
         try:
             if str(art.payload.get("level") or "") == "impression":
                 note = trajectory(cache, art)
                 if note:
                     notes[art.header.id] = note
-        except Exception:  # noqa: BLE001 - 轨迹算不出来就只给当前印象
+        except Exception:  # noqa: BLE001 - trajectory is optional
             continue
     block = assemble_text(
-        pinned_arts + designated + picked,
+        safe_pinned + safe_designated + picked,
         budget=int(budget * (1.4 if mode == "loose" else 1.0)),
         text=text,
         is_private=private,
@@ -223,16 +247,16 @@ def build_block(
         overrides=overrides,
     )
     if not dry_run:
-        mark_given(db, cache, designated + picked, block)
+        mark_given(db, cache, safe_designated + picked, block)
     info = {
         "mode": mode,
         "picked": len(picked),
-        "pinned": len(pinned_arts),
+        "pinned": len(safe_pinned),
         "chars": len(block),
         "drift": bool(picked) and not designated,
         "picked_ids": tuple(a.header.id for a in picked),
         "disclosure": disclosure_info,
-        "pinned_ids": tuple(a.header.id for a in pinned_arts),
+        "pinned_ids": tuple(a.header.id for a in safe_pinned),
         "fallback": fallback,
     }
     return block, info
