@@ -118,6 +118,7 @@ class WebRoutes:
                 "maxTopicsPerBatch": max(1, plugin._c("max_sessions_per_flush", 6)),
             },
             "capacity": plugin.capacity_status() if hasattr(plugin, "capacity_status") else None,
+            "persona": plugin.persona_status() if hasattr(plugin, "persona_status") else None,
             "dream": plugin.dream.status() if getattr(plugin, "dream", None) else None,
             "budget": plugin.budget.as_dict() if getattr(plugin, "budget", None) else None,
             "checkpointPending": plugin.checkpoint.pending()

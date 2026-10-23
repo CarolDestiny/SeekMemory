@@ -300,6 +300,25 @@ export const mockClient: ManagementClient = {
         },
         queue: { pending: 8, retrying: 0, deferred: 0, extracted: 24, dead: 0 },
       },
+      persona: {
+        id: "n_persona_mock",
+        revision: 2,
+        text: "You first receive emotion, then ask for facts.",
+        revisions: [
+          {
+            revision: 1,
+            at: "2026-10-20T03:30:00+08:00",
+            op: "promote",
+            text: "You first receive emotion before asking facts.",
+          },
+          {
+            revision: 2,
+            at: "2026-10-21T03:30:00+08:00",
+            op: "promote",
+            text: "You first receive emotion, then ask for facts.",
+          },
+        ],
+      },
       checkpointPending: 2,
       schedulerCount: 4,
       config: {

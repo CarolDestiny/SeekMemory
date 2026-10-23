@@ -543,3 +543,8 @@ Assistant replies enter extraction with `role=assistant`. Optional `bot_action`,
 
 
 Lifecycle expiry and retention decay also use one `commit_many()` transaction: either all selected Artifacts become `forgotten`, or none do and the cache remains intact.
+
+
+## Persona timeline
+
+The status response exposes an optional `persona` object with the current stable persona id, revision, text, and ordered revision history. The WebUI renders it as a read-only timeline; no revision write is initiated from the panel.

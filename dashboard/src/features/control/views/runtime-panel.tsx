@@ -19,6 +19,7 @@ export function RuntimePanel({
   const task = status?.activeTask
   const policy = status?.extractionPolicy
   const capacity = status?.capacity
+  const persona = status?.persona
   return (
     <section className="mx-auto w-full max-w-6xl space-y-6 p-5 sm:p-8">
       <div className="workspace-intro">
@@ -82,6 +83,33 @@ export function RuntimePanel({
               </dd>
             </div>
           </dl>
+        </section>
+      )}
+      {persona && (
+        <section className="surface-panel space-y-4 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">人格时间线</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                当前 revision {persona.revision}
+              </p>
+            </div>
+            <Badge tone="info">{persona.id}</Badge>
+          </div>
+          <p className="text-sm leading-6">{persona.text || "暂无人格文本"}</p>
+          <ol className="space-y-3 text-sm">
+            {persona.revisions.map((revision) => (
+              <li key={revision.revision} className="border-l pl-3">
+                <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+                  <span>
+                    r{revision.revision} · {revision.op}
+                  </span>
+                  <span>{revision.at}</span>
+                </div>
+                <p className="mt-1 leading-6">{revision.text}</p>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
       <div className="grid gap-3 sm:grid-cols-2">

@@ -496,6 +496,30 @@ class Main(star.Star):
             trace_oldest_age_seconds=trace_age,
         )
 
+    def persona_status(self) -> dict | None:
+        """Return the current global persona and its revision timeline."""
+        if self.db is None:
+            return None
+        active = [art for art in self.db.list(family="persona", state="active")]
+        if not active:
+            return None
+        current = max(active, key=lambda art: art.header.revision)
+        revisions = []
+        for row in self.db.history(current.header.id):
+            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+            revisions.append({
+                "revision": int(row.get("revision") or 0),
+                "at": str(row.get("at") or ""),
+                "op": str(row.get("op") or ""),
+                "text": str(payload.get("text") or ""),
+            })
+        return {
+            "id": current.header.id,
+            "revision": int(current.header.revision),
+            "text": str(current.payload.get("text") or ""),
+            "revisions": revisions,
+        }
+
     def capacity_status(self) -> dict:
         """Return a content-free capacity report for the WebUI status endpoint."""
         snapshot = self._capacity_snapshot()

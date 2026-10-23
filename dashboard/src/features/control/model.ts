@@ -75,6 +75,22 @@ export const statusSchema = z.object({
       queue: z.record(z.string(), z.number().int().nonnegative()),
     })
     .nullable(),
+  persona: z
+    .object({
+      id: z.string(),
+      revision: z.number().int().nonnegative(),
+      text: z.string(),
+      revisions: z.array(
+        z.object({
+          revision: z.number().int().nonnegative(),
+          at: z.string(),
+          op: z.string(),
+          text: z.string(),
+        })
+      ),
+    })
+    .nullable()
+    .default(null),
   checkpointPending: z.number().int().nonnegative().nullable(),
   schedulerCount: z.number().int().nonnegative(),
   config: z.record(z.string(), z.json()),

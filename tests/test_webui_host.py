@@ -218,6 +218,18 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(row["text"] for row in rows), ["New plan", "Plan A"])
         self.assertFalse(plugin._flushing)
 
+    async def test_persona_status_exposes_revision_timeline(self) -> None:
+        artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
+        first = artifact.make("persona", {"text": "first persona"})
+        self.plugin.db.commit(first, expected_revision=0, op="promote")
+        second = artifact.revise(first, payload={"text": "second persona"})
+        self.plugin.db.commit(second, expected_revision=1, op="promote")
+        timeline = self.plugin.persona_status()
+        self.assertIsNotNone(timeline)
+        self.assertEqual(timeline["id"], first.header.id)
+        self.assertEqual(timeline["text"], "second persona")
+        self.assertEqual([row["revision"] for row in timeline["revisions"]], [1, 2])
+
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace
 
