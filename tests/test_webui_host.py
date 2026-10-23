@@ -154,7 +154,8 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.plugin.initialize()
         await self.plugin.start_jobs()
-        self.assertEqual(len(self.plugin._schedulers), 4)
+        expected_schedulers = 3 if self.plugin._dream_on else 5
+        self.assertEqual(len(self.plugin._schedulers), expected_schedulers)
         tasks = list(self.plugin._schedulers)
         await self.plugin.terminate()
         self.assertTrue(all(task.done() for task in tasks))

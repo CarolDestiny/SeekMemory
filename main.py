@@ -22,7 +22,7 @@ from .app.budget import budget_from_config, estimate_tokens
 from .app.checkpoint import CheckpointManager
 from .app.contracts import DialogueTurn
 from .app.dream import DreamCycle
-from .app.flush_policy import decide_flush, select_topic_batches
+from .app.flush_policy import chunk_turns, decide_flush, select_topic_batches
 from .core.capacity import (
     NORMAL,
     PROTECTIVE,
@@ -151,6 +151,13 @@ class Main(star.Star):
                 str(self.data_path.parent / "pending.json"), db=self.db
             )
             migrated = self.buffer.migrate_legacy()
+            if self.buffer.load_error:
+                self.journal.record(
+                    "capacity",
+                    "warning",
+                    "pending file was quarantined",
+                    context={"error": self.buffer.load_error},
+                )
             self.ready = True
             self.checkpoint = CheckpointManager(
                 self.db, self.cache, int(self._c("checkpoint_seconds", 1800))
@@ -311,6 +318,13 @@ class Main(star.Star):
                 turn_id=turn_id,
                 deferred=self._admit_deferred(),
             )
+            if self.buffer.save_error:
+                self.journal.record(
+                    "capacity",
+                    "warning",
+                    "pending save failed",
+                    context={"error": self.buffer.save_error},
+                )
             event.set_extra("_seekmemory_turn_id", turn_id)
             event.set_extra("_seekmemory_source_id", source_id)
         except Exception:
@@ -765,46 +779,46 @@ class Main(star.Star):
             self._flush_count += 1
             written = 0
             for umo, topic_id, part, prov in ready:
-                try:
-                    with self.journal.span(
-                        "extract",
-                        "topic.extract",
-                        session=umo,
-                        topic=topic_id,
-                        messages=len(part),
-                    ) as metrics:
-                        outcome = await absorb(
-                            part,
-                            self.db,
-                            self.cache,
-                            self.graph,
-                            ProviderChatModel(prov),
-                            log=partial(self.journal.record, "extract", "warning"),
-                            owner_id=self.owner_umo.split(":")[-1]
-                            if self.owner_umo
-                            else "",
-                            strict=True,
-                            stage=partial(self.journal.span, "extract"),
+                for chunk in chunk_turns(part):
+                    try:
+                        with self.journal.span(
+                            "extract",
+                            "topic.extract",
+                            session=umo,
+                            topic=topic_id,
+                            messages=len(chunk),
+                        ) as metrics:
+                            outcome = await absorb(
+                                chunk,
+                                self.db,
+                                self.cache,
+                                self.graph,
+                                ProviderChatModel(prov),
+                                log=partial(self.journal.record, "extract", "warning"),
+                                owner_id=self.owner_umo.split(":")[-1]
+                                if self.owner_umo
+                                else "",
+                                strict=True,
+                                stage=partial(self.journal.span, "extract"),
+                            )
+                            metrics["written"] = outcome.written
+                            metrics["skipped"] = outcome.skipped
+                            if outcome.model_failed or outcome.retryable:
+                                raise RuntimeError("extraction failed; keep pending input")
+                    except Exception as exc:
+                        self.buffer.mark_failed(
+                            chunk,
+                            type(exc).__name__,
+                            max_attempts=self.capacity.thresholds.extraction_max_attempts,
                         )
-                        metrics["written"] = outcome.written
-                        metrics["skipped"] = outcome.skipped
-                        if outcome.model_failed or outcome.retryable:
-                            raise RuntimeError("模型抽取失败，保留待处理消息")
-                except Exception as exc:
-                    self.buffer.mark_failed(
-                        part,
-                        type(exc).__name__,
-                        max_attempts=self.capacity.thresholds.extraction_max_attempts,
+                        failure = failure or exc
+                        break
+                    self.buffer.mark_succeeded(chunk)
+                    written += outcome.written
+                    logger.info(
+                        f"[seekmemory] {reason} extract {umo or 'unknown'}: "
+                        f"topic {topic_id}, {len(chunk)} turns, {outcome.written} written"
                     )
-                    failure = failure or exc
-                    continue
-                # 成功后才推进投影状态；取消或模型失败不丢 Source。
-                self.buffer.mark_succeeded(part)
-                written += outcome.written
-                logger.info(
-                    f"[seekmemory] {reason}抽取 {umo or '未知会话'}："
-                    f"话题 {topic_id}，{len(part)} 条对话，写入 {outcome.written} 条，跳过 {outcome.skipped} 条"
-                )
             self.journal.record(
                 "extract",
                 "info",

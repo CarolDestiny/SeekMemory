@@ -59,6 +59,8 @@ class Buffer:
         self._db = db
         self.items: list[DialogueTurn] = []
         self.last_ts = 0.0
+        self.load_error = ""
+        self.save_error = ""
         self.load()
 
     def _last_for_session(self, session_id: str) -> DialogueTurn | None:
@@ -206,16 +208,20 @@ class Buffer:
         self.items = restored + self.items
         self.save()
 
-    def save(self) -> None:
+    def save(self) -> bool:
         if not self.path or (self._db is not None and all(t.source_id for t in self.items)):
-            return
+            self.save_error = ""
+            return True
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             with open(self.path, "w", encoding="utf-8") as f:
                 json.dump({"last": self.last_ts, "items": [asdict(t) for t in self.items]},
                           f, ensure_ascii=False)
-        except Exception:
-            pass
+            self.save_error = ""
+            return True
+        except Exception as exc:
+            self.save_error = type(exc).__name__
+            return False
 
     def load(self) -> None:
         if self._db is not None:
@@ -254,14 +260,35 @@ class Buffer:
         self.last_ts = max(valid, default=0.0)
 
     def _read_file(self) -> dict:
-        if not self.path:
+        if not self.path or not os.path.exists(self.path):
             return {}
         try:
             with open(self.path, encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception:
+        except Exception as exc:
+            self.load_error = type(exc).__name__
+            self._quarantine()
             return {}
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            self.load_error = "InvalidPendingFile"
+            self._quarantine()
+            return {}
+        self.load_error = ""
+        return data
+
+    def _quarantine(self) -> None:
+        """Preserve a corrupt pending file instead of overwriting it on save."""
+        if not self.path or not os.path.exists(self.path):
+            return
+        target = Path(self.path + ".corrupt")
+        suffix = 1
+        while target.exists():
+            target = Path(f"{self.path}.corrupt.{suffix}")
+            suffix += 1
+        try:
+            Path(self.path).replace(target)
+        except OSError:
+            pass
 
     def mark_succeeded(self, rows: list[DialogueTurn]) -> int:
         """Mark rows extracted and refresh the projection without deleting Source."""

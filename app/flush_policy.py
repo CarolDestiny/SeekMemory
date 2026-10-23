@@ -5,12 +5,19 @@ from dataclasses import dataclass
 from .contracts import DialogueTurn
 
 BACKLOG_QUIET_SECONDS = 30.0
+MAX_TOPIC_TURNS = 120
 
 
 @dataclass(frozen=True)
 class FlushDecision:
     should: bool
     reason: str
+
+
+def chunk_turns(items: list[DialogueTurn], limit: int = MAX_TOPIC_TURNS) -> list[list[DialogueTurn]]:
+    """Split one oversized topic without dropping its tail."""
+    size = max(1, int(limit))
+    return [items[index:index + size] for index in range(0, len(items), size)]
 
 
 def select_topic_batches(

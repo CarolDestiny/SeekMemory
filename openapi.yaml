@@ -763,6 +763,92 @@ components:
       - snapshot
       - queue
       additionalProperties: false
+    ContextBudget:
+      type: object
+      properties:
+        injection_chars:
+          type: integer
+          minimum: 0
+        system_chars:
+          type: integer
+          minimum: 0
+        group_context_messages:
+          type: integer
+          minimum: 0
+        history_messages:
+          type: integer
+          minimum: 0
+        estimate_tokens:
+          type: integer
+          minimum: 0
+      required:
+      - injection_chars
+      - system_chars
+      - group_context_messages
+      - history_messages
+      - estimate_tokens
+      additionalProperties: false
+    DreamRun:
+      type: object
+      properties:
+        date:
+          type: string
+        status:
+          type: string
+        started_at:
+          type: string
+        finished_at:
+          type: string
+        batches:
+          type: integer
+          minimum: 0
+        written:
+          type: integer
+          minimum: 0
+        errors:
+          type: array
+          items:
+            type: string
+        summary:
+          type: object
+          additionalProperties: true
+      required:
+      - date
+      - status
+      - started_at
+      - finished_at
+      - batches
+      - written
+      - errors
+      - summary
+      additionalProperties: false
+    DreamStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        at:
+          type: string
+        today:
+          type: string
+        today_run:
+          anyOf:
+          - $ref: '#/components/schemas/DreamRun'
+          - type: 'null'
+        due:
+          type: boolean
+        recent:
+          type: array
+          items:
+            $ref: '#/components/schemas/DreamRun'
+      required:
+      - enabled
+      - at
+      - today
+      - today_run
+      - due
+      - recent
+      additionalProperties: false
     RuntimeStatus:
       type: object
       properties:
@@ -830,6 +916,14 @@ components:
         capacity:
           anyOf:
           - $ref: '#/components/schemas/CapacityStatus'
+          - type: 'null'
+        budget:
+          anyOf:
+          - $ref: '#/components/schemas/ContextBudget'
+          - type: 'null'
+        dream:
+          anyOf:
+          - $ref: '#/components/schemas/DreamStatus'
           - type: 'null'
         checkpointPending:
           type: [integer, 'null']
