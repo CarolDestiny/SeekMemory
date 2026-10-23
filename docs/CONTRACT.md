@@ -507,3 +507,9 @@ overrides. Source deletion is never a capacity action.
 ## Reinforcement truth
 
 `recall.assemble.build_with_meta()` returns `(text, final_ids, dropped_ids)`. `build_block()` exposes the same values as `final_ids` and `dropped_ids`. Only `final_ids` are recorded in the checkpoint after a successful assistant response. Checkpoint hits use a cooldown window; repeated recalls of the same Artifact inside that window count once.
+
+## Impression lineage consistency
+
+When an impression is reinforced or reworded, `lineage.sources` is the union of the old and incoming evidence.
+`lineage.derived_from` records the incoming abstraction; it never records the artifact's own id.
+A cache removal follows a successful retirement commit; a failed commit leaves the active cache entry intact.

@@ -63,8 +63,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Designated output bypasses disclosure | covered by `tests/test_privacy_outputs.py` |
 | Same memory counted twice inside cooldown | covered by `tests/test_reinforcement.py` |
 | Source ids collided across sessions | covered by `tests/test_identity_isolation.py` |
-| Revision lineage points to itself | lineage consistency |
-| Cache removal succeeds after DB commit failure | cache/DB consistency |
+| Revision lineage pointed to itself | covered by `tests/test_lineage_consistency.py` |
+| Cache removal succeeded after DB commit failure | covered by `tests/test_lineage_consistency.py` |
 | Similar scenes from different subjects merged together | covered by `tests/test_identity_isolation.py` |
 | Relative date in query is not resolved | temporal scenario |
 | Cancelled plan remains active | temporal scenario |
