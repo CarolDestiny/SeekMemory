@@ -1,3 +1,4 @@
+> Status: historical design context. Current behavior is defined by ARCHITECTURE, CONTRACT and INVARIANTS.
 # Memory Agent · 规格 v2
 
 > 一个让 QQ 机器人"像人一样记事"的 AstrBot 插件。

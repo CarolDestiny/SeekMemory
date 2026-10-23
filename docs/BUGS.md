@@ -1,3 +1,4 @@
+> Status: archive. Kept for audit context; do not use as a current contract.
 # 缺陷档案
 
 > 记录开发期抓到的真实缺陷，作为回归与优化依据。

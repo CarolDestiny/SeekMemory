@@ -146,6 +146,9 @@ SeekMemory 附带了一个供管理员使用的 AstrBot 插件视图。它显示
 
 在打开 P0/P1 问题或拉取请求之前，请阅读 AGENTS.md。本地问题历史记录位于 `docs/issues` 中。存储库中提供了 GitHub 问题和 PR 模板。
 
+- Test layers: docs/TESTING.md
+- Invariants: docs/INVARIANTS.md
+- Docs map: docs/README.md
 - 架构：docs/ARCHITECTURE.md
 - 契约：docs/CONTRACT.md
 - BM25 进展与验收：[Issue #4](https://github.com/NeverENG/SeekMemory/issues/4)
