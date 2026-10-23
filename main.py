@@ -34,6 +34,7 @@ from .app.runtime import (
     MemoryContext,
     PolicyToolGuard,
     RuntimeEpisode,
+    RuntimeInput,
     SchedulerPolicy,
     ToolPolicy,
 )
@@ -70,6 +71,7 @@ from .webui.trace import Trace
 class Main(star.Star):
     def __init__(self, context: star.Context, config: dict | None = None) -> None:
         super().__init__(context, config)
+        self.context = context
         self.cfg = config or {}
         self.ready = False
         self.db: DB | None = None
@@ -115,6 +117,7 @@ class Main(star.Star):
                 trace=self.trace,
                 clock=time.time,
                 memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
+                wait_seconds=int(self._c("runtime_wait_seconds", 5)),
             )
             self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
         else:
@@ -123,6 +126,7 @@ class Main(star.Star):
                 trace=self.trace,
                 clock=time.time,
                 memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
+                wait_seconds=int(self._c("runtime_wait_seconds", 5)),
             )
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
@@ -577,7 +581,12 @@ class Main(star.Star):
     async def start_jobs(self) -> None:
         if not self.ready or self.jobs.closed or self._schedulers:
             return
-        operations = [self._weekly_loop, self._checkpoint_loop, self._dream_loop]
+        operations = [
+            self._weekly_loop,
+            self._checkpoint_loop,
+            self._dream_loop,
+            self._runtime_loop,
+        ]
         if not self._dream_on:  # 兼容旧行为：梦境关掉才保留白天/夜间抽取
             operations += [self._nightly_loop, self._idle_loop]
         self._schedulers = [
@@ -870,14 +879,15 @@ class Main(star.Star):
         """梦境模式：白天只缓冲，抽取与进化都留到 dream 周期。"""
         return bool(self.dream is not None and self.dream.enabled)
 
-    def _runtime_scheduler_tick(self) -> None:
+    async def _runtime_scheduler_tick(self) -> None:
         if self.db is None:
             return
         now = time.time()
         for session_id in self.db.list_runtime_state_sessions(limit=100):
             try:
                 state = self.runtime.store.get(session_id)
-                for decision in self.scheduler.evaluate(state, now):
+                decisions = self.scheduler.evaluate(state, now)
+                for decision in decisions:
                     if decision.action.value not in ("proactive", "wait"):
                         continue
                     self.trace.record(
@@ -889,8 +899,67 @@ class Main(star.Star):
                             "due": bool(decision.due),
                         },
                     )
+                wait_due = any(
+                    item.event.value == "wait" and item.due for item in decisions
+                )
+                if wait_due and state.wait_until and state.wait_until <= now:
+                    await self._dispatch_deferred(session_id, now)
             except Exception:
                 continue
+
+    async def _dispatch_deferred(self, session_id: str, now: float) -> None:
+        """Generate one deferred group reply after the ambient wait expires."""
+        source = self.db.latest_user_source(session_id) if self.db is not None else None
+        if not source:
+            self.runtime.clear_wait(session_id, now)
+            return
+        text = str(source.get("text") or "").strip()
+        if not text:
+            self.runtime.clear_wait(session_id, now)
+            return
+        runtime_input = RuntimeInput(
+            session_id=session_id,
+            text=text,
+            private=False,
+            at=now,
+        )
+        context = self.runtime.build_context(runtime_input)
+        provider = await self.context.get_using_provider_async(session_id)
+        if provider is None:
+            self.runtime.clear_wait(session_id, now)
+            return
+        response = await provider.text_chat(
+            prompt=text,
+            system_prompt=context.text or None,
+        )
+        reply = str(getattr(response, "completion_text", "") or "").strip()
+        if not reply:
+            self.runtime.clear_wait(session_id, now)
+            return
+        await self.actions.send(session_id, reply)
+        self.runtime.mark_delivered(session_id, now)
+        self.episode_recorder.record(
+            RuntimeEpisode(
+                session_id=session_id,
+                at=datetime.datetime.now().isoformat(timespec="seconds"),
+                decision="wait",
+                reason="deferred_wait",
+                action="reply",
+                delivered=True,
+                response_chars=len(reply),
+                outcome="ok",
+                user_source_id=str(source.get("id") or ""),
+            )
+        )
+        self.trace.record("runtime", "deferred_delivered", {"chars": len(reply)})
+
+    async def _runtime_loop(self) -> None:
+        while True:
+            await asyncio.sleep(max(1, int(self._c("runtime_tick_seconds", 5))))
+            try:
+                await self._runtime_scheduler_tick()
+            except Exception as e:  # noqa: BLE001
+                self.journal.record("runtime", "failed", "runtime tick failed", error=e)
 
     async def _idle_loop(self) -> None:
         """聊完安静一会儿就抽，不用等到半夜。"""
@@ -899,7 +968,7 @@ class Main(star.Star):
             try:
                 capacity = self._observe_capacity()
                 self._apply_capacity_maintenance(capacity)
-                self._runtime_scheduler_tick()
+                await self._runtime_scheduler_tick()
                 if self._should_flush(capacity):
                     self.jobs.submit("idle", lambda: self._flush("空闲"))
             except Exception as e:  # noqa: BLE001

@@ -250,6 +250,12 @@ class AgentRuntimeTest(unittest.TestCase):
         self.assertEqual(state.read_through_seq, 7)
         self.assertEqual(state.unread_count, 0)
 
+    def test_ambient_observe_sets_wait_deadline(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100, wait_seconds=5)
+        runtime.observe(RuntimeInput("s1", "ambient"))
+        self.assertEqual(store.get("s1").wait_until, 105)
+
     def test_delivery_clears_unread_and_updates_last_spoke(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 200)
