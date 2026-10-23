@@ -2,6 +2,7 @@
 
 from .contracts import (
     ActionPort,
+    AttentionLevel,
     MemoryContext,
     MemoryContextPort,
     RuntimeInput,
@@ -41,6 +42,7 @@ from .wake import WakePolicy
 __all__ = [
     "ActionPort",
     "AgentRuntime",
+    "AttentionLevel",
     "DBEpisodeStore",
     "DBStateStore",
     "EpisodeOutcome",

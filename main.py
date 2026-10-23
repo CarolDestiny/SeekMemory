@@ -32,7 +32,9 @@ from .app.runtime import (
     JsonStateStore,
     JsonlEpisodeStore,
     MemoryContext,
+    PolicyToolGuard,
     RuntimeEpisode,
+    SchedulerPolicy,
     ToolPolicy,
 )
 from .core.capacity import (
@@ -93,6 +95,8 @@ class Main(star.Star):
         self.tool_policy = ToolPolicy(
             allowed_prefixes=("memory_", "search_memory", "query_memory")
         )
+        self.tool_guard = PolicyToolGuard(self.tool_policy)
+        self.scheduler = SchedulerPolicy()
         self.actions = AstrBotActionPort(context)
         self.jobs = Jobs(self.journal)
         artifact_limit = max(1, int(self._c("max_episodes", 500)))
@@ -283,6 +287,20 @@ class Main(star.Star):
                 return
 
             umo = str(getattr(event, "unified_msg_origin", "") or "")
+            guard = getattr(self, "tool_guard", None)
+            removed_tools = (
+                guard.filter_tool_set(getattr(req, "func_tool", None))
+                if guard is not None else ()
+            )
+            if removed_tools:
+                self.trace.record(
+                    "tool", "guard_removed",
+                    {"count": len(removed_tools), "enforced": True},
+                )
+                self.journal.record(
+                    "tool", "info", "runtime tool guard removed tools",
+                    context={"removed": len(removed_tools), "enforced": True},
+                )
             runtime_input = AstrBotRuntimeAdapter.from_event(
                 event, text, umo, str(event.get_sender_id())
             )
@@ -852,6 +870,28 @@ class Main(star.Star):
         """梦境模式：白天只缓冲，抽取与进化都留到 dream 周期。"""
         return bool(self.dream is not None and self.dream.enabled)
 
+    def _runtime_scheduler_tick(self) -> None:
+        if self.db is None:
+            return
+        now = time.time()
+        for session_id in self.db.list_runtime_state_sessions(limit=100):
+            try:
+                state = self.runtime.store.get(session_id)
+                for decision in self.scheduler.evaluate(state, now):
+                    if decision.action.value not in ("proactive", "wait"):
+                        continue
+                    self.trace.record(
+                        "runtime",
+                        "scheduler_" + decision.action.value,
+                        {
+                            "event": decision.event.value,
+                            "reason": decision.reason,
+                            "due": bool(decision.due),
+                        },
+                    )
+            except Exception:
+                continue
+
     async def _idle_loop(self) -> None:
         """聊完安静一会儿就抽，不用等到半夜。"""
         while True:
@@ -859,6 +899,7 @@ class Main(star.Star):
             try:
                 capacity = self._observe_capacity()
                 self._apply_capacity_maintenance(capacity)
+                self._runtime_scheduler_tick()
                 if self._should_flush(capacity):
                     self.jobs.submit("idle", lambda: self._flush("空闲"))
             except Exception as e:  # noqa: BLE001

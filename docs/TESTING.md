@@ -83,6 +83,9 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Observe-only mode could accidentally change LLM gating | covered by `tests/test_webui_host.py` (host layer) |
 | Runtime delivery was recorded before actual send | covered by `tests/test_webui_host.py` (host layer) |
 | Runtime memory context was coupled to main injection | covered by `tests/test_agent_runtime.py`, `tests/test_seekmemory_context.py` |
+| Private/direct attention was suppressed by wait | covered by `tests/test_agent_runtime.py` |
+| Tool guard was advisory in the request path | covered by `tests/test_webui_host.py` (host layer) |
+| Scheduler policy was not run over persisted sessions | covered by `tests/test_runtime_actions.py` DB session listing |
 | Runtime DB failures could break replies | covered by `tests/test_runtime_actions.py` |
 | Runtime episode retention was unbounded | covered by `tests/test_runtime_actions.py` |
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |

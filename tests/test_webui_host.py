@@ -416,8 +416,24 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             def set_extra(self, key, value):
                 self.extras[key] = value
 
+        class ToolSet:
+            def __init__(self):
+                self.tools = [
+                    SimpleNamespace(name="memory_search"),
+                    SimpleNamespace(name="shell_exec"),
+                ]
+                self.removed = []
+
+            def remove_tool(self, name):
+                self.removed.append(name)
+                self.tools = [tool for tool in self.tools if tool.name != name]
+
+        tools = ToolSet()
         event = Event()
-        await self.plugin.inject_memory(event, SimpleNamespace(system_prompt=""))
+        req = SimpleNamespace(system_prompt="", func_tool=tools)
+        await self.plugin.inject_memory(event, req)
+        self.assertEqual(tools.removed, ["shell_exec"])
+        self.assertEqual([tool.name for tool in tools.tools], ["memory_search"])
         self.assertTrue(event.get_extra("_seekmemory_recall_ids"))
         self.assertEqual(self.plugin.checkpoint.pending(), 0)
         await self.plugin.capture_reply(

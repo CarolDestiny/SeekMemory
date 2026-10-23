@@ -92,6 +92,7 @@ class ActionTest(unittest.TestCase):
         state.quiet_until = 321
         state_store.put(state)
         self.assertEqual(DBStateStore(db).get("s1").quiet_until, 321)
+        self.assertEqual(db.list_runtime_state_sessions(), ["s1"])
 
         recorder = EpisodeRecorder(DBEpisodeStore(db))
         recorder.record(RuntimeEpisode(

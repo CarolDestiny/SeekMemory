@@ -588,3 +588,8 @@ quiet, wait (when supplied), proactive.
 ## Runtime memory context
 
 `inject_memory` now asks `AgentRuntime.build_context()` through `MemoryContextPort`; `SeekMemoryContextAdapter` delegates to the existing recall pipeline. Runtime owns the boundary and host injection no longer calls `build_block` directly.
+
+
+## Runtime integration policy
+
+Wake attention is prioritized as private > direct (@ / reply-to-bot) > addressed (name / question / keyword) > ambient. Private and direct attention cannot be muted by wait, quiet or cooldown. `wait` is a defer for ambient group traffic and must carry a reply path; it is never a hard mute for direct attention. `PolicyToolGuard` removes disallowed tools from `req.func_tool` before the model sees them. The idle loop runs `SchedulerPolicy` over persisted runtime sessions for due wait/proactive trace.

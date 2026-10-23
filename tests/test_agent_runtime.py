@@ -63,13 +63,33 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(decision.action, WakeAction.IGNORE)
         self.assertEqual(decision.reason, "reply_cooldown")
 
-    def test_quiet_window_ignores_direct_message(self) -> None:
+    def test_quiet_window_does_not_ignore_direct_attention(self) -> None:
         self.state.quiet_until = 200
         decision = self.policy.evaluate(
             RuntimeInput("s1", "hello", mentioned=True, at=150), self.state, 150
         )
-        self.assertEqual(decision.action, WakeAction.IGNORE)
-        self.assertEqual(decision.reason, "quiet_window")
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.reason, "direct_attention")
+
+    def test_private_always_replies_even_during_wait(self) -> None:
+        self.state.wait_until = 200
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "hello", private=True, at=150), self.state, 150
+        )
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.reason, "private_message")
+        self.assertTrue(decision.must_reply)
+
+    def test_group_ambient_waits_and_direct_breaks_wait(self) -> None:
+        self.state.wait_until = 200
+        ambient = self.policy.evaluate(RuntimeInput("s1", "ambient", at=150), self.state, 150)
+        direct = self.policy.evaluate(
+            RuntimeInput("s1", "hello", private=False, mentioned=True, at=150),
+            self.state,
+            150,
+        )
+        self.assertEqual(ambient.action, WakeAction.WAIT)
+        self.assertEqual(direct.action, WakeAction.REPLY)
 
     def test_wait_window_returns_wait(self) -> None:
         self.state.wait_until = 200
@@ -80,15 +100,13 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(decision.reason, "waiting")
         self.assertEqual(decision.wait_seconds, 50)
 
-    def test_wait_takes_priority_over_direct_attention(self) -> None:
-        # Documented product decision in #44: an active wait suppresses even a
-        # direct mention until the wait deadline.
+    def test_direct_attention_breaks_wait(self) -> None:
         self.state.wait_until = 200
         decision = self.policy.evaluate(
             RuntimeInput("s1", "hello", mentioned=True, at=150), self.state, 150
         )
-        self.assertEqual(decision.action, WakeAction.WAIT)
-        self.assertEqual(decision.wait_seconds, 50)
+        self.assertEqual(decision.action, WakeAction.REPLY)
+        self.assertEqual(decision.reason, "direct_attention")
 
     def test_wait_expires_at_exact_deadline(self) -> None:
         self.state.wait_until = 200

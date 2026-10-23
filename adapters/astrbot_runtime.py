@@ -51,7 +51,10 @@ class AstrBotRuntimeAdapter:
         if not enabled:
             return
         try:
-            event.should_call_llm(decision.action in (WakeAction.REPLY, WakeAction.PROACTIVE))
+            event.should_call_llm(
+                decision.must_reply
+                or decision.action in (WakeAction.REPLY, WakeAction.PROACTIVE)
+            )
         except Exception:  # noqa: BLE001 - host version may not expose the gate
             return
 
