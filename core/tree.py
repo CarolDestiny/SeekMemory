@@ -1,9 +1,9 @@
 """抽象树：impression / scene / detail 三级的父子关系与查询。
 
 节点内容由 DB/Cache 持有；Tree 负责两件事：
-1. 用 db.set_parent（若存在）记录父指针，供持久化层按 parent 列查询；
+1. 用 db.artifacts.set_parent（若存在）记录父指针，供持久化层按 parent 列查询；
 2. 用 kind="tree_child:<父 id>" 的边记录父子关系，使 children() 在
-   db.edges_of 双向返回时仍能分辨方向（只认后缀等于本节点的那条边）。
+   db.artifacts.edges_of 双向返回时仍能分辨方向（只认后缀等于本节点的那条边）。
 本模块不写 SQL。
 """
 
@@ -98,9 +98,8 @@ class Tree:
 
         self._persist(child)
 
-        set_parent = getattr(self.db, "set_parent", None)
-        if callable(set_parent):
-            set_parent(child.header.id, parent_id)
+        if self.db is not None:
+            self.db.artifacts.set_parent(child.header.id, parent_id)
         if parent_id is not None:
             kind = EDGE_PREFIX + parent_id
             self.db.artifacts.add_edge(parent_id, child.header.id, kind, 1.0)

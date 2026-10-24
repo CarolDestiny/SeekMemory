@@ -153,6 +153,18 @@ class DBTest(_StoreCase):
         similar = [edge for edge in _edges(self.db, left.header.id) if edge[0] == right.header.id]
         self.assertEqual(similar, [(right.header.id, "similar", 0.9)])
 
+    def test_set_parent_persists_tree_parent_column(self) -> None:
+        """Tree parent persistence remains available through the artifact repo."""
+        parent = _memory("parent", "impression")
+        child = _memory("child", "scene")
+        for art in (parent, child):
+            self.db.artifacts.upsert(art)
+        self.db.artifacts.set_parent(child.header.id, parent.header.id)
+        row = self.db.conn.execute(
+            "SELECT parent FROM nodes WHERE id = ?", (child.header.id,)
+        ).fetchone()
+        self.assertEqual(row["parent"], parent.header.id)
+
     def test_ledger_chain_is_continuous(self) -> None:
         """账本从空链开始，逐条 prev 指向上一条 self，整链可验证。"""
         ledger = Ledger(self.db.ledger)

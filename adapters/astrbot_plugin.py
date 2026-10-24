@@ -117,7 +117,7 @@ class AstrBotPlugin(AstrBotHooks):
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
             )
         self.recorder = RunRecorder(
-            sources=self.db.sources,
+            sources=self.db.sources if self.db is not None else None,
             buffer=self.buffer,
             checkpoint=self.checkpoint,
             episodes=self.episode_recorder,
@@ -180,7 +180,9 @@ class AstrBotPlugin(AstrBotHooks):
             task_id=lambda: self.jobs.task_id,
             logger=logger,
         )
-        self.status = StatusService(artifacts=self.db.artifacts)
+        self.status = StatusService(
+            artifacts=self.db.artifacts if self.db is not None else None
+        )
         self.runtime_worker = RuntimeWorker(
             runtime=self.runtime,
             scheduler=self.scheduler,

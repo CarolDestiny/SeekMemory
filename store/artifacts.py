@@ -158,6 +158,14 @@ class ArtifactRepository(SqliteRepository):
         rows = self.conn.execute(sql + " ORDER BY n.created_at, n.id", args).fetchall()
         return [art for art in map(row_to_artifact, rows) if art is not None]
 
+    def set_parent(self, node_id: str, parent_id: str | None) -> None:
+        """Persist the optional tree parent column owned by this repository."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE nodes SET parent = ?, updated_at = ? WHERE id = ?",
+                (parent_id, now_iso(), str(node_id)),
+            )
+
     def add_edge(self, src: str, dst: str, kind: str, weight: float) -> None:
         with self.conn:
             self.conn.execute(

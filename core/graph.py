@@ -1,7 +1,7 @@
 """关系图：similar / causal / temporal 三种边的写入与邻居查询。
 
 边由 store 层持久化；本模块只做 kind 过滤、去重与取最大权重，
-不写 SQL，也不缓存图结构（邻居查询直接走 db.edges_of）。
+不写 SQL，也不缓存图结构（邻居查询直接走 db.artifacts.edges_of）。
 """
 
 from __future__ import annotations
