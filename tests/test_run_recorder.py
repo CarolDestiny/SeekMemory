@@ -15,7 +15,7 @@ from app.runtime import (  # noqa: E402
     DBEpisodeStore,
     EpisodeRecorder,
     RunRecorder,
-    RuntimeEpisode,
+    EpisodeRecord,
 )
 from store.db import DB  # noqa: E402
 
@@ -197,7 +197,7 @@ class RunRecorderTest(unittest.TestCase):
         self.addCleanup(db.close)
         sink = DBEpisodeStore(db)
         recorder = EpisodeRecorder(sink)
-        episode = RuntimeEpisode(
+        episode = EpisodeRecord(
             session_id="s1", at="2026-01-01T00:00:00", decision="reply",
             reason="direct", action="reply", delivered=True, outcome="ok",
             run_id="run-1",

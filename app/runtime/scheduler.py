@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from .contracts import SocialState, StateStore
+from .contracts import SessionState, StateStore
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class DueRun:
 class TimingPolicy:
     """Pure wait/retry timing policy over SessionState."""
 
-    def evaluate(self, state: SocialState, now: float) -> DueRun | None:
+    def evaluate(self, state: SessionState, now: float) -> DueRun | None:
         wait_until = float(state.wait_until or 0.0)
         retry_at = float(state.next_retry_at or 0.0)
         if retry_at > 0 and retry_at <= now:

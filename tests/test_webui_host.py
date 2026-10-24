@@ -464,7 +464,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             at="2026-01-01T00:00:00",
         )
         self.plugin.db.append_sources([src])
-        self.plugin.runtime.wait(session_id, -1, now=now)
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now
+        self.plugin.runtime.store.put(state)
 
         class Provider:
             def __init__(self):
@@ -517,7 +519,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             speaker_id="u1", role="user", text="must stay deferred",
             at="2026-01-01T00:00:00",
         )])
-        self.plugin.runtime.wait(session_id, 120, now=now)
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now + 120
+        self.plugin.runtime.store.put(state)
 
         class Provider:
             def __init__(self):
@@ -593,7 +597,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             speaker_id="u1", role="user", text="tick deferred",
             at="2026-01-01T00:00:00",
         )])
-        self.plugin.runtime.wait(session_id, -1, now=now)
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now
+        self.plugin.runtime.store.put(state)
 
         class Provider:
             async def text_chat(self, prompt, system_prompt=None):
@@ -626,7 +632,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             speaker_id="u1", role="user", text="secret provider input",
             at="2026-01-01T00:00:00",
         )])
-        self.plugin.runtime.wait(session_id, -1, now=now)
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now
+        self.plugin.runtime.store.put(state)
 
         async def provider_for(session):
             raise RuntimeError("provider leaked secret")
@@ -651,7 +659,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             speaker_id="u1", role="user", text="send failure input",
             at="2026-01-01T00:00:00",
         )])
-        self.plugin.runtime.wait(session_id, -1, now=now)
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now
+        self.plugin.runtime.store.put(state)
 
         class Provider:
             async def text_chat(self, prompt, system_prompt=None):
@@ -684,7 +694,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             speaker_id="u1", role="user", text="retry me",
             at="2026-01-01T00:00:00",
         )])
-        self.plugin.runtime.wait(session_id, -1, now=now)
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now
+        self.plugin.runtime.store.put(state)
 
         async def provider_for(session):
             raise RuntimeError("fail once")

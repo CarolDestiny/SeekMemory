@@ -19,7 +19,7 @@ _SAFE_ERROR_CODE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$")
 
 
 @dataclass(frozen=True)
-class RuntimeEpisode:
+class EpisodeRecord:
     session_id: str
     at: str
     decision: str
@@ -145,14 +145,14 @@ def delivery_failure_metadata(error: Any = None) -> dict[str, Any]:
 
 
 class EpisodeSink(Protocol):
-    def append(self, episode: RuntimeEpisode) -> None: ...
+    def append(self, episode: EpisodeRecord) -> None: ...
 
 
 class EpisodeRecorder:
     def __init__(self, sink: EpisodeSink) -> None:
         self.sink = sink
 
-    def record(self, episode: RuntimeEpisode) -> None:
+    def record(self, episode: EpisodeRecord) -> None:
         self.sink.append(episode)
 
 
@@ -164,7 +164,7 @@ class JsonlEpisodeStore:
         self._lock = threading.RLock()
         self.last_error = ""
 
-    def append(self, episode: RuntimeEpisode) -> None:
+    def append(self, episode: EpisodeRecord) -> None:
         with self._lock:
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,7 +185,7 @@ class DBEpisodeStore:
         self.db = db
         self.last_error = ""
 
-    def append(self, episode: RuntimeEpisode) -> None:
+    def append(self, episode: EpisodeRecord) -> None:
         payload = asdict(episode)
         payload["id"] = f"ep_{uuid.uuid4().hex}"
         payload["tool_calls"] = list(normalize_tool_calls(episode.tool_calls))

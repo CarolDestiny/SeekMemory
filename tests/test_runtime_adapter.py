@@ -9,7 +9,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from adapters.astrbot_runtime import AstrBotRuntimeAdapter  # noqa: E402
-from app.runtime import WakeAction, WakeDecision  # noqa: E402
+from app.runtime import WakeAction, RunDecision  # noqa: E402
 
 
 class Event:
@@ -72,7 +72,7 @@ class AdapterTest(unittest.TestCase):
     def test_decision_is_exposed_as_event_metadata(self) -> None:
         event = Event(False)
         AstrBotRuntimeAdapter.apply_decision(
-            event, WakeDecision(WakeAction.OBSERVE, "ambient_message")
+            event, RunDecision(WakeAction.OBSERVE, "ambient_message")
         )
         self.assertEqual(event.extras["_seekmemory_runtime_action"], "observe")
         self.assertEqual(event.extras["_seekmemory_runtime_reason"], "ambient_message")

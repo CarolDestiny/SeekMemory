@@ -1,4 +1,4 @@
-"""Pure AgentRuntime contracts, wake policy and social-state tests."""
+"""Pure AgentRuntime contracts, wake policy and session-state tests."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.runtime import (  # noqa: E402
     JsonStateStore,
     MemoryContext,
     RuntimeInput,
-    SocialState,
+    SessionState,
     WakeAction,
     WakePolicy,
 )
@@ -34,7 +34,7 @@ class Trace:
 class WakePolicyTest(unittest.TestCase):
     def setUp(self) -> None:
         self.policy = WakePolicy()
-        self.state = SocialState(session_id="s1")
+        self.state = SessionState(session_id="s1")
 
     def test_empty_text_is_ignored(self) -> None:
         self.assertEqual(
@@ -101,16 +101,6 @@ class WakePolicyTest(unittest.TestCase):
         )
         self.assertEqual(decision.action, WakeAction.REPLY)
         self.assertEqual(decision.attention, AttentionLevel.ADDRESSED)
-
-    def test_wait_decision_carries_defer_deadline(self) -> None:
-        self.state.wait_until = 200
-        decision = self.policy.evaluate(
-            RuntimeInput("s1", "ambient", at=150), self.state, 150
-        )
-        self.assertEqual(decision.action, WakeAction.WAIT)
-        self.assertEqual(decision.reason, "waiting")
-        self.assertEqual(decision.wait_seconds, 50)
-        self.assertEqual(decision.defer_until, 200)
 
     def test_direct_attention_breaks_wait(self) -> None:
         self.state.wait_until = 200
@@ -204,12 +194,17 @@ class WakePolicyTest(unittest.TestCase):
     def test_runtime_quiet_and_wait_transitions(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 100)
-        runtime.quiet("s1", 30, now=100)
+        state = store.get("s1")
+        state.quiet_until = 130
+        store.put(state)
         self.assertEqual(
             runtime.observe(RuntimeInput("s1", "hello", at=110)).action,
             WakeAction.IGNORE,
         )
-        runtime.wait("s1", 30, now=140)
+        state = store.get("s1")
+        state.quiet_until = 0.0
+        state.wait_until = 170
+        store.put(state)
         self.assertEqual(
             runtime.observe(RuntimeInput("s1", "ambient", at=150)).action,
             WakeAction.WAIT,
@@ -219,27 +214,13 @@ class WakePolicyTest(unittest.TestCase):
             WakeAction.OBSERVE,
         )
 
-    def test_runtime_advances_read_through_watermark(self) -> None:
+    def test_runtime_advances_read_through_watermark_on_delivery(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 100)
         runtime.observe(
             RuntimeInput("s1", "hello", unread_count=3, unread_seq=7)
         )
-        state = runtime.mark_read("s1", 5)
-        self.assertEqual(state.read_through_seq, 5)
-        self.assertEqual(state.unread_count, 2)
         state = runtime.mark_delivered("s1", now=200)
-        self.assertEqual(state.read_through_seq, 7)
-        self.assertEqual(state.unread_count, 0)
-
-    def test_mark_read_clamps_to_latest_sequence_and_is_monotonic(self) -> None:
-        store = InMemoryStateStore()
-        runtime = AgentRuntime(store, clock=lambda: 100)
-        runtime.observe(RuntimeInput("s1", "hello", unread_seq=7, unread_count=3))
-        state = runtime.mark_read("s1", 99)
-        self.assertEqual(state.read_through_seq, 7)
-        self.assertEqual(state.unread_count, 0)
-        state = runtime.mark_read("s1", 3)
         self.assertEqual(state.read_through_seq, 7)
         self.assertEqual(state.unread_count, 0)
 
@@ -278,7 +259,6 @@ class WakePolicyTest(unittest.TestCase):
         state = runtime.mark_delivered("s1")
         self.assertEqual(state.unread_count, 0)
         self.assertEqual(state.last_spoke_at, 200)
-        self.assertEqual(state.reply_count, 1)
 
     def test_json_state_store_survives_instances(self) -> None:
         path = os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_state_"), "state.json")
@@ -291,6 +271,42 @@ class WakePolicyTest(unittest.TestCase):
         loaded = second.get("s1")
         self.assertEqual(loaded.quiet_until, 123)
         self.assertEqual(loaded.unread_count, 4)
+
+    def test_runtime_surface_has_no_test_only_mutators(self) -> None:
+        for name in ("quiet", "wait", "mark_read"):
+            self.assertFalse(hasattr(AgentRuntime, name))
+
+    def test_decision_actions_are_the_production_set(self) -> None:
+        self.assertEqual(
+            {action.value for action in WakeAction},
+            {"ignore", "observe", "wait", "reply"},
+        )
+
+    def test_json_state_store_defaults_legacy_removed_fields(self) -> None:
+        import json
+
+        path = os.path.join(
+            tempfile.mkdtemp(prefix="seekmem_legacy_state_"), "state.json"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({
+                "s1": {
+                    "session_id": "s1",
+                    "quiet_until": 123,
+                    "last_wake_at": 9,
+                    "reply_count": 4,
+                }
+            }, handle)
+        store = JsonStateStore(path)
+        state = store.get("s1")
+        self.assertEqual(state.session_id, "s1")
+        self.assertEqual(state.quiet_until, 123)
+        self.assertEqual(state.wait_until, 0.0)
+        self.assertEqual(state.next_retry_at, 0.0)
+        self.assertEqual(state.reply_cooldown_seconds, 30.0)
+        runtime = AgentRuntime(store, clock=lambda: 200)
+        runtime.observe(RuntimeInput("s1", "ambient", at=200))
+        runtime.mark_delivered("s1", now=200)
 
     def test_runtime_package_does_not_import_astrbot(self) -> None:
         root = Path(__file__).resolve().parents[1] / "app" / "runtime"

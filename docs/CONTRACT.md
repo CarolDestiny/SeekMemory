@@ -582,7 +582,7 @@ An extraction item may include an optional `supersedes` exact-text hint. After t
 
 ## Runtime persistence and adapter
 
-`JsonStateStore` persists SocialState atomically in the plugin data directory, so observe-only runtime state survives restarts. `adapters/astrbot_runtime.py` is the only place that maps host message events into `RuntimeInput`; `app/runtime` remains host-agnostic.
+`JsonStateStore` persists SessionState atomically in the plugin data directory, so observe-only runtime state survives restarts. `adapters/astrbot_runtime.py` is the only place that maps host message events into `RuntimeInput`; `app/runtime` remains host-agnostic.
 
 
 ## Runtime scheduler
@@ -596,7 +596,7 @@ generation is not implemented and has no timing path in this layer.
 
 ## Runtime actions and episodes
 
-`AstrBotActionPort` provides the host send action. `RunRecorder` is the single write-back service for assistant Source, the pending extraction buffer and `RuntimeEpisode`. It is idempotent per `run_id`: repeated callbacks do not duplicate Source, checkpoint reinforcement or episode rows. `DBStateStore` and `DBEpisodeStore` persist mutable social state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.run_id` correlates the episode with the admin run trace, and a partial unique index protects non-empty run ids. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
+`AstrBotActionPort` provides the host send action. `RunRecorder` is the single write-back service for assistant Source, the pending extraction buffer and `EpisodeRecord`. It is idempotent per `run_id`: repeated callbacks do not duplicate Source, checkpoint reinforcement or episode rows. `DBStateStore` and `DBEpisodeStore` persist mutable social state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.run_id` correlates the episode with the admin run trace, and a partial unique index protects non-empty run ids. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
 
 ## Agent run traces
 
@@ -619,7 +619,7 @@ operations or alter recall/disclosure/tool policy. This log is not an immutable 
 
 ## Runtime timing and unread state
 
-`RuntimeInput.at` must be populated from the host event timestamp. `SocialState` tracks `wait_until`, `quiet_until`, `cooldown_until`, `last_unread_seq`, and `read_through_seq`; `WakePolicy` returns `WAIT` during an active wait, `IGNORE` during quiet/cooldown, and `mark_delivered()` advances the read-through watermark. These are runtime state, not Source or Artifact fields.
+`RuntimeInput.at` must be populated from the host event timestamp. `SessionState` tracks `wait_until`, `quiet_until`, `cooldown_until`, `last_unread_seq`, and `read_through_seq`; `WakePolicy` returns a `RunDecision` (`WAIT` during an active wait, `IGNORE` during quiet/cooldown), and `mark_delivered()` advances the read-through watermark. `AgentRuntime` does not expose test-only quiet/wait/mark-read mutators; callers use the production transitions. These are runtime state, not Source or Artifact fields. The only decision actions are ignore, observe, wait and reply; proactive/sleep placeholders are not part of the runtime.
 
 ## Runtime memory context
 
