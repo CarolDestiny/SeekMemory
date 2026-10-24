@@ -488,12 +488,20 @@ class Main(star.Star):
             if not text:
                 return
             umo = str(getattr(event, "unified_msg_origin", "") or "")
+            turn_id = str(event.get_extra("_seekmemory_turn_id", "") or "")
+            if not turn_id:
+                turn_id = make_source_id(
+                    session_id=umo,
+                    speaker_id=str(event.get_sender_id()),
+                    role="assistant",
+                    text=text,
+                )
             reply = self.recorder.record_reply(
                 run_id=self.run_tracer.run_id(event),
                 session_id=umo,
                 text=text,
                 speaker_id=str(event.get_self_id()),
-                turn_id=str(event.get_extra("_seekmemory_turn_id", "") or ""),
+                turn_id=turn_id,
                 reply_to=str(event.get_extra("_seekmemory_source_id", "") or ""),
                 at=datetime.datetime.now().isoformat(timespec="seconds"),
                 recall_ids=event.get_extra("_seekmemory_recall_ids", ()) or (),

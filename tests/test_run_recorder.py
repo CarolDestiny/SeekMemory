@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -167,6 +168,29 @@ class RunRecorderTest(unittest.TestCase):
         self.assertEqual(row.error, "RuntimeError")
         self.assertEqual(row.assistant_source_id, "")
         self.assertEqual(row.run_id, "run-error")
+
+    def test_old_runtime_episode_table_migrates_run_id(self):
+        path = os.path.join(tempfile.mkdtemp(prefix="seekmem_old_"), "memory.db")
+        conn = sqlite3.connect(path)
+        conn.execute(
+            "CREATE TABLE runtime_episodes ("
+            "id TEXT PRIMARY KEY, at TEXT NOT NULL, session_id TEXT NOT NULL, "
+            "decision TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', "
+            "action TEXT NOT NULL DEFAULT '', delivered INTEGER NOT NULL DEFAULT 0, "
+            "response_chars INTEGER NOT NULL DEFAULT 0, "
+            "tool_calls TEXT NOT NULL DEFAULT '[]', outcome TEXT NOT NULL DEFAULT '', "
+            "error TEXT NOT NULL DEFAULT '', user_source_id TEXT NOT NULL DEFAULT '', "
+            "assistant_source_id TEXT NOT NULL DEFAULT '')"
+        )
+        conn.commit()
+        conn.close()
+        db = DB(path)
+        self.addCleanup(db.close)
+        db.append_runtime_episode({
+            "id": "ep-old", "at": "2026-01-01T00:00:00", "session_id": "s1",
+            "run_id": "run-old",
+        })
+        self.assertEqual(db.list_runtime_episodes("s1")[0]["run_id"], "run-old")
 
     def test_database_rejects_duplicate_episode_run_ids(self):
         db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_recorder_"), "memory.db"))
