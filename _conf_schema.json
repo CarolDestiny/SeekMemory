@@ -201,5 +201,10 @@
     "description": "Base retry backoff for deferred reply failures.",
     "type": "int",
     "default": 2
+  },
+  "runtime_tool_filter_enabled": {
+    "description": "Enable the request-path tool allowlist. Off by default until SeekMemory registers its own tools.",
+    "type": "bool",
+    "default": false
   }
 }
