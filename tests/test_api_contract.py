@@ -82,14 +82,36 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             jobs=jobs,
             cfg={},
             _c={}.get,
-            _schedulers=[],
+            background=SimpleNamespace(
+                tasks=[],
+                nightly=asyncio.Event().wait,
+                weekly=asyncio.Event().wait,
+            ),
             buffer=Buffer(),
             checkpoint=None,
             context=SimpleNamespace(
                 get_using_provider_async=AsyncMock(return_value=None)
             ),
-            _nightly=asyncio.Event().wait,
-            _weekly=asyncio.Event().wait,
+            capacity_service=SimpleNamespace(status=lambda: {
+                "state": "normal",
+                "actions": [],
+                "reasons": [],
+                "pressure": 0.0,
+                "snapshot": {
+                    "sourceRows": 0,
+                    "sourceBytes": 0,
+                    "pendingRows": 0,
+                    "deferredRows": 0,
+                    "deadRows": 0,
+                    "databaseBytes": 0,
+                    "artifactCount": 0,
+                    "artifactBytes": 0,
+                    "contextChars": 0,
+                    "traceRows": 0,
+                },
+                "queue": {},
+            }),
+            status=SimpleNamespace(persona=lambda: None),
         )
         self.plugin.hybrid_retriever = HybridRetriever(self.plugin.graph, cache)
         self.plugin.run_traces = TraceStore(Path(self.temp.name) / "runs.jsonl")

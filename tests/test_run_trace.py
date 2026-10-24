@@ -194,22 +194,38 @@ class RunTraceTests(unittest.TestCase):
                          self.store.snapshot()["events"])
 
     def test_request_hook_preserves_prompt_and_reports_skipped_and_failed_recall(self):
-        # Execute the production method bodies without importing AstrBot decorators.
-        # This protects our mapping; it is NOT real-host integration verification.
-        source = ast.parse((Path(__file__).resolve().parents[1] / "main.py").read_text())
-        main = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == "Main")
-        names = {"inject_memory", "_runtime_memory_context", "capture_reply",
-                 "record_delivery", "observe_agent_begin"}
-        methods = [n for n in main.body
-                   if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)) and n.name in names]
-        for method in methods:
-            method.decorator_list = []
-        main.body = methods
-        main.bases = []
-        main.decorator_list = []
+        # Execute the production hook/plugin bodies without importing AstrBot.
+        # This protects the mapping; it is NOT real-host integration verification.
+        root = Path(__file__).resolve().parents[1]
+        hooks_source = ast.parse((root / "adapters" / "astrbot_hooks.py").read_text())
+        plugin_source = ast.parse((root / "adapters" / "astrbot_plugin.py").read_text())
+        hooks_cls = next(
+            n for n in hooks_source.body
+            if isinstance(n, ast.ClassDef) and n.name == "AstrBotHooks"
+        )
+        plugin_cls = next(
+            n for n in plugin_source.body
+            if isinstance(n, ast.ClassDef) and n.name == "AstrBotPlugin"
+        )
+        hook_names = {"inject_memory", "capture_reply", "record_delivery",
+                      "observe_agent_begin"}
+        plugin_names = {"_runtime_memory_context"}
+        methods = [n for n in hooks_cls.body
+                   if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))
+                   and n.name in hook_names]
+        methods += [n for n in plugin_cls.body
+                    if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))
+                    and n.name in plugin_names]
+        main = ast.ClassDef(name="Main", bases=[], keywords=[], body=methods,
+                            decorator_list=[])
         module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), main], type_ignores=[])
-        namespace = {"AstrBotRuntimeAdapter": AstrBotRuntimeAdapter,
-                     "MemoryContext": MemoryContext, "log_call": Mock(), "logger": Mock()}
+        namespace = {
+            "AstrBotRuntimeAdapter": AstrBotRuntimeAdapter,
+            "MemoryContext": MemoryContext,
+            "log_call": Mock(),
+            "logger": Mock(),
+            "datetime": __import__("datetime"),
+        }
         exec(compile(ast.fix_missing_locations(module), "main.py", "exec"), namespace)
         plugin = namespace["Main"]()
         plugin.ready, plugin.cache, plugin.db = True, {}, None

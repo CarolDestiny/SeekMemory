@@ -155,9 +155,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.plugin.initialize()
         await self.plugin.start_jobs()
-        expected_schedulers = 5 if self.plugin._dream_on else 6
-        self.assertEqual(len(self.plugin._schedulers), expected_schedulers)
-        tasks = list(self.plugin._schedulers)
+        expected_schedulers = 5 if self.plugin.background.dream_enabled else 6
+        self.assertEqual(len(self.plugin.background.tasks), expected_schedulers)
+        tasks = list(self.plugin.background.tasks)
         await self.plugin.terminate()
         self.assertTrue(all(task.done() for task in tasks))
         self.assertEqual(self.context.registered_web_apis, [])
@@ -171,15 +171,15 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.context.provider = Provider()
         self.plugin.buffer.add("bot:FriendMessage:alice", "Remember this plan", "alice")
         with self.assertRaises(ValueError):
-            await self.plugin._nightly()
+            await self.plugin.background.nightly()
         self.assertEqual(len(self.plugin.buffer.items), 1)
         # DB-backed pending lives in Source + extraction_state, not pending.json.
         self.assertEqual(len(self.plugin.db.pending_extractions()), 1)
 
     async def test_missing_provider_preserves_daily_quota_and_messages(self) -> None:
         self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
-        await self.plugin._nightly()
-        self.assertEqual(self.plugin._flush_count, 0)
+        await self.plugin.background.nightly()
+        self.assertEqual(self.plugin.ingest.flush_count, 0)
         self.assertEqual(len(self.plugin.buffer.items), 1)
 
     async def test_failed_session_does_not_block_other_ready_sessions(self) -> None:
@@ -194,9 +194,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
         self.plugin.buffer.add("bot:FriendMessage:bob", "Plan B", "bob")
         with self.assertRaises(ValueError):
-            await self.plugin._nightly()
+            await self.plugin.background.nightly()
         self.assertEqual([row.text for row in self.plugin.buffer.items], ["Plan A"])
-        self.assertEqual(self.plugin._flush_count, 1)
+        self.assertEqual(self.plugin.ingest.flush_count, 1)
 
     async def test_cancellation_preserves_inflight_and_new_messages(self) -> None:
         started = asyncio.Event()
@@ -210,14 +210,14 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
         self.context.provider = Provider()
         plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
-        task = asyncio.create_task(plugin._nightly())
+        task = asyncio.create_task(plugin.background.nightly())
         await started.wait()
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
         rows = self.plugin.db.pending_extractions()
         self.assertEqual(sorted(row["text"] for row in rows), ["New plan", "Plan A"])
-        self.assertFalse(plugin._flushing)
+        self.assertFalse(plugin.ingest.flushing)
 
     async def test_runtime_observe_is_default_and_gate_is_opt_in(self) -> None:
         class Event:
@@ -267,7 +267,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.db.commit(first, expected_revision=0, op="promote")
         second = artifact.revise(first, payload={"text": "second persona"})
         self.plugin.db.commit(second, expected_revision=1, op="promote")
-        timeline = self.plugin.persona_status()
+        timeline = self.plugin.status.persona()
         self.assertIsNotNone(timeline)
         self.assertEqual(timeline["id"], first.header.id)
         self.assertEqual(timeline["text"], "second persona")
@@ -281,12 +281,12 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         second = artifact.revise(first, payload={"text": "second"},
                                   lineage=artifact.Lineage(sources=("s1", "s2"), derived_from=("i1", "i2")))
         self.plugin.db.commit(second, expected_revision=1, op="promote")
-        timeline = self.plugin.persona_status()
+        timeline = self.plugin.status.persona()
         self.assertEqual(timeline["revisions"][0]["sourceIds"], ["s1"])
         self.assertEqual(timeline["revisions"][1]["sourceIds"], ["s1", "s2"])
         self.assertEqual(timeline["revisions"][0]["derivedFrom"], ["i1"])
-        self.assertEqual(self.plugin._header_evidence("invalid"), ([], []))
-        self.assertEqual(self.plugin._header_evidence({}), ([], []))
+        self.assertEqual(self.plugin.status.header_evidence("invalid"), ([], []))
+        self.assertEqual(self.plugin.status.header_evidence({}), ([], []))
         self.assertNotIn("sources", timeline)
 
     async def test_capture_to_extraction_to_weekly_persona_uses_real_pairs(self) -> None:
@@ -326,9 +326,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
                 return SimpleNamespace(completion_text=json.dumps(results))
         self.context.provider = Provider()
         while self.plugin.buffer.items:
-            await self.plugin._flush("test")
+            await self.plugin.background.flush("test")
         calls = len(self.context.provider_sessions)
-        await self.plugin._weekly()
+        await self.plugin.background.weekly()
         self.assertEqual(len(self.context.provider_sessions), calls)
         persona, = self.plugin.cache.active("persona")
         self.assertEqual(persona.header.subject_id, "bot:self")
@@ -492,9 +492,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
         self.plugin.runtime.message_sender = actions
-        await self.plugin._dispatch_deferred(session_id, now)
+        await self.plugin.runtime_worker.dispatch(session_id, now)
         self.assertEqual(provider.calls[0][0], "ambient deferred message")
-        await self.plugin._dispatch_deferred(session_id, now)
+        await self.plugin.runtime_worker.dispatch(session_id, now)
         self.assertEqual(actions.sent, [(session_id, "deferred reply")])
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(rows[0]["reason"], "deferred_wait")
@@ -548,8 +548,8 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
         self.plugin.runtime.message_sender = actions
-        await self.plugin._runtime_scheduler_tick()
-        await self.plugin._dispatch_deferred(session_id, now)
+        await self.plugin.runtime_worker.tick()
+        await self.plugin.runtime_worker.dispatch(session_id, now)
         self.assertEqual(provider.calls, 0)
         self.assertEqual(actions.sent, [])
         self.assertGreater(self.plugin.runtime.store.get(session_id).wait_until, now)
@@ -561,7 +561,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         state = self.plugin.runtime.store.get(session_id)
         state.wait_until = now + 120
         self.plugin.runtime.store.put(state)
-        await self.plugin._dispatch_deferred(session_id, now)
+        await self.plugin.runtime_worker.dispatch(session_id, now)
         self.assertEqual(
             self.plugin.runtime.store.get(session_id).wait_until, now + 120
         )
@@ -599,7 +599,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
         self.plugin.runtime.message_sender = actions
-        await self.plugin._runtime_scheduler_tick()
+        await self.plugin.runtime_worker.tick()
         self.assertEqual(actions.sent, [(session_id, "retry-only reply")])
 
     async def test_runtime_tick_dedupes_deferred_dispatch(self) -> None:
@@ -634,8 +634,8 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
         self.plugin.runtime.message_sender = actions
-        await self.plugin._runtime_scheduler_tick()
-        await self.plugin._runtime_scheduler_tick()
+        await self.plugin.runtime_worker.tick()
+        await self.plugin.runtime_worker.tick()
         self.assertEqual(actions.sent, [(session_id, "tick reply")])
 
     async def test_deferred_provider_failure_schedules_retry_and_is_private(self) -> None:
@@ -657,7 +657,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.trace.rows.clear()
-        await self.plugin._dispatch_deferred(session_id, now)
+        await self.plugin.runtime_worker.dispatch(session_id, now)
         state = self.plugin.runtime.store.get(session_id)
         self.assertGreater(state.wait_until, now)
         self.assertGreater(state.next_retry_at, now)
@@ -693,7 +693,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = Actions()
         self.plugin.runtime.message_sender = self.plugin.actions
-        await self.plugin._dispatch_deferred(session_id, now)
+        await self.plugin.runtime_worker.dispatch(session_id, now)
         state = self.plugin.runtime.store.get(session_id)
         self.assertGreater(state.wait_until, now)
         self.assertGreater(state.next_retry_at, now)
@@ -721,7 +721,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.context.get_using_provider_async = provider_for
         for _ in range(4):
             state = self.plugin.runtime.store.get(session_id)
-            await self.plugin._dispatch_deferred(session_id, state.wait_until or now)
+            await self.plugin.runtime_worker.dispatch(session_id, state.wait_until or now)
         state = self.plugin.runtime.store.get(session_id)
         self.assertEqual(state.wait_until, 0.0)
         self.assertEqual(state.next_retry_at, 0.0)
@@ -893,7 +893,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             json.loads(response.body)["pending"],
             [{"session": "bot:FriendMessage:alice", "count": 2}],
         )
-        await self.plugin._nightly()
+        await self.plugin.background.nightly()
         self.assertEqual(len(prompts), 2)
         self.assertTrue(
             all(
@@ -919,7 +919,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.context.provider = Provider()
         plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
         plugin.buffer.add("bot:FriendMessage:bob", "Plan B", "bob")
-        await plugin._nightly()
+        await plugin.background.nightly()
         self.assertEqual(self.context.provider_sessions, ["bot:FriendMessage:alice"])
         self.assertEqual(
             [row.text for row in plugin.buffer.items],

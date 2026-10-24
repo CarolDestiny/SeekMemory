@@ -52,19 +52,34 @@ class MainOwnershipTest(unittest.TestCase):
             self.assertNotIn(fragment, self.source)
 
     def test_main_stays_a_composition_and_hook_shell(self) -> None:
-        self.assertLessEqual(len(self.source.splitlines()), 800)
+        self.assertLessEqual(len(self.source.splitlines()), 40)
 
-    def test_start_jobs_remains_the_astrbot_loaded_hook(self) -> None:
+    def test_main_contains_no_function_definitions(self) -> None:
         tree = ast.parse(self.source)
-        start_jobs = next(
+        definitions = [
             node
             for node in ast.walk(tree)
-            if isinstance(node, ast.AsyncFunctionDef) and node.name == "start_jobs"
-        )
-        decorators = [
-            ast.unparse(decorator) for decorator in start_jobs.decorator_list
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         ]
-        self.assertIn("filter.on_astrbot_loaded()", decorators)
+        self.assertEqual(definitions, [])
+
+    def test_main_only_composes_host_adapter_modules(self) -> None:
+        tree = ast.parse(self.source)
+        imported = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                imported.append(node.module)
+        self.assertTrue(all(
+            name.startswith("astrbot") or name.startswith("adapters")
+            or name == "__future__" for name in imported
+        ))
+
+    def test_start_jobs_remains_the_astrbot_loaded_hook(self) -> None:
+        hooks = (ROOT / "adapters" / "astrbot_hooks.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"start_jobs": _register(', hooks)
+        self.assertIn("filter.on_astrbot_loaded()", hooks)
 
 
 class BackgroundTasksLifecycleTest(unittest.TestCase):

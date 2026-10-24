@@ -623,7 +623,7 @@ operations or alter recall/disclosure/tool policy. This log is not an immutable 
 
 ## Runtime memory context
 
-`inject_memory` asks `AgentRuntime.build_context()` through `MemoryContextPort`; `SeekMemoryContextAdapter` delegates to `RecallService`, which owns the existing recall pipeline. Runtime owns the boundary and host injection no longer calls `build_block` directly.
+`inject_memory` in `adapters/astrbot_hooks.py` asks `AgentRuntime.build_context()` through `MemoryContextPort`; `SeekMemoryContextAdapter` delegates to `RecallService`, which owns the existing recall pipeline. Runtime owns the boundary and host injection no longer calls `build_block` directly.
 
 
 ## Runtime integration policy

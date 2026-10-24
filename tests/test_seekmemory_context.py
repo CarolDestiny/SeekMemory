@@ -149,6 +149,8 @@ sys.modules.update(
 
 main_module = importlib.import_module(f"{root.name}.main")
 runtime_module = importlib.import_module(f"{root.name}.app.runtime")
+tracing_module = importlib.import_module(f"{root.name}.app.runtime.tracing")
+trace_store_module = importlib.import_module(f"{root.name}.store.run_trace")
 adapter_module = importlib.import_module(
     f"{root.name}.adapters.seekmemory_context"
 )
@@ -181,8 +183,10 @@ class FakeMain(main_module.Main):
         self.cache = object()
         self.data_path = Path(data_dir) / "memory.db"
         self.journal = journal_module.Journal(Path(data_dir) / "journal.jsonl")
-        self.run_traces = main_module.TraceStore(Path(data_dir) / "run_traces.jsonl")
-        self.run_tracer = main_module.RunTracer(self.run_traces)
+        self.run_traces = trace_store_module.TraceStore(
+            Path(data_dir) / "run_traces.jsonl"
+        )
+        self.run_tracer = tracing_module.RunTracer(self.run_traces)
         self.calls = []
         self.runtime = runtime_module.AgentRuntime(
             runtime_module.InMemoryStateStore(),

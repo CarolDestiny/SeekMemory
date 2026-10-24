@@ -101,6 +101,8 @@ class PackageTests(unittest.TestCase):
                     "main.py",
                     "app/checkpoint.py",
                     "app/contracts.py",
+                    "adapters/astrbot_hooks.py",
+                    "adapters/astrbot_plugin.py",
                     "adapters/seekmemory_context.py",
                     "orchestration/access.py",
                     "orchestration/ingest_service.py",
