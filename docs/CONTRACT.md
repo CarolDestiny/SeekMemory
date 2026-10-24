@@ -598,7 +598,7 @@ quiet, wait (when supplied), proactive.
 
 ## Runtime actions and episodes
 
-`AstrBotActionPort` provides send/wait/proactive host actions. `DBStateStore` and `DBEpisodeStore` persist mutable social state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
+`AstrBotActionPort` provides the host send action. `DBStateStore` and `DBEpisodeStore` persist mutable social state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
 
 ## Agent run traces
 

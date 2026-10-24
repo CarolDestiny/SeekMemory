@@ -65,13 +65,11 @@ class ActionTest(unittest.TestCase):
         self.assertEqual(sink.last_error, "")
         self.assertEqual(len(db.list_runtime_episodes("s")), 4)
 
-    def test_send_proactive_and_wait(self) -> None:
+    def test_send(self) -> None:
         context = Context()
         actions = AstrBotActionPort(context, message_factory=lambda text: text)
-        asyncio.run(actions.send("s1", "hello"))
-        asyncio.run(actions.proactive("s1", "later"))
-        asyncio.run(actions.wait(0))
-        self.assertEqual(context.sent, [("s1", "hello"), ("s1", "later")])
+        self.assertTrue(asyncio.run(actions.send("s1", "hello")))
+        self.assertEqual(context.sent, [("s1", "hello")])
 
     def test_send_reports_host_false_as_failure(self) -> None:
         class Context:

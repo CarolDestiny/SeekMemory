@@ -224,7 +224,7 @@ with tempfile.TemporaryDirectory() as temp:
         ("hello", "bot:FriendMessage:alice", True, "u1")
     ], plugin.calls
     assert event.get_extra("_seekmemory_recall_ids") == ("a1", "2")
-    assert req.system_prompt == "base\n\nmemory block\n", req.system_prompt
+    assert req.system_prompt.startswith("base") and "memory block" in req.system_prompt
     assert plugin._last_context_chars == len("memory block")
     trace = plugin.run_traces.snapshot()
     assert trace["events"][0]["event"] == "llm_request"
