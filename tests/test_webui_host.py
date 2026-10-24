@@ -669,6 +669,42 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(len(rows), 3)
 
+    async def test_tool_filter_is_opt_in(self) -> None:
+        class ToolSet:
+            def __init__(self):
+                self.tools = [SimpleNamespace(name="shell_exec")]
+                self.removed = []
+
+            def remove_tool(self, name):
+                self.removed.append(name)
+                self.tools = []
+
+        class Event:
+            unified_msg_origin = "bot:GroupMessage:g-tool"
+            message_str = "hello"
+
+            def __init__(self):
+                self.extras = {}
+
+            def is_private_chat(self):
+                return False
+
+            def get_sender_id(self):
+                return "u1"
+
+            def get_extra(self, key, default=None):
+                return self.extras.get(key, default)
+
+            def set_extra(self, key, value):
+                self.extras[key] = value
+
+        tools = ToolSet()
+        req = SimpleNamespace(system_prompt="", func_tool=tools)
+        self.plugin.cfg["runtime_tool_filter_enabled"] = False
+        await self.plugin.inject_memory(Event(), req)
+        self.assertEqual(tools.removed, [])
+        self.assertEqual([tool.name for tool in tools.tools], ["shell_exec"])
+
     async def test_reinforcement_waits_for_successful_response(self) -> None:
         from types import SimpleNamespace
 
@@ -717,6 +753,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
                 self.tools = [tool for tool in self.tools if tool.name != name]
 
         tools = ToolSet()
+        self.plugin.cfg["runtime_tool_filter_enabled"] = True
         event = Event()
         await self.plugin.observe_agent_begin(event, None)
         req = SimpleNamespace(system_prompt="", func_tool=tools)

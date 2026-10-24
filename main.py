@@ -310,10 +310,11 @@ class Main(star.Star):
 
             umo = str(getattr(event, "unified_msg_origin", "") or "")
             policy = getattr(self, "tool_policy", None)
-            removed_tools = (
-                policy.filter_tool_set(getattr(req, "func_tool", None))
-                if policy is not None else ()
-            )
+            removed_tools = ()
+            if bool(self._c("runtime_tool_filter_enabled", False)) and policy is not None:
+                removed_tools = policy.filter_tool_set(
+                    getattr(req, "func_tool", None)
+                )
             if removed_tools:
                 self.trace.record(
                     "tool", "guard_removed",
