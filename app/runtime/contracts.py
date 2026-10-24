@@ -78,14 +78,6 @@ class WakeDecision:
     confidence: float = 1.0
 
 
-@dataclass(frozen=True)
-class RuntimeResult:
-    delivered: bool = False
-    response_text: str = ""
-    tool_calls: tuple[str, ...] = ()
-    error: str = ""
-
-
 class StateStore(Protocol):
     def get(self, session_id: str) -> SocialState: ...
     def put(self, state: SocialState) -> None: ...
@@ -103,9 +95,3 @@ class MemoryContext:
 
 class MemoryContextPort(Protocol):
     def build_context(self, event: RuntimeInput) -> MemoryContext: ...
-
-
-class ActionPort(Protocol):
-    async def send(self, session_id: str, text: str) -> bool: ...
-    async def wait(self, seconds: float) -> None: ...
-    async def proactive(self, session_id: str, text: str) -> bool: ...

@@ -82,7 +82,7 @@ character-bigram similarity; `topic_ttl_seconds` forces aged topics to extractio
 The extractor returns `subject_kind`, `subject_id`, `event_at` and validity dates.
 `TimeSpan.created` uses event time, not extraction time.
 
-## Current implementation status (v0.3.1)
+## Current implementation status (v0.4.0)
 
 - Source is persisted for both user and assistant messages, including group sessions.
 - Production writes use CAS DB.commit with versions, evidence and ledger.
@@ -133,6 +133,51 @@ The admin timeline shows each revision's own lineage and protected dialogue evid
 `AgentRuntime` decisions. AstrBot remains the transport/provider/platform host; `main.py`
 maps events into `RuntimeInput` and must not move AstrBot types into the runtime package.
 
-Phase 1 is observe-only: runtime decisions and trace are recorded, but reply behavior is
-unchanged. Future phases may gate `event.should_call_llm`, add wait/proactive actions and
-record complete runtime episodes.
+The gate is explicit. With `runtime_gate_enabled=false`, decisions and trace are recorded but
+wait and deferred dispatch are inactive. With the gate enabled, deferred replies use the host
+provider directly; they do not run the full AstrBot tool loop. Proactive generation remains a
+future feature.
+
+## Runtime active path (v0.4.0)
+
+The runtime has two production paths, and every retained runtime type must be reachable from one of them.
+
+### Normal reply
+
+```text
+AstrBot message event
+-> Buffer Source projection
+-> AgentRuntime.observe()
+-> optional event.should_call_llm() gate
+-> MemoryContextPort
+-> recall pipeline / disclosure
+-> AstrBot model request
+-> capture_reply()
+-> after_message_sent()
+-> RuntimeEpisode
+```
+
+### Deferred ambient reply
+
+```text
+runtime state with wait deadline
+-> _runtime_scheduler_tick()
+-> SchedulerPolicy
+-> claim_dispatch()
+-> provider.text_chat()
+-> AstrBotActionPort.send()
+-> assistant Source + extraction buffer
+-> RuntimeEpisode
+```
+
+### Explicit boundaries
+
+- `proactive` scheduling is trace-only until a real generation/send path exists.
+- `PolicyToolGuard` filters `req.func_tool` before the model sees tools; the advisory
+  `on_using_llm_tool` trace is not a veto.
+- `RunTrace` is an admin observability stream, separate from the append-only runtime
+  episode audit. It is not an Artifact or Source.
+- `runtime_gate_enabled=false` keeps both wait and deferred dispatch inactive.
+
+Cleanup rule: a runtime module or protocol without a production caller is either removed or
+explicitly marked as a documented seam. Tests alone are not a reason to keep a production abstraction.

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
-
 
 class AstrBotActionPort:
-    """Send/wait actions backed by the AstrBot host context."""
+    """Send actions backed by the AstrBot host context."""
 
     def __init__(self, context, message_factory=None) -> None:
         self.context = context
@@ -23,9 +21,3 @@ class AstrBotActionPort:
             return False
         result = await self.context.send_message(session_id, self._chain(text))
         return result is not False
-
-    async def proactive(self, session_id: str, text: str) -> bool:
-        return await self.send(session_id, text)
-
-    async def wait(self, seconds: float) -> None:
-        await asyncio.sleep(max(0.0, float(seconds)))

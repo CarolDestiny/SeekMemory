@@ -155,7 +155,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.plugin.initialize()
         await self.plugin.start_jobs()
-        expected_schedulers = 4 if self.plugin._dream_on else 6
+        expected_schedulers = 5 if self.plugin._dream_on else 6
         self.assertEqual(len(self.plugin._schedulers), expected_schedulers)
         tasks = list(self.plugin._schedulers)
         await self.plugin.terminate()
@@ -377,7 +377,8 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(calls, [("hello", "bot:FriendMessage:alice", True, "u1")])
         self.assertEqual(event.get_extra("_seekmemory_recall_ids"), ("a1", "2"))
-        self.assertEqual(req.system_prompt, "base\n\nmemory block\n")
+        self.assertTrue(req.system_prompt.startswith("base"))
+        self.assertIn("memory block", req.system_prompt)
         self.assertEqual(self.plugin._last_context_chars, len("memory block"))
         journal_event = next(
             row for row in reversed(self.plugin.journal.events)

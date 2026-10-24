@@ -1,12 +1,10 @@
 """Host-agnostic SeekMemory agent runtime."""
 
 from .contracts import (
-    ActionPort,
     AttentionLevel,
     MemoryContext,
     MemoryContextPort,
     RuntimeInput,
-    RuntimeResult,
     SocialState,
     StateStore,
     TraceSink,
@@ -40,7 +38,6 @@ from .tools import (
 from .wake import WakePolicy
 
 __all__ = [
-    "ActionPort",
     "AgentRuntime",
     "AttentionLevel",
     "DBEpisodeStore",
@@ -55,7 +52,6 @@ __all__ = [
     "MemoryContextPort",
     "RuntimeInput",
     "RandomSource",
-    "RuntimeResult",
     "SchedulerDecision",
     "SchedulerEvent",
     "SchedulerPolicy",
