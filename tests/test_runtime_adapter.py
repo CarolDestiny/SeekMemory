@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from adapters.astrbot_model import AstrBotModelGateway  # noqa: E402
 from adapters.astrbot_runtime import AstrBotRuntimeAdapter  # noqa: E402
 from app.runtime import WakeAction, RunDecision  # noqa: E402
+from core.source import make_source_id  # noqa: E402
 
 
 class Event:
@@ -20,9 +21,16 @@ class Event:
         self.private = private
         self.extras = {}
         self.created_at = 0.0
+        self.unified_msg_origin = "bot:GroupMessage:g1"
 
     def is_private_chat(self) -> bool:
         return self.private
+
+    def get_sender_id(self) -> str:
+        return "u1"
+
+    def get_extra(self, key, default=None):
+        return self.extras.get(key, default)
 
     def set_extra(self, key, value) -> None:
         self.extras[key] = value
@@ -103,6 +111,20 @@ class AdapterTest(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             asyncio.run(AstrBotModelGateway(Context()).complete("s1", "hello"))
+
+    def test_reply_turn_id_preserves_legacy_fallback(self) -> None:
+        event = Event(False)
+        expected = make_source_id(
+            session_id="bot:GroupMessage:g1",
+            speaker_id="u1",
+            role="assistant",
+            text="ok",
+        )
+        self.assertEqual(
+            AstrBotRuntimeAdapter.reply_turn_id(event, "ok"), expected
+        )
+        event.set_extra("_seekmemory_turn_id", "turn-1")
+        self.assertEqual(AstrBotRuntimeAdapter.reply_turn_id(event, "ok"), "turn-1")
 
     def test_decision_is_exposed_as_event_metadata(self) -> None:
         event = Event(False)

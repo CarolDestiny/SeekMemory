@@ -49,6 +49,15 @@ class RunContext:
 
 
 @dataclass(frozen=True)
+class UserRunReceipt:
+    """Identity attached to one accepted user turn."""
+
+    decision: RunDecision
+    source_id: str = ""
+    turn_id: str = ""
+
+
+@dataclass(frozen=True)
 class RunResult:
     """Observed outcome of one deferred runtime run."""
 
@@ -90,7 +99,7 @@ class RunDecision:
     must_reply: bool = False
 
 
-class StateStore(Protocol):
+class SessionStateStore(Protocol):
     def get(self, session_id: str) -> SessionState: ...
     def put(self, state: SessionState) -> None: ...
 

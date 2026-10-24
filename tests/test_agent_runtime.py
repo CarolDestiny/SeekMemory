@@ -510,5 +510,88 @@ class WakePolicyTest(unittest.TestCase):
             self.assertNotIn("from astrbot", text)
 
 
+class AgentRuntimeNormalPathTest(unittest.TestCase):
+    def setUp(self) -> None:
+        class Recorder:
+            def __init__(self):
+                self.users = []
+                self.replies = []
+                self.deliveries = []
+                self.errors = []
+
+            def record_user(self, **kwargs):
+                self.users.append(kwargs)
+                return SimpleNamespace(source_id="u1", turn_id="t1")
+
+            def record_reply(self, **kwargs):
+                self.replies.append(kwargs)
+                return SimpleNamespace(
+                    run_id=kwargs["run_id"],
+                    turn_id=kwargs["turn_id"],
+                    assistant_source_id="a1",
+                    response_chars=len(kwargs["text"]),
+                )
+
+            def record_delivery(self, **kwargs):
+                self.deliveries.append(kwargs)
+
+            def record_error(self, **kwargs):
+                self.errors.append(kwargs)
+
+        self.recorder = Recorder()
+        self.store = InMemoryStateStore()
+        self.runtime = AgentRuntime(
+            self.store,
+            clock=lambda: 200,
+            recorder=self.recorder,
+        )
+
+    def test_accept_user_records_then_observes(self) -> None:
+        receipt = self.runtime.accept_user(
+            RuntimeInput("s1", "hello", speaker_id="u1", mentioned=True, at=100),
+            event_id="e1",
+            deferred=True,
+        )
+        self.assertEqual((receipt.source_id, receipt.turn_id), ("u1", "t1"))
+        self.assertEqual(receipt.decision.action, WakeAction.REPLY)
+        self.assertEqual(self.recorder.users[0]["event_id"], "e1")
+        self.assertTrue(self.recorder.users[0]["deferred"])
+        self.assertEqual(self.store.get("s1").last_action, "reply")
+
+    def test_reply_delivery_and_error_use_recorder_owner(self) -> None:
+        self.runtime.observe(RuntimeInput("s1", "hello", mentioned=True, at=100))
+        reply = self.runtime.record_reply(
+            run_id="run-1",
+            session_id="s1",
+            text="answer",
+            speaker_id="bot",
+            turn_id="t1",
+            reply_to="u1",
+        )
+        self.assertEqual(reply.assistant_source_id, "a1")
+        self.runtime.record_delivery(
+            run_id="run-1",
+            session_id="s1",
+            decision="reply",
+            reason="direct_attention",
+            response_chars=6,
+            user_source_id="u1",
+            assistant_source_id="a1",
+            now=200,
+        )
+        self.runtime.record_error(
+            run_id="run-2",
+            session_id="s1",
+            decision="reply",
+            reason="agent_error",
+            error="agent_error",
+            user_source_id="u1",
+        )
+        self.assertEqual(self.recorder.replies[0]["run_id"], "run-1")
+        self.assertEqual(self.recorder.deliveries[0]["assistant_source_id"], "a1")
+        self.assertEqual(self.recorder.errors[0]["run_id"], "run-2")
+        self.assertEqual(self.store.get("s1").last_spoke_at, 200)
+
+
 if __name__ == "__main__":
     unittest.main()

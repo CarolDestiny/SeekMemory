@@ -10,8 +10,9 @@ from .contracts import (
     RunDecision,
     RunResult,
     RuntimeInput,
+    UserRunReceipt,
     SessionState,
-    StateStore,
+    SessionStateStore,
     TraceSink,
     WakeAction,
 )
@@ -27,7 +28,7 @@ from .episode import (
     normalize_tool_calls,
     safe_error_code,
 )
-from .recorder import RecordedReply, RunRecorder
+from .recorder import RecordedReply, RecordedTurn, RunRecorder
 from .runtime import AgentRuntime
 from .scheduler import DueRun, Scheduler, TimingPolicy
 from .state import DBStateStore, InMemoryStateStore, JsonStateStore
@@ -38,6 +39,7 @@ from .tools import (
     tool_result_failed,
 )
 from .wake import WakePolicy
+from .worker import RuntimeWorker
 
 __all__ = [
     "AgentRuntime",
@@ -51,6 +53,7 @@ __all__ = [
     "InMemoryStateStore",
     "MemoryContext",
     "RecordedReply",
+    "RecordedTurn",
     "RunRecorder",
     "JsonStateStore",
     "MemoryContextPort",
@@ -59,8 +62,10 @@ __all__ = [
     "RunContext",
     "RunResult",
     "RuntimeInput",
+    "RuntimeWorker",
+    "UserRunReceipt",
     "SessionState",
-    "StateStore",
+    "SessionStateStore",
     "ToolCall",
     "ToolGuardDecision",
     "ToolPolicy",

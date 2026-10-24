@@ -103,6 +103,40 @@ class RunRecorderTest(unittest.TestCase):
         self.assertEqual(len(self.checkpoint.records), 1)
         self.assertEqual(first.run_id, "run-1")
 
+
+    def test_user_turn_write_back_is_idempotent_by_event_id(self):
+        first = self.recorder.record_user(
+            session_id="s1",
+            text="hello",
+            speaker_id="u1",
+            event_id="event-1",
+            at="2026-01-01T00:00:00",
+            deferred=True,
+        )
+        second = self.recorder.record_user(
+            session_id="s1",
+            text="hello",
+            speaker_id="u1",
+            event_id="event-1",
+            at="2026-01-01T00:00:00",
+            deferred=True,
+        )
+        self.assertEqual(first, second)
+        self.assertEqual(len(self.db.sources), 1)
+        self.assertEqual(len(self.buffer.rows), 1)
+        source = self.db.sources[0]
+        self.assertEqual(source.session_id, "s1")
+        self.assertEqual(source.speaker_id, "u1")
+        self.assertEqual(source.role, "user")
+        self.assertEqual(source.text, "hello")
+        self.assertEqual(source.turn_id, "event-1")
+        buffer_row = self.buffer.rows[0]
+        self.assertEqual(buffer_row[:4], ("s1", "hello", "u1", source.id))
+        self.assertIs(buffer_row[5]["source"], source)
+        self.assertEqual(buffer_row[5]["turn_id"], "event-1")
+        self.assertTrue(buffer_row[5]["deferred"])
+        self.assertEqual(first.turn_id, "event-1")
+
     def test_delivery_episode_is_idempotent_and_correlated(self):
         self.recorder.record_delivery(
             run_id="run-1",

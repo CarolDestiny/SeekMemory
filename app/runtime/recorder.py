@@ -34,6 +34,13 @@ class EpisodeWriter(Protocol):
 
 
 @dataclass(frozen=True)
+class RecordedTurn:
+    source_id: str
+    turn_id: str
+    topic_id: str = ""
+
+
+@dataclass(frozen=True)
 class RecordedReply:
     run_id: str
     session_id: str
@@ -66,12 +73,72 @@ class RunRecorder:
         self.episodes = episodes
         self.cache = cache
         self.clock = clock or (lambda: datetime.datetime.now().isoformat(timespec="seconds"))
+        self._turns: dict[str, RecordedTurn] = {}
         self._replies: dict[str, RecordedReply] = {}
         self._episodes: set[str] = set()
 
     @staticmethod
     def new_run_id() -> str:
         return uuid4().hex
+
+    def record_user(
+        self,
+        *,
+        session_id: str,
+        text: str,
+        speaker_id: str,
+        event_id: str = "",
+        at: str = "",
+        deferred: bool = False,
+    ) -> RecordedTurn:
+        """Write one user Source and its extraction projection exactly once."""
+        clean = str(text or "").strip()
+        if not clean:
+            raise ValueError("user message text is empty")
+        session = str(session_id or "")
+        speaker = str(speaker_id or "")
+        moment = str(at or self.clock())
+        source_id = make_source_id(
+            event_id=str(event_id or ""),
+            session_id=session,
+            speaker_id=speaker,
+            role="user",
+            text=clean,
+            at=moment,
+        )
+        turn_id = str(event_id or source_id)
+        key = turn_id
+        existing = self._turns.get(key)
+        if existing is not None:
+            return existing
+
+        source = Source(
+            source_id,
+            turn_id,
+            session,
+            speaker,
+            "user",
+            clean,
+            moment,
+        )
+        if self.db is not None:
+            self.db.append_sources([source])
+        topic_id = ""
+        if self.buffer is not None:
+            turn = self.buffer.add(
+                session,
+                clean,
+                speaker,
+                source_id,
+                moment,
+                source=source,
+                turn_id=turn_id,
+                deferred=deferred,
+            )
+            topic_id = str(getattr(turn, "topic_id", "") or "")
+        result = RecordedTurn(source_id, turn_id, topic_id)
+        self._turns[key] = result
+        return result
 
     def record_reply(
         self,

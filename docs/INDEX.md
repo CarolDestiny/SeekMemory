@@ -30,16 +30,24 @@ v0.3.1 + WebUI branch
 | docs/TESTING.md | Test layers, commands and known coverage gaps | docs/TESTING.md |
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |
 | scripts/run_tests.py | Run one test layer locally or in CI | docs/TESTING.md |
-| main.py | AstrBot event mapping and composition only | main.py |
+| main.py | Entry point composition only | main.py |
+| adapters/astrbot_plugin.py | AstrBot wiring and lifecycle | adapters/astrbot_plugin.py |
+| adapters/astrbot_hooks.py | AstrBot event mapping and handler registration | adapters/astrbot_hooks.py |
 | app/runtime/tracing.py + store/run_trace.py | Content-free run correlation and bounded JSONL traces | [Run Trace implementation](issues/PR-0032.md) |
 
 ## Dependency direction
 
 ```text
-main.py / AstrBot adapter
+main.py entrypoint
         |
         v
-app/ use cases and ports
+adapters/astrbot_plugin.py + adapters/astrbot_hooks.py
+        |
+        v
+orchestration/ application services
+        |
+        v
+app/ DTOs, contracts, runtime and pure policy
         |
         v
 core/ Artifact kernel
@@ -52,6 +60,9 @@ Rules:
 
 - core/ imports no storage, SDK, plugin or app code.
 - app/ imports core/ only; external systems stay behind ports.
+- orchestration/ composes app/, core/, recall/, perceive/ and maintain/; it imports no AstrBot or adapter code.
+- main.py contains no function bodies; host handlers live in adapters/astrbot_hooks.py and wiring lives in adapters/astrbot_plugin.py.
+- adapters/astrbot_hooks.py contains no extraction, capacity or maintenance algorithm.
 - store/ is the only place that writes SQL.
 - webui/routes.py adapts the host. webui/service.py calls core/store/recall.
 - webui/jobs.py and webui/journal.py stay independent of the host.
