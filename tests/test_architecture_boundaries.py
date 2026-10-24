@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from orchestration.access import AccessPolicy  # noqa: E402
+from orchestration.background_tasks import BackgroundTasks  # noqa: E402
 
 
 class AccessPolicyTest(unittest.TestCase):
@@ -64,6 +65,49 @@ class MainOwnershipTest(unittest.TestCase):
             ast.unparse(decorator) for decorator in start_jobs.decorator_list
         ]
         self.assertIn("filter.on_astrbot_loaded()", decorators)
+
+
+class BackgroundTasksLifecycleTest(unittest.TestCase):
+    def test_start_and_stop_are_idempotent(self) -> None:
+        class Journal:
+            def __init__(self):
+                self.rows = []
+
+            def record(self, *args, **kwargs):
+                self.rows.append((args, kwargs))
+
+        class RuntimeWorker:
+            async def run_forever(self):
+                await asyncio.Event().wait()
+
+        class Dummy:
+            pass
+
+        async def run():
+            background = BackgroundTasks(
+                jobs=Dummy(),
+                checkpoint=None,
+                buffer=None,
+                capacity=Dummy(),
+                ingest=Dummy(),
+                maintenance=Dummy(),
+                dream=None,
+                runtime_worker=RuntimeWorker(),
+                journal=Journal(),
+                config=lambda key, default: default,
+                logger=Dummy(),
+            )
+            self.assertTrue(background.start())
+            self.assertFalse(background.start())
+            tasks = list(background.tasks)
+            await background.stop()
+            self.assertTrue(all(task.done() for task in tasks))
+            self.assertEqual(background.tasks, [])
+            await background.stop()
+
+        import asyncio
+
+        asyncio.run(run())
 
 
 class LayerDependencyTest(unittest.TestCase):

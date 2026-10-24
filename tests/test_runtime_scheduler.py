@@ -79,7 +79,7 @@ class RuntimeWorkerTest(unittest.TestCase):
 
             async def dispatch_deferred(self, context, **kwargs):
                 self.contexts.append((context, kwargs))
-                return None
+                return object()
 
         store = InMemoryStateStore()
         state = store.get("s1")
@@ -111,6 +111,45 @@ class RuntimeWorkerTest(unittest.TestCase):
         self.assertEqual(asyncio.run(worker.tick(now=100)), 0)
         self.assertIsNone(asyncio.run(worker.dispatch("s1", 100)))
         self.assertEqual(runtime.contexts, [])
+
+    def test_direct_dispatch_dedupes_one_in_flight_session(self) -> None:
+        class Runtime:
+            def __init__(self):
+                self.calls = 0
+                self.started = None
+                self.release = None
+
+            async def dispatch_deferred(self, context, **kwargs):
+                self.calls += 1
+                self.started.set()
+                await self.release.wait()
+                return object()
+
+        async def run():
+            runtime = Runtime()
+            runtime.started = asyncio.Event()
+            runtime.release = asyncio.Event()
+            worker = RuntimeWorker(
+                runtime=runtime,
+                scheduler=Scheduler(InMemoryStateStore()),
+                enabled=lambda: True,
+                session_ids=lambda limit: [],
+                run_context=lambda session_id, now: RunContext(
+                    session_id=session_id, text="hello", at=now
+                ),
+                interval_seconds=lambda: 1,
+                max_attempts=lambda: 3,
+                base_seconds=lambda: 2,
+            )
+            first = asyncio.create_task(worker.dispatch("s1", 100))
+            await runtime.started.wait()
+            second = await worker.dispatch("s1", 100)
+            self.assertIsNone(second)
+            runtime.release.set()
+            await first
+            self.assertEqual(runtime.calls, 1)
+
+        asyncio.run(run())
 
 
 if __name__ == "__main__":

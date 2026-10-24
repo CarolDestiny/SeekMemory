@@ -42,14 +42,18 @@ class RuntimeWorker:
         self._dispatching: set[str] = set()
 
     async def dispatch(self, session_id: str, now: float | None = None) -> RunResult | None:
-        if not self.enabled():
+        if not self.enabled() or session_id in self._dispatching:
             return None
-        moment = time.time() if now is None else float(now)
-        return await self.runtime.dispatch_deferred(
-            self.run_context(session_id, moment),
-            max_attempts=max(1, int(self.max_attempts())),
-            base_seconds=max(0.1, float(self.base_seconds())),
-        )
+        self._dispatching.add(session_id)
+        try:
+            moment = time.time() if now is None else float(now)
+            return await self.runtime.dispatch_deferred(
+                self.run_context(session_id, moment),
+                max_attempts=max(1, int(self.max_attempts())),
+                base_seconds=max(0.1, float(self.base_seconds())),
+            )
+        finally:
+            self._dispatching.discard(session_id)
 
     async def tick(self, now: float | None = None) -> int:
         if not self.enabled():
@@ -59,17 +63,11 @@ class RuntimeWorker:
             moment = time.time() if now is None else float(now)
             due = self.scheduler.due(self.session_ids(100), moment)
             for item in due:
-                session_id = item.session_id
-                if session_id in self._dispatching:
-                    continue
-                self._dispatching.add(session_id)
                 try:
-                    await self.dispatch(session_id, moment)
-                    dispatched += 1
+                    if await self.dispatch(item.session_id, moment) is not None:
+                        dispatched += 1
                 except Exception:
                     continue
-                finally:
-                    self._dispatching.discard(session_id)
         return dispatched
 
     async def run_forever(self) -> None:
