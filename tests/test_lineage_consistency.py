@@ -32,11 +32,11 @@ class ImpressionLineageTest(unittest.TestCase):
     def setUp(self) -> None:
         self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_lineage_"), "t.db"))
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
 
     def test_reword_unions_sources_without_self_reference(self) -> None:
         old = _impression("he is stubborn", ("s1",))
-        self.db.commit(old, expected_revision=0, op="create")
+        self.db.artifacts.commit(old, expected_revision=0, op="create")
         self.cache.put(old)
         incoming = _impression(
             "he is stubborn but helps when it really matters", ("s2",)
@@ -50,7 +50,7 @@ class ImpressionLineageTest(unittest.TestCase):
 
     def test_reinforce_unions_sources(self) -> None:
         old = _impression("he is stubborn but helps", ("s1",))
-        self.db.commit(old, expected_revision=0, op="create")
+        self.db.artifacts.commit(old, expected_revision=0, op="create")
         self.cache.put(old)
         incoming = _impression("he is stubborn but helps", ("s2",))
         got = revise_impression(self.db, self.cache, incoming)
@@ -59,9 +59,9 @@ class ImpressionLineageTest(unittest.TestCase):
 
     def test_retire_keeps_cache_when_commit_fails(self) -> None:
         art = _impression("retire me", ("s1",))
-        self.db.commit(art, expected_revision=0, op="create")
+        self.db.artifacts.commit(art, expected_revision=0, op="create")
         self.cache.put(art)
-        with patch.object(self.db, "commit", side_effect=RuntimeError("db down")):
+        with patch.object(self.db.artifacts, "commit", side_effect=RuntimeError("db down")):
             _retire(self.db, self.cache, art)
         self.assertIs(self.cache.get(art.header.id), art)
 

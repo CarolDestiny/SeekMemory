@@ -7,7 +7,7 @@ This page is for contributors who want to extend SeekMemory without reading the 
 - Source is the only immutable truth.
 - Artifact is a derived, versioned interpretation.
 - Production writes go through ArtifactStore.commit with expected_revision.
-- SQL lives only in store/db.py.
+- SQL lives only in store/; store/db.py is a composition facade.
 - Retrievers do not write.
 - ChatModel is stateless. Context management belongs to the caller.
 
@@ -36,7 +36,7 @@ Append immutable Source rows. Repeating the same source id is idempotent.
     def commit(art, *, expected_revision, op, reason="", source_ids=(), state_events=()) -> None
     def get(node_id: str) -> Artifact | None
 
-commit writes the new head, append-only version, evidence, ledger and optional state events atomically. expected_revision is required. A stale writer must fail with VersionError. SQL must not be added outside store/db.py.
+commit writes the new head, append-only version, evidence, ledger and optional state events atomically. expected_revision is required. A stale writer must fail with VersionError. SQL must not be added outside store/.
 
 ### StateStore
 

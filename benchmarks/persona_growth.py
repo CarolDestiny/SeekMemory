@@ -61,7 +61,7 @@ async def main():
     async def run_case(case,repeat):
         name,expected,pairs=case
         with tempfile.TemporaryDirectory(prefix='seekmemory_accept_') as temp:
-            db=DB(str(Path(temp)/'memory.db')); cache=Cache(db); graph=Graph(db,cache)
+            db=DB(str(Path(temp)/'memory.db')); cache=Cache(db.artifacts); graph=Graph(db,cache)
             session='probe:FriendMessage:71001'
             outcomes=[]
             model=Model()
@@ -74,7 +74,7 @@ async def main():
                 if assistant:
                     sources.append(Source(aid,uid,session,'bot','assistant',assistant,at,reply_to=uid))
                     turns.append(DialogueTurn(session,'bot','assistant',assistant,at,aid))
-                db.append_sources(sources)
+                db.sources.append_sources(sources)
                 # Use the public DTO including association fields on versions that expose them.
                 fields=DialogueTurn.__dataclass_fields__
                 if 'turn_id' in fields:
@@ -90,10 +90,10 @@ async def main():
             try:
                 made=build_self_impressions(db,cache,today='2026-10-23')
                 persona=distill_self_persona(db,cache,today='2026-10-23')
-                before=len(db.history(persona.header.id)) if persona else 0
+                before=len(db.artifacts.history(persona.header.id)) if persona else 0
                 build_self_impressions(db,cache,today='2026-10-23')
                 again=distill_self_persona(db,cache,today='2026-10-23')
-                stable=not persona or (again and again.header.id==persona.header.id and len(db.history(persona.header.id))==before)
+                stable=not persona or (again and again.header.id==persona.header.id and len(db.artifacts.history(persona.header.id))==before)
                 conf=lambda k,d=None: {'budget_chars':2000,'explore':0.0}.get(k,d)
                 block,meta=build_block(cache,graph,db,session,'你平时如何回应问题？',True,conf,session,speaker='71001',dry_run=True)
                 stranger,_=build_block(cache,graph,db,'probe:FriendMessage:72002','你平时如何回应问题？',True,conf,session,speaker='72002',dry_run=True)

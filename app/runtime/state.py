@@ -100,14 +100,14 @@ class JsonStateStore:
 class DBStateStore:
     """Persist SessionState through the project's SQLite DB facade."""
 
-    def __init__(self, db) -> None:
-        self.db = db
+    def __init__(self, repository) -> None:
+        self.repository = repository
         self.last_error = ""
 
     def get(self, session_id: str) -> SessionState:
         key = str(session_id or "")
         try:
-            raw = self.db.get_runtime_state(key)
+            raw = self.repository.get(key)
         except Exception as exc:  # noqa: BLE001 - runtime state is fail-open
             self.last_error = type(exc).__name__
             return SessionState(session_id=key)
@@ -126,7 +126,7 @@ class DBStateStore:
 
     def put(self, state: SessionState) -> None:
         try:
-            self.db.put_runtime_state(str(state.session_id or ""), asdict(state))
+            self.repository.put(str(state.session_id or ""), asdict(state))
             self.last_error = ""
         except Exception as exc:  # noqa: BLE001 - runtime state is fail-open
             self.last_error = type(exc).__name__

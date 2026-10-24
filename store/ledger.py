@@ -1,19 +1,100 @@
-"""追加日志的哈希链编排：写入委托 DB，校验时逐条重算。"""
+"""Ledger hash chain and repository."""
 
 from __future__ import annotations
 
-try:  # 作为 astrbot 插件包的一部分导入
-    from .db import DB, chain_hash, chain_payload
-except ImportError:  # 作为顶层 store 包导入（脚本 / 测试）
-    from db import DB, chain_hash, chain_payload
+import hashlib
+import json
+import sqlite3
+
+try:
+    from .sqlite import SqliteRepository, now_iso
+except ImportError:
+    from sqlite import SqliteRepository, now_iso
+
+
+def chain_payload(
+    at: str,
+    op: str,
+    entity: str,
+    before: str | None,
+    after: str | None,
+    reason: str,
+) -> str:
+    return json.dumps(
+        [at, op, entity, before, after, reason],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def chain_hash(prev_hash: str, payload: str) -> str:
+    return hashlib.sha256((prev_hash + payload).encode("utf-8")).hexdigest()[:16]
+
+
+def append_ledger_conn(
+    conn: sqlite3.Connection,
+    op: str,
+    entity: str,
+    before: str | None,
+    after: str | None,
+    reason: str,
+    at: str = "",
+) -> None:
+    """Append inside a caller-owned transaction."""
+    moment = at or now_iso()
+    row = conn.execute(
+        "SELECT self_hash FROM ledger ORDER BY seq DESC LIMIT 1"
+    ).fetchone()
+    previous = str(row["self_hash"]) if row is not None else ""
+    payload = chain_payload(moment, op, entity, before, after, reason)
+    conn.execute(
+        "INSERT INTO ledger(at, op, entity, before_hash, after_hash, reason, "
+        "prev_hash, self_hash) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            moment,
+            op,
+            entity,
+            before,
+            after,
+            reason,
+            previous,
+            chain_hash(previous, payload),
+        ),
+    )
+
+
+class LedgerRepository(SqliteRepository):
+    """Read and append the append-only ledger table."""
+
+    def last_hash(self) -> str:
+        row = self.conn.execute(
+            "SELECT self_hash FROM ledger ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        return str(row["self_hash"]) if row is not None else ""
+
+    def append(
+        self,
+        op: str,
+        entity: str,
+        before: str | None,
+        after: str | None,
+        reason: str,
+    ) -> None:
+        with self.conn:
+            append_ledger_conn(self.conn, op, entity, before, after, reason)
+
+    def entries(self) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT at, op, entity, before_hash, after_hash, reason, prev_hash, "
+            "self_hash FROM ledger ORDER BY seq"
+        ).fetchall()
 
 
 class Ledger:
-    """把 DB 里的 ledger 表包装成可校验的哈希链。"""
+    """Validate the repository's hash chain."""
 
-    def __init__(self, db: DB) -> None:
-        """绑定数据库；不预读日志，verify() 时再取。"""
-        self.db = db
+    def __init__(self, repository: LedgerRepository) -> None:
+        self.repository = repository
 
     def append(
         self,
@@ -23,18 +104,15 @@ class Ledger:
         after: str | None = None,
         reason: str = "",
     ) -> str:
-        """追加一条日志并返回新条目的 self_hash。"""
-        self.db.ledger_append(op, entity, before, after, reason)
+        self.repository.append(op, entity, before, after, reason)
         return self.last_hash()
 
     def last_hash(self) -> str:
-        """返回链尾哈希；空链返回空串。"""
-        return self.db.ledger_last_hash()
+        return self.repository.last_hash()
 
     def verify(self) -> bool:
-        """重算整条哈希链，检查 prev 连续且 self 正确。"""
-        prev = ""
-        for row in self.db.ledger_entries():
+        previous = ""
+        for row in self.repository.entries():
             payload = chain_payload(
                 str(row["at"]),
                 str(row["op"]),
@@ -43,8 +121,8 @@ class Ledger:
                 row["after_hash"],
                 str(row["reason"]),
             )
-            expected = chain_hash(prev, payload)
-            if str(row["prev_hash"]) != prev or str(row["self_hash"]) != expected:
+            expected = chain_hash(previous, payload)
+            if str(row["prev_hash"]) != previous or str(row["self_hash"]) != expected:
                 return False
-            prev = expected
+            previous = expected
         return True

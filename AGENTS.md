@@ -24,7 +24,7 @@ This file is normative. If it conflicts with a casual instruction, stop and ask 
 2. **Artifact is a derived, revisable interpretation.** It is never the raw truth.
 3. **Every production write goes through `DB.commit()`** with expected revision, version snapshot,
    evidence links and ledger entry. Do not add new `DB.upsert()` call sites.
-4. **SQL lives only in `store/db.py`.** No SQL in core, app, recall, perceive, maintain or main.
+4. **SQL lives only in `store/`.** `store/db.py` is composition only; repositories own their SQL.
 5. **Dependency direction:** adapters -> app -> core. `core/` imports no storage, SDK, plugin or app code.
 6. **External calls use ports.** LLM calls go through `ChatModel`; AstrBot, SQLite and files stay at edges.
 7. **Recall has no hidden writes.** Delivery, reinforcement and checkpoint are explicit write use cases.

@@ -69,7 +69,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.temp.cleanup)
         db = DB(":memory:")
         self.addCleanup(db.close)
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         journal = Journal(Path(self.temp.name) / "lifecycle.jsonl")
         jobs = Jobs(journal)
         self.addAsyncCleanup(jobs.close)
@@ -144,7 +144,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
                 {**payload, "owner_umo": "bot:FriendMessage:alice"},
                 scope=("private", "shared", "shadow")[index % 3],
             )
-            db.upsert(art)
+            db.artifacts.upsert(art)
             cache.put(art)
             self.ids.append(art.header.id)
         self.command = {
@@ -262,7 +262,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.call("task", {"kind": "extract", "confirmed": True}, expected=409)
         await self.call("update", self.command, expected=409)
         await self.plugin.jobs.close()
-        with patch.object(self.plugin.db, "list", side_effect=OSError("private error")):
+        with patch.object(self.plugin.db.artifacts, "list", side_effect=OSError("private error")):
             await self.call("records", expected=500)
         self.plugin.ready = False
         await self.call("records", expected=503)

@@ -38,7 +38,7 @@ class MaintenanceService:
             dropped = decay_all(self.db, self.cache, today)
             metrics["forgotten"] = dropped
         with self.journal.span("weekly", "merge", threshold=0.6) as metrics:
-            merged = merge_similar(self.db, self.cache, threshold=0.6)
+            merged = merge_similar(self.db.artifacts, self.cache, threshold=0.6)
             metrics["merged"] = merged
         with self.journal.span("weekly", "persona") as metrics:
             persona = distill_self_persona(self.db, self.cache, today)

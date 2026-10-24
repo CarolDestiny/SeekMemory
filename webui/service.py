@@ -58,11 +58,11 @@ class ManagementService:
             覆盖全部 scope 和非活跃状态的管理记录。
         """
         records = []
-        for art in self.db.list():
+        for art in self.db.artifacts.list():
             header, payload = art.header, art.payload
             text = content_of(art) or "（空内容）"
             versions = {}
-            for version in self.db.history(header.id):
+            for version in self.db.artifacts.history(header.id):
                 previous = Artifact(header=header, payload=version["payload"])
                 versions[version["revision"]] = {
                     "revision": version["revision"],
@@ -96,7 +96,7 @@ class ManagementService:
                         or header.said_by
                         or "未知对象"
                     ),
-                    "session": owner_of(art, self.db.source_umo) or "未标注会话",
+                    "session": owner_of(art, self.db.sources.source_umo) or "未标注会话",
                     "tags": [str(tag) for tag in tags if str(tag)]
                     if isinstance(tags, list)
                     else [],
@@ -109,7 +109,7 @@ class ManagementService:
                         reverse=True,
                     ),
                     "relatedIds": list(
-                        dict.fromkeys(edge[0] for edge in self.db.edges_of(header.id))
+                        dict.fromkeys(edge[0] for edge in self.db.artifacts.edges_of(header.id))
                     ),
                 }
             )
@@ -127,15 +127,15 @@ class ManagementService:
         Raises:
             LookupError: Artifact 已不存在。
         """
-        art = self.db.get(node_id)
+        art = self.db.artifacts.get(node_id)
         if art is None:
             raise LookupError("记忆不存在")
         return {
             "artifact": dataclasses.asdict(art),
-            **self.db.inspect_record(node_id),
+            **self.db.artifacts.inspect_record(node_id),
             "ledger": [
                 dict(row)
-                for row in self.db.ledger_entries()
+                for row in self.db.ledger.entries()
                 if row["entity"] == node_id
             ],
         }
@@ -181,7 +181,7 @@ class ManagementService:
             or len(json.dumps(body["payload"])) > 50000
         ):
             raise ValueError("记忆内容必须为 JSON 对象，序列化后不超过 50,000 个字符")
-        art = self.db.get(body["id"])
+        art = self.db.artifacts.get(body["id"])
         if art is None:
             raise LookupError("记忆不存在")
         if art.header.state == "merged" and body["state"] != "merged":
@@ -193,7 +193,7 @@ class ManagementService:
         )
         validate(replacement)
         try:
-            self.db.commit(
+            self.db.artifacts.commit(
                 replacement,
                 expected_revision=body["expectedRevision"],
                 op="forget" if body["state"] == "forgotten" else "revise",
@@ -225,7 +225,7 @@ class ManagementService:
                 raise ValueError(f"字段 {key} 无效")
         owner = str(self.conf("owner_umo", ""))
         pool = self.cache.active()
-        eligible = visible(pool, body["umo"], owner, self.db.source_umo)
+        eligible = visible(pool, body["umo"], owner, self.db.sources.source_umo)
         private = ":FriendMessage:" in body["umo"]
         eligible = [
             art for art in eligible

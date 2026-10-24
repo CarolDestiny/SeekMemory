@@ -37,7 +37,7 @@ class SnapshotTest(unittest.TestCase):
         source = os.path.join(directory, "source.db")
         target = os.path.join(directory, "target.db")
         db = DB(source)
-        db.commit(make("memory", {"text": "snapshot fact", "level": "fact"}),
+        db.artifacts.commit(make("memory", {"text": "snapshot fact", "level": "fact"}),
                   expected_revision=0, op="create")
         db.close()
         snapshot(source, target)
@@ -49,7 +49,7 @@ class LiveProbeTest(unittest.TestCase):
         path = os.path.join(tempfile.mkdtemp(prefix="seekmem_probe_"), "t.db")
         db = DB(path)
         art = make("memory", {"text": "probe fact", "level": "fact"})
-        db.commit(art, expected_revision=0, op="create")
+        db.artifacts.commit(art, expected_revision=0, op="create")
         db.close()
         result = probe(path, "test")
         self.assertEqual(result["label"], "test")

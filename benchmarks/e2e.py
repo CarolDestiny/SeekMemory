@@ -84,7 +84,7 @@ def gen_messages():
 def ingest(msgs):
     tmp = tempfile.mkdtemp(prefix="seekmem_e2e_")
     db = DB(os.path.join(tmp, "e2e.db"))
-    cache = Cache(db); graph = Graph(db, cache); by_key = {}
+    cache = Cache(db.artifacts); graph = Graph(db, cache); by_key = {}
     for m in msgs:
         if m["uid"] == "bot":
             continue
@@ -106,7 +106,7 @@ def ingest(msgs):
             strength={"weight": weight, "confidence": 1.0, "arousal": arousal,
                       "valence": valence, "funny": 0.0},
             time={"created": date_of(m["day"]), "updated": date_of(m["day"])})
-        db.upsert(art); cache.put(art); by_key[(m["day"], m["uid"], m["text"])] = art
+        db.artifacts.upsert(art); cache.put(art); by_key[(m["day"], m["uid"], m["text"])] = art
     get = lambda d, u, t: by_key[(d, u, t)]
     link = lambda a, b, k, w: graph.link(a.header.id, b.header.id, k, w)
     name, quant, arch = get(1, "u0", FACTS[0][1]), get(2, "u0", FACTS[1][1]), get(5, "u0", FACTS[2][1])

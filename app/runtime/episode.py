@@ -181,8 +181,8 @@ class JsonlEpisodeStore:
 class DBEpisodeStore:
     """Persist runtime episodes through the project's SQLite DB facade."""
 
-    def __init__(self, db) -> None:
-        self.db = db
+    def __init__(self, repository) -> None:
+        self.repository = repository
         self.last_error = ""
 
     def append(self, episode: EpisodeRecord) -> None:
@@ -190,7 +190,7 @@ class DBEpisodeStore:
         payload["id"] = f"ep_{uuid.uuid4().hex}"
         payload["tool_calls"] = list(normalize_tool_calls(episode.tool_calls))
         try:
-            self.db.append_runtime_episode(payload)
+            self.repository.append(payload)
             self.last_error = ""
         except Exception as exc:  # noqa: BLE001 - episode logging is fail-open
             self.last_error = type(exc).__name__

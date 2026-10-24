@@ -126,7 +126,7 @@ def _majority(arts: list[Artifact], key: str, default: str) -> str:
 
 
 def merge_similar(
-    db: DB, cache: Cache, threshold: float = 0.6, limit: int = 50
+    artifacts, cache: Cache, threshold: float = 0.6, limit: int = 50
 ) -> int:
     """Merge active scene/detail rows only inside the same subject and scope."""
     pool = [
@@ -207,7 +207,7 @@ def merge_similar(
                     member.header.revision,
                     tuple(member.header.lineage.sources),
                 ))
-            db.commit_many(
+            artifacts.commit_many(
                 writes,
                 op="merge",
                 reason=f"merge {count} memories into impression",

@@ -61,12 +61,12 @@ def main() -> None:
     msgs = gen_messages()
     tmp = tempfile.mkdtemp()
     db = DB(os.path.join(tmp, "scale.db"))
-    cache = Cache(db)
+    cache = Cache(db.artifacts)
     graph = Graph(db, cache)
 
     for day, uid, text in msgs:
         art = to_art(day, uid, text)
-        db.upsert(art)
+        db.artifacts.upsert(art)
         cache.put(art)
 
     owner_pool = [a for a in cache.active() if a.header.scope == "private"]

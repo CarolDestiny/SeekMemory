@@ -118,7 +118,7 @@ BM25 默认开启（`bm25_enabled=true`），配置权重默认为 1.0。插件�
 AstrBot plugin page
   -> webui/routes.py
   -> webui/service.py
-  -> store/db.py + cache + recall pipeline
+  -> store/db.py repositories + cache + recall pipeline
   -> JSON response or SSE lifecycle event
 ```
 
@@ -135,7 +135,7 @@ one-time delivery state.
 ## Hard rules
 
 1. Only core/artifact.py defines Artifact data structures.
-2. Only store/db.py writes SQL.
+2. Only store/ writes SQL; store/db.py composes repositories.
 3. All production writes use DB.commit with expected revision.
 4. Source is immutable truth; Artifact is derived interpretation.
 5. Cross-session content must pass disclosure before injection.

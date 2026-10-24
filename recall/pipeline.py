@@ -140,7 +140,7 @@ def build_block(
     Returns:
         注入文本与运行决策计数。
     """
-    lookup = db.source_umo if db is not None else None
+    lookup = db.sources.source_umo if db is not None else None
     subject = subject_of(speaker, owner_umo)
     owner_id = str(owner_umo or "").split(":")[-1] if owner_umo else ""
     scene = RecallScene(umo, str(speaker or ""), owner_id, (str(speaker or ""),))
@@ -240,7 +240,7 @@ def build_block(
                     continue
                 source_ids = list(art.header.lineage.sources)
                 origins = (
-                    tuple(db.source_umos(source_ids).values()) if db is not None else ()
+                    tuple(db.sources.source_umos(source_ids).values()) if db is not None else ()
                 )
                 if art.header.family == "designated":
                     owner_ref = str(

@@ -41,9 +41,9 @@ class DreamResult:
 class DreamCycle:
     """每天一次的进化周期；不持有模型与存储之外的状态。"""
 
-    def __init__(self, store: Any, conf: Callable[[str, Any], Any],
+    def __init__(self, dreams: Any, conf: Callable[[str, Any], Any],
                  clock: Clock | None = None, log: Log | None = None) -> None:
-        self.store = store
+        self.dreams = dreams
         self._c = conf
         self.clock = clock or datetime.datetime.now
         self.log = log or (lambda _msg: None)
@@ -74,7 +74,7 @@ class DreamCycle:
         hour, minute = self._at()
         if (moment.hour, moment.minute) < (hour, minute):
             return False
-        run = self.store.dream_get(moment.date().isoformat())
+        run = self.dreams.get(moment.date().isoformat())
         return run is None or run.get("status") != "done"
 
     async def run(self, flush_once: FlushFn, pending: PendingFn,
@@ -87,7 +87,7 @@ class DreamCycle:
             return DreamResult(date, "skipped", "disabled")
         if not self.due(moment):
             return DreamResult(date, "skipped", "not_due")
-        if not self.store.dream_begin(date, now=moment.isoformat(timespec="seconds")):
+        if not self.dreams.begin(date, now=moment.isoformat(timespec="seconds")):
             return DreamResult(date, "skipped", "already_done")
 
         limit = max(1, int(self._c("dream_max_batches", 12)))
@@ -120,7 +120,7 @@ class DreamCycle:
 
         status = "done" if not errors else "failed"
         try:
-            self.store.dream_finish(
+            self.dreams.finish(
                 date, status=status, batches=batches, written=written,
                 errors=errors, summary=summary,
                 now=moment.isoformat(timespec="seconds"),
@@ -140,12 +140,12 @@ class DreamCycle:
         """给面板/报表看的梦境状态。"""
         moment = now or self.clock()
         today = moment.date().isoformat()
-        run = self.store.dream_get(today)
+        run = self.dreams.get(today)
         return {
             "enabled": self.enabled,
             "at": "%02d:%02d" % self._at(),
             "today": today,
             "today_run": run,
             "due": self.due(moment),
-            "recent": self.store.dream_recent(7),
+            "recent": self.dreams.recent(7),
         }

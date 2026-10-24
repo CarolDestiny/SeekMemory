@@ -54,26 +54,34 @@ class CommitTest(unittest.TestCase):
     def test_cas_history_and_ledger(self):
         db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
         first = _memory(subject="owner")
-        db.commit(first, expected_revision=0, op="create", reason="test",
+        db.artifacts.commit(first, expected_revision=0, op="create", reason="test",
                   source_ids=("source-1",))
-        self.assertEqual(db.get(first.header.id).header.subject_id, "owner")
+        self.assertEqual(db.artifacts.get(first.header.id).header.subject_id, "owner")
         second = revise(first, payload={"text": "updated", "level": "fact"})
-        db.commit(second, expected_revision=1, op="revise", reason="update")
-        rows = db.history(first.header.id)
+        db.artifacts.commit(second, expected_revision=1, op="revise", reason="update")
+        rows = db.artifacts.history(first.header.id)
         self.assertEqual([r["revision"] for r in rows], [1, 2])
         self.assertEqual([r["op"] for r in rows], ["create", "revise"])
-        self.assertEqual(len(db.ledger_entries()), 2)
-        self.assertTrue(Ledger(db).verify())
+        self.assertEqual(len(db.ledger.entries()), 2)
+        self.assertTrue(Ledger(db.ledger).verify())
         self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM artifact_evidence").fetchone()[0], 1)
         with self.assertRaises(VersionError):
-            db.commit(revise(second, payload={"text": "stale", "level": "fact"}), expected_revision=1, op="revise")
+            db.artifacts.commit(revise(second, payload={"text": "stale", "level": "fact"}), expected_revision=1, op="revise")
         bad_event = StateEvent("bad", first.header.id, 2, "reinforce", {}, "t")
         with self.assertRaises(VersionError):
-            db.commit(second, expected_revision=99, op="reinforce", state_events=(bad_event,))
+            db.artifacts.commit(second, expected_revision=99, op="reinforce", state_events=(bad_event,))
         self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM state_events WHERE id = 'bad'").fetchone()[0], 0)
         event = StateEvent("e1", first.header.id, 2, "reinforce", {"hits": 1}, "t")
-        db.append_state_event(event)
-        self.assertEqual(db.conn.execute("SELECT COUNT(*) FROM state_events").fetchone()[0], 1)
+        reinforced = revise(second, payload={"text": "updated", "level": "fact"})
+        db.artifacts.commit(
+            reinforced,
+            expected_revision=2,
+            op="reinforce",
+            state_events=(event,),
+        )
+        self.assertEqual(
+            db.conn.execute("SELECT COUNT(*) FROM state_events").fetchone()[0], 1
+        )
 
 
 class DisclosureTest(unittest.TestCase):
@@ -136,11 +144,11 @@ class StoreBoundaryTest(unittest.TestCase):
     def test_source_batch_and_subject_index(self):
         db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
         src = Source("s1", "turn1", "umo1", "u1", "user", "hello", "t")
-        self.assertEqual(db.append_sources([src]), 1)
-        self.assertEqual(db.append_sources([src]), 0)
-        self.assertEqual(db.source_umo("s1"), "umo1")
+        self.assertEqual(db.sources.append_sources([src]), 1)
+        self.assertEqual(db.sources.append_sources([src]), 0)
+        self.assertEqual(db.sources.source_umo("s1"), "umo1")
         art = _memory(subject="u1")
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         cache.put(art)
         self.assertEqual([a.header.id for a in cache.by_subject("u1")], [art.header.id])
 
@@ -148,11 +156,11 @@ class StoreBoundaryTest(unittest.TestCase):
 class CheckpointTest(unittest.TestCase):
     def test_checkpoint_creates_revision_and_state_event(self):
         db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         art = _memory()
-        db.commit(art, expected_revision=0, op="create")
+        db.artifacts.commit(art, expected_revision=0, op="create")
         cache.put(art)
-        mgr = CheckpointManager(db, cache, cooldown_seconds=0)
+        mgr = CheckpointManager(db.artifacts, cache, cooldown_seconds=0)
         mgr.record(art)
         mgr.record(art)
         self.assertEqual(mgr.flush(), 1)

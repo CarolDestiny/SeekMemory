@@ -88,30 +88,33 @@ class Graph:
     def neighbours(self, node_id: str, kinds: tuple[str, ...] = ("similar","causal","temporal")) -> list[tuple[str, float]]: ...
 ```
 
-## store/db.py
+## store/db.py and repositories
+
+`DB` is composition only. It owns one SQLite connection and exposes domain repositories:
 
 ```python
 class DB:
-    def __init__(self, path: str): ...
-    def upsert(self, art: Artifact) -> None: ...
-    def get(self, node_id: str) -> Artifact | None: ...
-    def list(self, family: str | None = None, state: str | None = None) -> list[Artifact]: ...
-    def source_umo(self, source_id: str) -> str: ...
-    def add_edge(self, src: str, dst: str, kind: str, weight: float) -> None: ...
-    def edges_of(self, node_id: str) -> list[tuple[str, str, float]]: ...
-    def add_source(self, sid: str, umo: str, at: str, role: str, text: str, flags: dict) -> None: ...
-    def link_evidence(self, node_id: str, source_id: str) -> None: ...
-    def ledger_last_hash(self) -> str: ...
-    def ledger_append(self, op: str, entity: str, before: str|None, after: str|None, reason: str) -> None: ...
-    def count(self, family: str | None = None) -> int: ...
+    artifacts: ArtifactRepository
+    sources: SourceRepository
+    extraction: ExtractionRepository
+    runtime_state: RuntimeStateRepository
+    runtime_episodes: RuntimeEpisodeRepository
+    dreams: DreamRepository
+    ledger: LedgerRepository
+    metrics: StoreMetricsRepository
+    conn: sqlite3.Connection
     def close(self) -> None: ...
 ```
+
+Repositories live in `store/artifacts.py`, `store/sources.py`, `store/extraction.py`,
+`store/runtime_state.py`, `store/runtime_episodes.py`, `store/dreams.py` and
+`store/metrics.py`. SQL and migrations stay inside `store/`.
 
 ## store/cache.py
 
 ```python
 class Cache:
-    def __init__(self, db: DB): ...
+    def __init__(self, artifacts: ArtifactRepository): ...
     @property
     def version(self) -> int: ...        # 单调递增的派生索引失效标识
     def load(self) -> None: ...          # 全量载入 active
@@ -304,7 +307,7 @@ Mock 返回值也对照 YAML 校验。契约未同步生成类型、实现输出
 
 1. 单文件 ≤ 300 行，尽量 150
 2. `core/` `store/` `recall/` 不 import `astrbot`
-3. 只有 `store/db.py` 写 SQL
+3. 只有 `store/` 写 SQL；`store/db.py` 只负责组合
 4. 所有函数带类型标注
 5. 每个文件头部有 docstring：职责一句话
 
@@ -372,18 +375,22 @@ class RetrievalCandidate:
 `lexical` is reserved for normalized BM25 or another pluggable lexical retriever.
 语义相似度不得填入 lexical。本次不实现本地向量检索，不新增占位字段。
 
-## store/db.py
+## store repositories
 
 ```python
-def append_sources(self, sources: list[Source]) -> int: ...
-def source_umos(self, source_ids: list[str]) -> dict[str, str]: ...
-def commit(self, art: Artifact, *, expected_revision: int, op: str,
-           reason: str = "", source_ids: tuple[str, ...] = (),
-           state_events: tuple[StateEvent, ...] = ()) -> None: ...
-def history(self, node_id: str) -> list[dict]: ...
+class ArtifactRepository:
+    def commit(self, art: Artifact, *, expected_revision: int, op: str,
+               reason: str = "", source_ids: tuple[str, ...] = (),
+               state_events: tuple[StateEvent, ...] = ()) -> None: ...
+    def history(self, node_id: str) -> list[dict]: ...
+
+class SourceRepository:
+    def append_sources(self, sources: list[Source]) -> int: ...
+    def source_umos(self, source_ids: list[str]) -> dict[str, str]: ...
 ```
 
-commit is atomic across node head, append-only version, evidence, state events and ledger.
+Artifact commit is atomic across node head, append-only version, evidence, state events and
+ledger. Source admission is atomic across blobs, sources and extraction_state.
 
 ## app/checkpoint.py
 

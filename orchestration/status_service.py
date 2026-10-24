@@ -8,8 +8,8 @@ import json
 class StatusService:
     """Expose persona revisions without leaking source text."""
 
-    def __init__(self, *, db) -> None:
-        self.db = db
+    def __init__(self, *, artifacts) -> None:
+        self.artifacts = artifacts
 
     @staticmethod
     def json_object(raw: object) -> dict:
@@ -49,14 +49,14 @@ class StatusService:
         return ids("derived_from", "derivedFrom"), ids("sources", "sourceIds")
 
     def persona(self) -> dict | None:
-        if self.db is None:
+        if self.artifacts is None:
             return None
-        active = [art for art in self.db.list(family="persona", state="active")]
+        active = [art for art in self.artifacts.list(family="persona", state="active")]
         if not active:
             return None
         current = max(active, key=lambda art: art.header.revision)
         evidence: dict[int, tuple[list[str], list[str]]] = {}
-        inspected = self.db.inspect_record(current.header.id)
+        inspected = self.artifacts.inspect_record(current.header.id)
         for row in inspected.get("versions", []):
             try:
                 revision = int(row.get("revision") or 0)
@@ -64,7 +64,7 @@ class StatusService:
                 continue
             evidence[revision] = self.header_evidence(row.get("header"))
         revisions = []
-        for row in self.db.history(current.header.id):
+        for row in self.artifacts.history(current.header.id):
             revision = int(row.get("revision") or 0)
             derived_from, source_ids = evidence.get(revision, ([], []))
             payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}

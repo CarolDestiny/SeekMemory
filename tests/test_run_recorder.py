@@ -70,7 +70,7 @@ class RunRecorderTest(unittest.TestCase):
         self.episodes = FakeEpisodes()
         memory = SimpleNamespace(header=SimpleNamespace(family="memory"))
         self.recorder = RunRecorder(
-            db=self.db,
+            sources=self.db,
             buffer=self.buffer,
             checkpoint=self.checkpoint,
             episodes=self.episodes,
@@ -220,16 +220,16 @@ class RunRecorderTest(unittest.TestCase):
         conn.close()
         db = DB(path)
         self.addCleanup(db.close)
-        db.append_runtime_episode({
+        db.runtime_episodes.append({
             "id": "ep-old", "at": "2026-01-01T00:00:00", "session_id": "s1",
             "run_id": "run-old",
         })
-        self.assertEqual(db.list_runtime_episodes("s1")[0]["run_id"], "run-old")
+        self.assertEqual(db.runtime_episodes.list("s1")[0]["run_id"], "run-old")
 
     def test_database_rejects_duplicate_episode_run_ids(self):
         db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_recorder_"), "memory.db"))
         self.addCleanup(db.close)
-        sink = DBEpisodeStore(db)
+        sink = DBEpisodeStore(db.runtime_episodes)
         recorder = EpisodeRecorder(sink)
         episode = EpisodeRecord(
             session_id="s1", at="2026-01-01T00:00:00", decision="reply",
@@ -239,7 +239,7 @@ class RunRecorderTest(unittest.TestCase):
         recorder.record(episode)
         recorder.record(episode)
         self.assertEqual(sink.last_error, "")
-        rows = db.list_runtime_episodes("s1")
+        rows = db.runtime_episodes.list("s1")
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["run_id"], "run-1")
 

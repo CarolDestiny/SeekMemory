@@ -29,7 +29,7 @@ class AstrBotHooks:
         if now - self._last_runtime_prune_at < 60:
             return
         try:
-            self.db.prune_runtime_episodes(
+            self.db.runtime_episodes.prune(
                 retention_days=int(self._c("runtime_episode_retention_days", 30)),
                 max_rows=int(self._c("runtime_episode_max_rows", 5000)),
             )

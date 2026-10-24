@@ -84,13 +84,13 @@ def main() -> None:
     events, queries = build()
     tmp = tempfile.mkdtemp()
     db = DB(os.path.join(tmp, "bench.db"))
-    cache = Cache(db)
+    cache = Cache(db.artifacts)
     graph = Graph(db, cache)
     table = {}
 
     for e in events:
         art = to_artifact(e)
-        db.upsert(art)
+        db.artifacts.upsert(art)
         cache.put(art)
         table[e.text] = art.header.id
 

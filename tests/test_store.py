@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.artifact import Artifact, make, revise
 from store.cache import Cache
-from store.db import DB, chain_hash, chain_payload
+from store.db import DB
+from store.ledger import chain_hash, chain_payload
 from store.ledger import Ledger
 
 
@@ -39,7 +40,7 @@ def _example() -> Artifact:
 
 def _edges(db: DB, node_id: str) -> list[tuple[str, str, float]]:
     """把边权四舍五入到 6 位，避免浮点比较噪声。"""
-    return [(other, kind, round(weight, 6)) for other, kind, weight in db.edges_of(node_id)]
+    return [(other, kind, round(weight, 6)) for other, kind, weight in db.artifacts.edges_of(node_id)]
 
 
 class _StoreCase(unittest.TestCase):
@@ -49,7 +50,7 @@ class _StoreCase(unittest.TestCase):
         """创建临时数据库与缓存。"""
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_store_")
         self.db = DB(os.path.join(self.tmpdir, "memory.db"))
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
 
     def tearDown(self) -> None:
         """关闭数据库并删除临时目录。"""
@@ -84,27 +85,27 @@ class DBTest(_StoreCase):
             },
             lineage={"sources": ("s_1", "s_2"), "derived_from": ("n_x",)},
         )
-        self.db.upsert(art)
-        got = self.db.get(art.header.id)
+        self.db.artifacts.upsert(art)
+        got = self.db.artifacts.get(art.header.id)
         self.assertIsNotNone(got)
         self.assertEqual(art, got)
         self.assertEqual(got.header.lineage.sources, ("s_1", "s_2"))
         self.assertEqual(got.header.lineage.derived_from, ("n_x",))
-        self.assertIsNone(self.db.get("n_missing"))
+        self.assertIsNone(self.db.artifacts.get("n_missing"))
 
     def test_upsert_updates_existing_row(self) -> None:
         """同 id 再次 upsert 是更新而不是插入，created 保持不变。"""
         art = _memory("旧文本")
-        self.db.upsert(art)
+        self.db.artifacts.upsert(art)
         revised = revise(art, {"text": "新文本", "level": "detail"}, strength={"weight": 2.5})
-        self.db.upsert(revised)
-        got = self.db.get(art.header.id)
+        self.db.artifacts.upsert(revised)
+        got = self.db.artifacts.get(art.header.id)
         self.assertEqual(got.header.revision, 2)
         self.assertEqual(got.payload["text"], "新文本")
         self.assertEqual(got.payload["level"], "detail")
         self.assertEqual(got.header.strength.weight, 2.5)
         self.assertEqual(got.header.time.created, art.header.time.created)
-        self.assertEqual(self.db.count("memory"), 1)
+        self.assertEqual(self.db.artifacts.count("memory"), 1)
 
     def test_list_filters_family_and_state(self) -> None:
         """list 可按 family、state 单独或组合过滤。"""
@@ -112,35 +113,35 @@ class DBTest(_StoreCase):
         fact = _memory("事实", "fact")
         example = _example()
         for art in (scene, fact, example):
-            self.db.upsert(art)
+            self.db.artifacts.upsert(art)
         forgotten = revise(scene, state="forgotten")
-        self.db.upsert(forgotten)
+        self.db.artifacts.upsert(forgotten)
 
-        self.assertEqual({a.header.id for a in self.db.list()}, {scene.header.id, fact.header.id, example.header.id})
+        self.assertEqual({a.header.id for a in self.db.artifacts.list()}, {scene.header.id, fact.header.id, example.header.id})
         self.assertEqual(
-            {a.header.id for a in self.db.list(family="memory")},
+            {a.header.id for a in self.db.artifacts.list(family="memory")},
             {scene.header.id, fact.header.id},
         )
         self.assertEqual(
-            {a.header.id for a in self.db.list(family="memory", state="active")},
+            {a.header.id for a in self.db.artifacts.list(family="memory", state="active")},
             {fact.header.id},
         )
         self.assertEqual(
-            {a.header.id for a in self.db.list(family="memory", state="forgotten")},
+            {a.header.id for a in self.db.artifacts.list(family="memory", state="forgotten")},
             {scene.header.id},
         )
-        self.assertEqual(len(self.db.list(state="active")), 2)
-        self.assertEqual(self.db.list(family="persona"), [])
-        self.assertEqual(self.db.count(), 3)
-        self.assertEqual(self.db.count("memory"), 2)
+        self.assertEqual(len(self.db.artifacts.list(state="active")), 2)
+        self.assertEqual(self.db.artifacts.list(family="persona"), [])
+        self.assertEqual(self.db.artifacts.count(), 3)
+        self.assertEqual(self.db.artifacts.count("memory"), 2)
 
     def test_edges_of_returns_both_directions(self) -> None:
         """edges_of 从边的任意一端都能查到，另一端与权重正确。"""
         left, right, third = _memory("甲"), _memory("乙"), _memory("丙")
         for art in (left, right, third):
-            self.db.upsert(art)
-        self.db.add_edge(left.header.id, right.header.id, "similar", 0.7)
-        self.db.add_edge(left.header.id, third.header.id, "causal", 0.5)
+            self.db.artifacts.upsert(art)
+        self.db.artifacts.add_edge(left.header.id, right.header.id, "similar", 0.7)
+        self.db.artifacts.add_edge(left.header.id, third.header.id, "causal", 0.5)
 
         self.assertIn((right.header.id, "similar", 0.7), _edges(self.db, left.header.id))
         self.assertIn((third.header.id, "causal", 0.5), _edges(self.db, left.header.id))
@@ -148,13 +149,13 @@ class DBTest(_StoreCase):
         self.assertEqual(_edges(self.db, third.header.id), [(left.header.id, "causal", 0.5)])
         self.assertEqual(_edges(self.db, "n_missing"), [])
 
-        self.db.add_edge(left.header.id, right.header.id, "similar", 0.9)
+        self.db.artifacts.add_edge(left.header.id, right.header.id, "similar", 0.9)
         similar = [edge for edge in _edges(self.db, left.header.id) if edge[0] == right.header.id]
         self.assertEqual(similar, [(right.header.id, "similar", 0.9)])
 
     def test_ledger_chain_is_continuous(self) -> None:
         """账本从空链开始，逐条 prev 指向上一条 self，整链可验证。"""
-        ledger = Ledger(self.db)
+        ledger = Ledger(self.db.ledger)
         self.assertTrue(ledger.verify())
         self.assertEqual(ledger.last_hash(), "")
 
@@ -163,7 +164,7 @@ class DBTest(_StoreCase):
         third = ledger.append("forget", "n_2", "h_3", None, "遗忘")
         self.assertEqual(ledger.last_hash(), third)
 
-        entries = self.db.ledger_entries()
+        entries = self.db.ledger.entries()
         self.assertEqual(len(entries), 3)
         self.assertEqual(entries[0]["prev_hash"], "")
         self.assertEqual(entries[0]["self_hash"], first)
@@ -185,7 +186,7 @@ class DBTest(_StoreCase):
 
     def test_ledger_tamper_detected(self) -> None:
         """改动账本任意字段后 verify 返回 False。"""
-        ledger = Ledger(self.db)
+        ledger = Ledger(self.db.ledger)
         ledger.append("create", "n_1", None, "h_1", "创建")
         ledger.append("update", "n_1", "h_1", "h_2", "修改")
         self.assertTrue(ledger.verify())
@@ -196,7 +197,7 @@ class DBTest(_StoreCase):
 
     def test_ledger_prev_tamper_detected(self) -> None:
         """只改 prev_hash 破坏连续性，同样能被检出。"""
-        ledger = Ledger(self.db)
+        ledger = Ledger(self.db.ledger)
         ledger.append("create", "n_1", None, "h_1", "创建")
         ledger.append("update", "n_1", "h_1", "h_2", "修改")
         with self.db.conn:
@@ -270,10 +271,10 @@ class CacheTest(_StoreCase):
         active = _memory("活跃", "scene")
         forgotten = _memory("遗忘", "scene")
         example = _example()
-        self.db.upsert(active)
-        self.db.upsert(forgotten)
-        self.db.upsert(revise(forgotten, state="forgotten"))
-        self.db.upsert(example)
+        self.db.artifacts.upsert(active)
+        self.db.artifacts.upsert(forgotten)
+        self.db.artifacts.upsert(revise(forgotten, state="forgotten"))
+        self.db.artifacts.upsert(example)
 
         stray = _memory("只在缓存里")
         self.cache.put(stray)

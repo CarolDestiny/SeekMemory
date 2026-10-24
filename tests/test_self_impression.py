@@ -14,7 +14,7 @@ class SelfImpressionTest(PersonaCase):
     def test_three_real_pairs_produce_safe_self_impression(self):
         episodes = self.three()
         self.assertEqual(build_self_impressions(self.db, self.cache), 1)
-        art, = promote_self_candidates(self.cache)
+        art, = promote_self_candidates(self.cache, self.db.sources)
         self.assertEqual(art.header.subject_id, SELF_SUBJECT)
         self.assertEqual(art.header.scope, "shared")
         self.assertEqual(art.payload["about"], "self")
@@ -34,20 +34,20 @@ class SelfImpressionTest(PersonaCase):
     def test_independent_assistant_replies_may_share_one_user_parent(self):
         from core.source import Source
         first = self.episode()
-        parent = self.db.sources_by_ids(["u1"])["u1"]
+        parent = self.db.sources.sources_by_ids(["u1"])["u1"]
         for index in range(2, 4):
             reply = Source(f"a{index}", parent.turn_id, parent.session_id, "bot", "assistant",
                            f"different actual reply {index}", parent.at, reply_to=parent.id)
-            self.db.append_sources([reply])
+            self.db.sources.append_sources([reply])
             self.seed(make("memory", {**first.payload, "text": f"scene {index}"},
                            lineage=Lineage(sources=(parent.id, reply.id)),
                            strength=first.header.strength))
         self.assertEqual(build_self_impressions(self.db, self.cache), 1)
-        art, = promote_self_candidates(self.cache)
+        art, = promote_self_candidates(self.cache, self.db.sources)
         self.assertEqual(len(art.header.lineage.sources), 4)
         self.assertEqual(art.header.strength.hits, 3)
         self.assertEqual(build_self_impressions(self.db, self.cache), 0)
-        self.assertEqual(promote_self_candidates(self.cache)[0].header.id, art.header.id)
+        self.assertEqual(promote_self_candidates(self.cache, self.db.sources)[0].header.id, art.header.id)
 
     def test_threshold_low_confidence_and_legacy_do_not_bootstrap(self):
         self.episode()
@@ -76,11 +76,11 @@ class SelfImpressionTest(PersonaCase):
     def test_no_recursive_count_and_new_evidence_revises_same_id(self):
         self.three()
         build_self_impressions(self.db, self.cache)
-        first, = promote_self_candidates(self.cache)
+        first, = promote_self_candidates(self.cache, self.db.sources)
         self.assertEqual(build_self_impressions(self.db, self.cache), 0)
         self.episode()
         self.assertEqual(build_self_impressions(self.db, self.cache), 1)
-        second, = promote_self_candidates(self.cache)
+        second, = promote_self_candidates(self.cache, self.db.sources)
         self.assertEqual(second.header.id, first.header.id)
         self.assertEqual(second.header.revision, 2)
         self.assertEqual(second.header.strength.hits, 4)
@@ -89,32 +89,32 @@ class SelfImpressionTest(PersonaCase):
     def test_wrong_subject_about_and_user_impressions_are_not_promoted(self):
         self.three()
         build_self_impressions(self.db, self.cache)
-        art, = promote_self_candidates(self.cache)
+        art, = promote_self_candidates(self.cache, self.db.sources)
         self.cache.remove(art.header.id)
         for kw in ({"subject_id": "user"}, {"payload": {**art.payload, "about": "other"}},
                    {"payload": {**art.payload, "text": "许澄住在栖云城"}}):
             invalid = revise(art, **kw)
             self.cache.put(invalid)
-            self.assertEqual(promote_candidates(self.cache), [])
+            self.assertEqual(promote_candidates(self.cache, self.db.sources), [])
             self.cache.remove(invalid.header.id)
 
     def test_evidence_must_really_exist_and_pair(self):
         episodes = self.three()
-        with patch.object(self.db, "sources_by_ids", return_value={}):
+        with patch.object(self.db.sources, "sources_by_ids", return_value={}):
             self.assertEqual(build_self_impressions(self.db, self.cache), 0)
-        broken = self.db.sources_by_ids([s for a in episodes for s in a.header.lineage.sources])
+        broken = self.db.sources.sources_by_ids([s for a in episodes for s in a.header.lineage.sources])
         broken["a1"] = replace(broken["a1"], session_id="wrong")
-        with patch.object(self.db, "sources_by_ids", return_value=broken):
+        with patch.object(self.db.sources, "sources_by_ids", return_value=broken):
             self.assertEqual(build_self_impressions(self.db, self.cache), 0)
 
     def test_commit_failure_does_not_update_cache_or_ledger(self):
         self.three()
-        before = self.db.ledger_entries()
-        with patch.object(self.db, "_ledger_append_conn", side_effect=RuntimeError("busy")):
+        before = self.db.ledger.entries()
+        with patch("store.artifacts.append_ledger_conn", side_effect=RuntimeError("busy")):
             with self.assertRaises(RuntimeError):
                 build_self_impressions(self.db, self.cache)
-        self.assertEqual(promote_self_candidates(self.cache), [])
-        self.assertEqual(self.db.ledger_entries(), before)
+        self.assertEqual(promote_self_candidates(self.cache, self.db.sources), [])
+        self.assertEqual(self.db.ledger.entries(), before)
 
 
 if __name__ == "__main__":

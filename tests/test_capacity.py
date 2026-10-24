@@ -149,7 +149,7 @@ class ExtractionProjectionTest(unittest.TestCase):
         source = Source(
             "s1", "turn1", "umo:a", "u1", "user", "remember this", "2026-10-22T12:00:00"
         )
-        buffer = Buffer(os.path.join(self.temp.name, "pending.json"), db=self.db)
+        buffer = Buffer(os.path.join(self.temp.name, "pending.json"), extraction=self.db.extraction)
         turn = buffer.add(
             "umo:a",
             "remember this",
@@ -160,35 +160,35 @@ class ExtractionProjectionTest(unittest.TestCase):
             turn_id="turn1",
         )
         self.assertIsNotNone(turn)
-        rebuilt = Buffer(os.path.join(self.temp.name, "pending.json"), db=self.db)
+        rebuilt = Buffer(os.path.join(self.temp.name, "pending.json"), extraction=self.db.extraction)
         self.assertEqual([(item.text, item.source_id) for item in rebuilt.items],
                          [("remember this", "s1")])
         self.assertFalse(os.path.exists(os.path.join(self.temp.name, "pending.json")))
 
     def test_host_style_turns_without_source_id_stay_queued_separately(self) -> None:
-        buffer = Buffer(db=self.db)
+        buffer = Buffer(extraction=self.db.extraction)
         buffer.add("umo:a", "Travel itinerary", "alice")
         buffer.add("umo:a", "Database index", "alice")
         self.assertEqual(
             [turn.text for turn in buffer.items], ["Travel itinerary", "Database index"]
         )
         self.assertEqual(len({turn.source_id for turn in buffer.items}), 2)
-        self.assertEqual(len(self.db.pending_extractions()), 2)
+        self.assertEqual(len(self.db.extraction.pending_extractions()), 2)
 
     def test_success_advances_projection_and_keeps_source_rows(self) -> None:
-        buffer = Buffer(db=self.db)
+        buffer = Buffer(extraction=self.db.extraction)
         buffer.add("umo:a", "Travel itinerary", "alice")
         buffer.add("umo:b", "Database index", "bob")
         self.assertEqual(buffer.mark_succeeded(list(buffer.items)), 2)
         self.assertEqual(buffer.items, [])
-        self.assertEqual(Buffer(db=self.db).items, [])
-        self.assertEqual(self.db.capacity_usage()["source_rows"], 2)
+        self.assertEqual(Buffer(extraction=self.db.extraction).items, [])
+        self.assertEqual(self.db.metrics.capacity_usage()["source_rows"], 2)
 
     def test_failed_turn_stays_retryable_with_source_text(self) -> None:
-        buffer = Buffer(db=self.db)
+        buffer = Buffer(extraction=self.db.extraction)
         turn = buffer.add("umo:a", "Travel itinerary", "alice")
         self.assertEqual(buffer.mark_failed([turn], "TimeoutError"), 1)
-        rows = self.db.pending_extractions()
+        rows = self.db.extraction.pending_extractions()
         self.assertEqual(
             [(row["text"], row["attempts"], row["state"]) for row in rows],
             [("Travel itinerary", 1, "retrying")],
@@ -196,35 +196,35 @@ class ExtractionProjectionTest(unittest.TestCase):
         self.assertEqual(buffer.items, [turn])
 
     def test_failures_back_off_then_reach_terminal_state(self) -> None:
-        buffer = Buffer(db=self.db)
+        buffer = Buffer(extraction=self.db.extraction)
         turn = buffer.add("umo:a", "Travel itinerary", "alice")
         self.assertEqual(buffer.mark_failed([turn], "TimeoutError", max_attempts=3), 1)
-        row = self.db.pending_extractions()[0]
+        row = self.db.extraction.pending_extractions()[0]
         self.assertEqual(row["state"], "retrying")
         self.assertEqual(row["attempts"], 1)
         self.assertGreater(row["next_attempt_at"], row["created_at"])
-        self.assertEqual(self.db.ready_extraction_ids(row["created_at"]), set())
-        self.assertEqual(len(self.db.pending_extractions(row["next_attempt_at"])), 1)
+        self.assertEqual(self.db.extraction.ready_extraction_ids(row["created_at"]), set())
+        self.assertEqual(len(self.db.extraction.pending_extractions(row["next_attempt_at"])), 1)
         buffer.mark_failed([turn], "TimeoutError", max_attempts=3)
         buffer.mark_failed([turn], "TimeoutError", max_attempts=3)
-        self.assertEqual(self.db.queue_counts()["dead"], 1)
-        self.assertEqual(self.db.pending_extractions(), [])
-        self.assertEqual(self.db.capacity_usage()["dead_rows"], 1)
+        self.assertEqual(self.db.extraction.queue_counts()["dead"], 1)
+        self.assertEqual(self.db.extraction.pending_extractions(), [])
+        self.assertEqual(self.db.metrics.capacity_usage()["dead_rows"], 1)
 
     def test_deferred_admission_parks_rows_until_release(self) -> None:
-        buffer = Buffer(db=self.db)
+        buffer = Buffer(extraction=self.db.extraction)
         turn = buffer.add("umo:a", "Travel itinerary", "alice", deferred=True)
         self.assertIsNotNone(turn)
         self.assertEqual(buffer.items, [])
-        self.assertEqual(self.db.queue_counts()["deferred"], 1)
-        self.assertEqual(self.db.capacity_usage()["pending_rows"], 0)
+        self.assertEqual(self.db.extraction.queue_counts()["deferred"], 1)
+        self.assertEqual(self.db.metrics.capacity_usage()["pending_rows"], 0)
         self.assertEqual(buffer.reload(), 0)
-        self.assertEqual(self.db.release_deferred(10), 1)
+        self.assertEqual(self.db.extraction.release_deferred(10), 1)
         self.assertEqual(buffer.reload(), 1)
         self.assertEqual([row.text for row in buffer.items], ["Travel itinerary"])
 
     def test_projection_has_no_two_hundred_row_truncation(self) -> None:
-        buffer = Buffer(db=self.db)
+        buffer = Buffer(extraction=self.db.extraction)
         for index in range(205):
             source_id = f"s{index}"
             source = Source(
@@ -245,22 +245,22 @@ class ExtractionProjectionTest(unittest.TestCase):
                 source=source,
                 turn_id=source.turn_id,
             )
-        rebuilt = Buffer(db=self.db)
+        rebuilt = Buffer(extraction=self.db.extraction)
         self.assertEqual(len(rebuilt.items), 205)
 
     def test_legacy_pending_file_migrates_without_changing_source_truth(self) -> None:
         path = os.path.join(self.temp.name, "pending.json")
         legacy = Buffer(path)
         legacy.add("umo:a", "legacy plan", "u1", at="2026-10-22T12:00:00")
-        buffer = Buffer(path, db=self.db)
+        buffer = Buffer(path, extraction=self.db.extraction)
         self.assertEqual(buffer.migrate_legacy(), 1)
         self.assertTrue(os.path.exists(path + ".migrated"))
         self.assertEqual([item.text for item in buffer.items], ["legacy plan"])
-        rows = self.db.pending_extractions()
+        rows = self.db.extraction.pending_extractions()
         self.assertEqual([row["text"] for row in rows], ["legacy plan"])
 
     def test_success_closes_projection_and_failure_stays_retryable(self) -> None:
-        buffer = Buffer(db=self.db)
+        buffer = Buffer(extraction=self.db.extraction)
         source = Source("s1", "t1", "umo:a", "u1", "user", "plan", "2026-10-22T12:00:00")
         turn = buffer.add(
             "umo:a",
@@ -273,16 +273,16 @@ class ExtractionProjectionTest(unittest.TestCase):
         )
         self.assertIsNotNone(turn)
         self.assertEqual(buffer.mark_failed([turn], "TimeoutError"), 1)
-        self.assertEqual(self.db.pending_extractions()[0]["attempts"], 1)
+        self.assertEqual(self.db.extraction.pending_extractions()[0]["attempts"], 1)
         self.assertEqual(buffer.mark_succeeded([turn]), 1)
-        self.assertEqual(self.db.pending_extractions(), [])
+        self.assertEqual(self.db.extraction.pending_extractions(), [])
 
     def test_capacity_usage_uses_source_state_and_active_artifacts(self) -> None:
         source = Source("s1", "t1", "umo:a", "u1", "user", "计划", "2026-10-22T12:00:00")
-        self.db.enqueue_extraction(source, "topic")
+        self.db.extraction.enqueue_extraction(source, "topic")
         art = make("memory", {"text": "active", "level": "fact"})
-        self.db.commit(art, expected_revision=0, op="create")
-        usage = self.db.capacity_usage("2026-10-22T13:00:00")
+        self.db.artifacts.commit(art, expected_revision=0, op="create")
+        usage = self.db.metrics.capacity_usage("2026-10-22T13:00:00")
         self.assertEqual(usage["source_rows"], 1)
         self.assertEqual(usage["source_bytes"], 6)
         self.assertEqual(usage["pending_rows"], 1)
@@ -334,10 +334,10 @@ class CapacityGovernorV2Test(unittest.TestCase):
         db = DB(":memory:")
         self.addCleanup(db.close)
         source = Source("s1", "t1", "umo:a", "u1", "user", "x", "2026-10-22T12:00:00")
-        db.enqueue_extraction(source, "topic")
-        db.mark_extraction_failed(["s1"], "TimeoutError", max_attempts=1)
-        self.assertEqual(db.queue_counts()["dead"], 1)
-        self.assertEqual(db.pending_extractions(), [])
+        db.extraction.enqueue_extraction(source, "topic")
+        db.extraction.mark_extraction_failed(["s1"], "TimeoutError", max_attempts=1)
+        self.assertEqual(db.extraction.queue_counts()["dead"], 1)
+        self.assertEqual(db.extraction.pending_extractions(), [])
 
 
 

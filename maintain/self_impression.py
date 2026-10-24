@@ -64,7 +64,7 @@ def build_self_impressions(db: DB, cache: Cache, min_hits: int = MIN_HITS,
     """至少三次独立证据才建立印象；新增证据修订原编号，重跑不重复写。"""
     pool = cache.active("memory")
     ids = sorted({sid for art in pool for sid in art.header.lineage.sources})
-    sources = db.sources_by_ids(ids)
+    sources = db.sources.sources_by_ids(ids)
     groups: dict[str, dict[str, Observation]] = {key: {} for key in BEHAVIORS}
     old_by_kind: dict[str, Artifact] = {}
     for art in sorted(pool, key=lambda a: a.header.id):
@@ -75,7 +75,7 @@ def build_self_impressions(db: DB, cache: Cache, min_hits: int = MIN_HITS,
             old_by_kind.setdefault(kind, art)
             # 旧印象只带回原始事件证据，本身不增加计数。
             for episode_id in art.header.lineage.derived_from:
-                episode = db.get(episode_id)
+                episode = db.artifacts.get(episode_id)
                 if episode is not None and episode.payload.get("bot_behavior") == kind:
                     for sid, observation in _observations(episode, sources).items():
                         groups[kind].setdefault(sid, observation)
@@ -104,16 +104,16 @@ def build_self_impressions(db: DB, cache: Cache, min_hits: int = MIN_HITS,
                   subject_id=SELF_SUBJECT, strength=strength, lineage=lineage)
         art = revise(old, payload=payload, **kw) if old else make("memory", payload, **kw)
         writes.append((art, old.header.revision if old else 0, lineage.sources))
-    db.commit_many(writes, op="revise", reason="evidence-backed self-impressions")
+    db.artifacts.commit_many(writes, op="revise", reason="evidence-backed self-impressions")
     for art, _, _ in writes:
         cache.put(art)
     return len(writes)
 
 
-def promote_self_candidates(cache: Cache, today: str | None = None) -> list[Artifact]:
+def promote_self_candidates(cache: Cache, sources, today: str | None = None) -> list[Artifact]:
     pool = [art for art in cache.active("memory") if trusted_self_impression(art)]
-    sources = cache.db.sources_by_ids(sorted({s for a in pool for s in a.header.lineage.sources}))
-    found = [art for art in pool if _supported(art, sources)]
+    by_id = sources.sources_by_ids(sorted({s for a in pool for s in a.header.lineage.sources}))
+    found = [art for art in pool if _supported(art, by_id)]
     found.sort(key=lambda a: (-a.header.strength.weight,
                               BEHAVIORS.index(a.payload["bot_behavior"]), a.header.id))
     return found

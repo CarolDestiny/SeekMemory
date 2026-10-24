@@ -30,6 +30,20 @@ core/: Source, Artifact, Strength, versioning, disclosure
 store/ perceive/ recall/ maintain/ adapters/: concrete ports
 ```
 
+## Store composition
+
+One SQLite file and one connection preserve cross-table transactions. `store/db.py` is a
+thin composition root with no SQL. Domain repositories own their tables:
+
+- `artifacts`: nodes, versions, evidence, edges, state events, ledger commit.
+- `sources`: immutable Source append/read.
+- `extraction`: extraction queue admission and retry state.
+- `runtime_state` / `runtime_episodes`: mutable scheduler state and append-only audit.
+- `dreams`: daily dream ledger.
+- `metrics`: read-only capacity counters.
+
+Repository modules share the `SqliteDatabase` connection; they never open independent files.
+
 ## Persistent model
 
 - Source: source_id, turn_id, session_id, speaker_id, role, content hash, at, reply_to.

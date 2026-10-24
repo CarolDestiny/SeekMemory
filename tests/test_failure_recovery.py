@@ -35,7 +35,7 @@ class FakeProvider:
 def _db():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_recovery_"), "t.db")
     db = DB(path)
-    return db, Cache(db), Graph(db, Cache(db))
+    return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
 
 
 def _turn(text: str = "hello") -> DialogueTurn:
@@ -74,7 +74,7 @@ class AbsorbRecoveryTest(unittest.TestCase):
 
     def test_partial_commit_is_retryable(self) -> None:
         db, cache, graph = _db()
-        original = db.commit
+        original = db.artifacts.commit
         calls = {"count": 0}
 
         def flaky_commit(*args, **kwargs):
@@ -83,7 +83,7 @@ class AbsorbRecoveryTest(unittest.TestCase):
                 raise RuntimeError("second commit failed")
             return original(*args, **kwargs)
 
-        db.commit = flaky_commit
+        db.artifacts.commit = flaky_commit
         raw = json.dumps([
             {"level": "fact", "text": "first fact"},
             {"level": "fact", "text": "second fact"},

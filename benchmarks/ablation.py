@@ -89,7 +89,7 @@ def _artifact(m) -> Artifact:
 def _load(mems) -> tuple[DB, Cache, Graph, list[Artifact]]:
     """走生产写入路径建 similar/temporal 边；causal 仍由人工金标补。"""
     db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_abl_"), "abl.db"))
-    cache = Cache(db)
+    cache = Cache(db.artifacts)
     graph = Graph(db, cache)
     for m in mems:
         persist(_artifact(m), db, cache, graph)

@@ -20,7 +20,7 @@ def main() -> int:
     args = parser.parse_args()
     db = DB(args.db)
     try:
-        buffer = Buffer(args.pending, db=db)
+        buffer = Buffer(args.pending, extraction=db.extraction)
         migrated = buffer.migrate_legacy()
         print(f"migrated={migrated} pending={len(buffer.items)}")
     finally:

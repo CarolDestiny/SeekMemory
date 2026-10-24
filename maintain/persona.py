@@ -24,7 +24,7 @@ def compose(impressions: list[Artifact]) -> str:
 
 
 def distill_self_persona(db: DB, cache: Cache, today: str | None = None) -> Artifact | None:
-    candidates = promote_self_candidates(cache, today)
+    candidates = promote_self_candidates(cache, db.sources, today)
     chosen = []
     seen = set()
     for art in candidates:
@@ -58,7 +58,7 @@ def distill_self_persona(db: DB, cache: Cache, today: str | None = None) -> Arti
     writes = [] if unchanged else [(persona, base.header.revision if base else 0, lineage.sources)]
     retired = [revise(a, state="merged") for a in old[1:]]
     writes.extend((a, a.header.revision - 1, a.header.lineage.sources) for a in retired)
-    db.commit_many(writes, op="promote", reason="self-only stable persona and consolidation")
+    db.artifacts.commit_many(writes, op="promote", reason="self-only stable persona and consolidation")
     if writes:
         cache.put(persona)
         for art in retired:
