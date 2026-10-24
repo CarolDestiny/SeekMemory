@@ -140,14 +140,7 @@ class WakePolicyTest(unittest.TestCase):
             WakeAction.OBSERVE,
         )
 
-    def test_proactive_probability_one(self) -> None:
-        self.state.proactive_idle_seconds = 60
-        self.state.proactive_probability = 1.0
-        decision = self.policy.proactive(self.state, 120, 1000)
-        self.assertEqual(decision.action, WakeAction.PROACTIVE)
 
-
-class AgentRuntimeTest(unittest.TestCase):
     def test_observe_updates_state_and_trace(self) -> None:
         store = InMemoryStateStore()
         trace = Trace()

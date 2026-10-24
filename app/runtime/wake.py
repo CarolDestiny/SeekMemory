@@ -100,19 +100,3 @@ class WakePolicy:
             attention=AttentionLevel.AMBIENT,
             confidence=0.5,
         )
-
-    def proactive(
-        self, state: SocialState, idle_seconds: float, now: float, seed: int = 0
-    ) -> WakeDecision:
-        """Offline-friendly proactive decision with deterministic sampling."""
-        if idle_seconds < state.proactive_idle_seconds:
-            return WakeDecision(WakeAction.OBSERVE, "not_idle_enough")
-        if state.quiet_until > now:
-            return WakeDecision(WakeAction.IGNORE, "quiet_window")
-        probability = max(0.0, min(1.0, float(state.proactive_probability)))
-        if probability <= 0:
-            return WakeDecision(WakeAction.OBSERVE, "proactive_disabled")
-        draw = (abs(hash((state.session_id, int(now), int(seed)))) % 10_000) / 10_000
-        if draw >= probability:
-            return WakeDecision(WakeAction.OBSERVE, "proactive_skip")
-        return WakeDecision(WakeAction.PROACTIVE, "proactive_idle", confidence=probability)

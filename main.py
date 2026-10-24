@@ -32,7 +32,6 @@ from .app.runtime import (
     JsonStateStore,
     JsonlEpisodeStore,
     MemoryContext,
-    PolicyToolGuard,
     RuntimeEpisode,
     RuntimeInput,
     SchedulerPolicy,
@@ -105,7 +104,6 @@ class Main(star.Star):
         self.tool_policy = ToolPolicy(
             allowed_prefixes=("memory_", "search_memory", "query_memory")
         )
-        self.tool_guard = PolicyToolGuard(self.tool_policy)
         self.scheduler = SchedulerPolicy()
         self.actions = AstrBotActionPort(context)
         self.jobs = Jobs(self.journal)
@@ -311,10 +309,10 @@ class Main(star.Star):
                 return
 
             umo = str(getattr(event, "unified_msg_origin", "") or "")
-            guard = getattr(self, "tool_guard", None)
+            policy = getattr(self, "tool_policy", None)
             removed_tools = (
-                guard.filter_tool_set(getattr(req, "func_tool", None))
-                if guard is not None else ()
+                policy.filter_tool_set(getattr(req, "func_tool", None))
+                if policy is not None else ()
             )
             if removed_tools:
                 self.trace.record(

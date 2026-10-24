@@ -9,8 +9,6 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.runtime import (  # noqa: E402
-    EnforcedToolPolicy,
-    PolicyToolGuard,
     ToolCall,
     ToolPolicy,
     delivery_failure_metadata,
@@ -47,23 +45,22 @@ class Event:
 
 class ToolGuardTest(unittest.TestCase):
     def test_policy_filter_is_a_real_pre_dispatch_guard(self) -> None:
-        guard = PolicyToolGuard(ToolPolicy(("memory_",)))
-        self.assertIsInstance(guard, EnforcedToolPolicy)
+        policy = ToolPolicy(("memory_",))
         tool_set = ToolSet("memory_search", "shell", "memory_write")
-        removed = guard.filter_tool_set(tool_set)
+        removed = policy.filter_tool_set(tool_set)
         self.assertEqual(removed, ("shell",))
         self.assertEqual([tool.name for tool in tool_set.tools], [
             "memory_search", "memory_write",
         ])
-        self.assertTrue(guard.check_tool("memory_search", {}).enforced)
-        self.assertFalse(guard.check_tool("shell", {}).allowed)
+        self.assertTrue(policy.check_tool("memory_search", {}).enforced)
+        self.assertFalse(policy.check_tool("shell", {}).allowed)
 
     def test_malformed_tool_set_is_fail_open(self) -> None:
-        guard = PolicyToolGuard(ToolPolicy(("memory_",)))
+        policy = ToolPolicy(("memory_",))
         class BadToolSet:
             tools = [Tool("shell")]
-        self.assertEqual(guard.filter_tool_set(BadToolSet()), ())
-        self.assertEqual(guard.filter_tool_set(None), ())
+        self.assertEqual(policy.filter_tool_set(BadToolSet()), ())
+        self.assertEqual(policy.filter_tool_set(None), ())
 
     def test_observation_policy_never_claims_enforcement(self) -> None:
         event = Event()
