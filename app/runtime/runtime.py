@@ -109,9 +109,6 @@ class AgentRuntime:
         text = str(context.text or "").strip()
         now = float(context.at or self.clock())
         run_id = str(context.run_id or "")
-        if not text:
-            self.clear_wait(session_id, now)
-            return RunResult(run_id, session_id, False, error="empty_source")
         state = self.store.get(session_id)
         wait_due = state.wait_until > 0 and state.wait_until <= now
         retry_due = state.next_retry_at > 0 and state.next_retry_at <= now
@@ -121,6 +118,9 @@ class AgentRuntime:
             state.next_retry_at and state.next_retry_at > now
         ):
             return RunResult(run_id, session_id, False, error="not_due")
+        if not text:
+            self.clear_wait(session_id, now)
+            return RunResult(run_id, session_id, False, error="empty_source")
         if self.model_gateway is None or self.message_sender is None:
             return RunResult(run_id, session_id, False, error="runtime_port_missing")
         if self.recorder is None:

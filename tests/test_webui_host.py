@@ -554,6 +554,18 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(actions.sent, [])
         self.assertGreater(self.plugin.runtime.store.get(session_id).wait_until, now)
 
+    async def test_missing_source_keeps_future_deferred_wait(self) -> None:
+        session_id = "bot:GroupMessage:g-missing-source"
+        now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now + 120
+        self.plugin.runtime.store.put(state)
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(
+            self.plugin.runtime.store.get(session_id).wait_until, now + 120
+        )
+
     async def test_runtime_retry_only_state_dispatches(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-retry-only"

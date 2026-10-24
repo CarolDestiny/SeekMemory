@@ -413,6 +413,51 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(result.error, "not_due")
         self.assertEqual(model.calls, 0)
 
+    def test_deferred_empty_source_cannot_clear_future_wait(self) -> None:
+        store = InMemoryStateStore()
+        state = store.get("s1")
+        state.wait_until = 300
+        store.put(state)
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        result = asyncio.run(runtime.dispatch_deferred(RunContext(
+            session_id="s1", text="", source_id="", at=100,
+        )))
+        self.assertFalse(result.delivered)
+        self.assertEqual(result.error, "not_due")
+        self.assertEqual(store.get("s1").wait_until, 300)
+
+    def test_deferred_missing_ports_returns_safe_errors(self) -> None:
+        class Model:
+            async def complete(self, session_id, prompt, system_prompt=None):
+                return "reply"
+
+        class Sender:
+            async def send(self, session_id, text):
+                return True
+
+        store = InMemoryStateStore()
+        state = store.get("s1")
+        state.wait_until = 100
+        store.put(state)
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        result = asyncio.run(runtime.dispatch_deferred(RunContext(
+            session_id="s1", text="hello", source_id="u1", at=100,
+        )))
+        self.assertEqual(result.error, "runtime_port_missing")
+        self.assertEqual(store.get("s1").wait_until, 100)
+
+        runtime = AgentRuntime(
+            store,
+            clock=lambda: 100,
+            model_gateway=Model(),
+            message_sender=Sender(),
+        )
+        result = asyncio.run(runtime.dispatch_deferred(RunContext(
+            session_id="s1", text="hello", source_id="u1", at=100,
+        )))
+        self.assertEqual(result.error, "recorder_missing")
+        self.assertEqual(store.get("s1").wait_until, 100)
+
     def test_deferred_dispatch_failure_schedules_retry_without_raising(self) -> None:
         class Model:
             async def complete(self, session_id, prompt, system_prompt=None):

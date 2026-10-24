@@ -989,13 +989,8 @@ class Main(star.Star):
         if not bool(self._c("runtime_gate_enabled", False)):
             return
         source = self.db.latest_user_source(session_id) if self.db is not None else None
-        if not source:
-            self.runtime.clear_wait(session_id, now)
-            return
+        source = source or {}
         text = str(source.get("text") or "").strip()
-        if not text:
-            self.runtime.clear_wait(session_id, now)
-            return
         source_id = str(source.get("id") or "")
         await self.runtime.dispatch_deferred(
             RunContext(
