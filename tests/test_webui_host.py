@@ -453,51 +453,6 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("private message body", serialized)
         self.assertNotIn("/secret", serialized)
 
-    async def test_runtime_scheduler_tick_is_isolated_and_private(self) -> None:
-        now = time.time()
-        self.plugin.cfg["runtime_gate_enabled"] = True
-        self.plugin.db.put_runtime_state(
-            "s-wait",
-            {
-                "session_id": "s-wait",
-                "last_seen_at": now,
-                "wait_until": now + 120,
-                "quiet_until": 0.0,
-            },
-        )
-        self.plugin.db.put_runtime_state(
-            "s-proactive",
-            {
-                "session_id": "s-proactive",
-                "last_seen_at": now - 1000,
-                "proactive_idle_seconds": 1.0,
-                "proactive_probability": 1.0,
-                "quiet_until": 0.0,
-            },
-        )
-        self.plugin.db.put_runtime_state(
-            "s-bad", {"session_id": "s-bad", "last_seen_at": now}
-        )
-        original_get = self.plugin.runtime.store.get
-
-        def flaky_get(session_id):
-            if session_id == "s-bad":
-                raise RuntimeError("secret message body")
-            return original_get(session_id)
-
-        self.plugin.trace.rows.clear()
-        self.plugin.runtime.store.get = flaky_get
-        try:
-            await self.plugin._runtime_scheduler_tick()
-        finally:
-            self.plugin.runtime.store.get = original_get
-        rows = list(self.plugin.trace.rows)
-        statuses = {row.status for row in rows}
-        self.assertIn("scheduler_wait", statuses)
-        self.assertIn("scheduler_proactive", statuses)
-        self.assertNotIn("secret message body", json.dumps([row.context for row in rows]))
-        self.assertNotIn("s-bad", json.dumps([row.context for row in rows]))
-
     async def test_deferred_wait_dispatches_once(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-defer"
@@ -550,6 +505,82 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             turn.role == "assistant" and turn.text == "deferred reply"
             for turn in self.plugin.buffer.items
         ))
+
+    async def test_runtime_gate_off_never_dispatches_deferred(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-gate-off"
+        now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = False
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-gate-off", turn_id="turn-gate-off", session_id=session_id,
+            speaker_id="u1", role="user", text="must stay deferred",
+            at="2026-01-01T00:00:00",
+        )])
+        self.plugin.runtime.wait(session_id, 120, now=now)
+
+        class Provider:
+            def __init__(self):
+                self.calls = 0
+
+            async def text_chat(self, prompt, system_prompt=None):
+                self.calls += 1
+                return SimpleNamespace(completion_text="must not send")
+
+        class Actions:
+            def __init__(self):
+                self.sent = []
+
+            async def send(self, session, text):
+                self.sent.append((session, text))
+
+        provider = Provider()
+        actions = Actions()
+
+        async def provider_for(session):
+            return provider
+
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.actions = actions
+        await self.plugin._runtime_scheduler_tick()
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(actions.sent, [])
+        self.assertGreater(self.plugin.runtime.store.get(session_id).wait_until, now)
+
+    async def test_runtime_retry_only_state_dispatches(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:g-retry-only"
+        now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
+        self.plugin.db.append_sources([source_module.Source(
+            id="src-retry-only", turn_id="turn-retry-only", session_id=session_id,
+            speaker_id="u1", role="user", text="retry-only input",
+            at="2026-01-01T00:00:00",
+        )])
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = 0.0
+        state.next_retry_at = now - 1
+        self.plugin.runtime.store.put(state)
+
+        class Provider:
+            async def text_chat(self, prompt, system_prompt=None):
+                return SimpleNamespace(completion_text="retry-only reply")
+
+        class Actions:
+            def __init__(self):
+                self.sent = []
+
+            async def send(self, session, text):
+                self.sent.append((session, text))
+
+        async def provider_for(session):
+            return Provider()
+
+        actions = Actions()
+        self.plugin.context.get_using_provider_async = provider_for
+        self.plugin.actions = actions
+        await self.plugin._runtime_scheduler_tick()
+        self.assertEqual(actions.sent, [(session_id, "retry-only reply")])
 
     async def test_runtime_tick_dedupes_deferred_dispatch(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")

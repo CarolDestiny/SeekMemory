@@ -24,7 +24,7 @@ from .episode import (
     safe_error_code,
 )
 from .runtime import AgentRuntime
-from .scheduler import RandomSource, SchedulerDecision, SchedulerEvent, SchedulerPolicy
+from .scheduler import DueRun, Scheduler, TimingPolicy
 from .state import DBStateStore, InMemoryStateStore, JsonStateStore
 from .tools import (
     ToolCall,
@@ -48,15 +48,14 @@ __all__ = [
     "JsonStateStore",
     "MemoryContextPort",
     "RuntimeInput",
-    "RandomSource",
-    "SchedulerDecision",
-    "SchedulerEvent",
-    "SchedulerPolicy",
     "SocialState",
     "StateStore",
     "ToolCall",
     "ToolGuardDecision",
     "ToolPolicy",
+    "DueRun",
+    "Scheduler",
+    "TimingPolicy",
     "TraceSink",
     "WakeAction",
     "WakeDecision",

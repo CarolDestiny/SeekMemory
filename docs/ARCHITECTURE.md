@@ -129,14 +129,16 @@ The admin timeline shows each revision's own lineage and protected dialogue evid
 
 ## Agent Runtime boundary
 
-`app/runtime/` is host-agnostic. It owns `WakePolicy`, `SocialState`, and observe-only
-`AgentRuntime` decisions. AstrBot remains the transport/provider/platform host; `main.py`
-maps events into `RuntimeInput` and must not move AstrBot types into the runtime package.
+`app/runtime/` is host-agnostic and `AgentRuntime` is the single orchestration hub.
+`TimingPolicy` owns pure time decisions, `Scheduler` owns due-session selection from
+persisted session state, and `WakePolicy` owns inbound-event attention only. AstrBot
+remains the transport/provider/platform host; `main.py` maps events into `RuntimeInput`
+and must not move AstrBot types into the runtime package.
 
-The gate is explicit. With `runtime_gate_enabled=false`, decisions and trace are recorded but
-wait and deferred dispatch are inactive. With the gate enabled, deferred replies use the host
-provider directly; they do not run the full AstrBot tool loop. Proactive generation remains a
-future feature.
+The gate is explicit. With `runtime_gate_enabled=false`, wait windows and deferred dispatch
+are inactive; no runtime timer can cause a model call or message send. With the gate enabled,
+deferred replies use the host provider directly; they do not run the full AstrBot tool loop.
+Proactive generation remains a future feature.
 
 ## Runtime active path (v0.4.0)
 
@@ -162,7 +164,7 @@ AstrBot message event
 ```text
 runtime state with wait deadline
 -> _runtime_scheduler_tick()
--> SchedulerPolicy
+-> Scheduler + TimingPolicy
 -> claim_dispatch()
 -> provider.text_chat()
 -> AstrBotActionPort.send()
@@ -172,7 +174,7 @@ runtime state with wait deadline
 
 ### Explicit boundaries
 
-- `proactive` scheduling is trace-only until a real generation/send path exists.
+- Proactive generation is not implemented and has no scheduling path yet.
 - `ToolPolicy.filter_tool_set()` filters `req.func_tool` before the model sees tools; the advisory
   `on_using_llm_tool` trace is not a veto.
 - `RunTrace` is an admin observability stream, separate from the append-only runtime
@@ -184,7 +186,10 @@ explicitly marked as a documented seam. Tests alone are not a reason to keep a p
 
 ## Policy ownership
 
-- `WakePolicy` owns inbound-event attention only. It no longer duplicates proactive sampling.
-- `SchedulerPolicy` owns due wait/quiet/proactive timing and proactive sampling.
+- `WakePolicy` owns inbound-event attention only; it does not duplicate timing decisions.
+- `TimingPolicy` owns pure wait/retry deadline evaluation; inbound quiet/cooldown attention
+  stays in `WakePolicy`.
+- `Scheduler` owns querying persisted session state and reporting due runs. It does not send,
+  generate, or mutate state.
 - `ToolPolicy` owns both the enforced `req.func_tool` filter and the advisory tool-call trace.
   There is no second guard object for the same decision.
