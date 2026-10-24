@@ -204,7 +204,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_provider_preserves_daily_quota_and_messages(self) -> None:
         self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
         await self.plugin._nightly()
-        self.assertEqual(self.plugin._flush_count, 0)
+        self.assertEqual(self.plugin.extraction.count, 0)
         self.assertEqual(len(self.plugin.buffer.items), 1)
 
     async def test_failed_session_does_not_block_other_ready_sessions(self) -> None:
@@ -221,7 +221,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.plugin._nightly()
         self.assertEqual([row.text for row in self.plugin.buffer.items], ["Plan A"])
-        self.assertEqual(self.plugin._flush_count, 1)
+        self.assertEqual(self.plugin.extraction.count, 1)
 
     async def test_cancellation_preserves_inflight_and_new_messages(self) -> None:
         started = asyncio.Event()
@@ -242,7 +242,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             await task
         rows = self.plugin.db.pending_extractions()
         self.assertEqual(sorted(row["text"] for row in rows), ["New plan", "Plan A"])
-        self.assertFalse(plugin._flushing)
+        self.assertFalse(plugin.extraction.running)
 
     async def test_runtime_observe_is_default_and_gate_is_opt_in(self) -> None:
         class Event:

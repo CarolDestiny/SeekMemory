@@ -14,6 +14,8 @@ v0.3.1 + WebUI branch
 |---|---|---|
 | core/ | Artifact and Source values, Strength, versioning, disclosure, retrieval values | core/README.md |
 | app/ | Use-case DTOs, ports, flush policy, checkpoint orchestration | docs/ARCHITECTURE.md |
+| app/extraction.py + app/maintenance.py | Extraction batching/recovery and periodic maintenance use cases | docs/ARCHITECTURE.md |
+| app/delivery.py + app/runtime/deferred_store.py | Explicit delivery confirmation and protected temporary reply outbox | docs/INTERFACES.md |
 | store/ | SQLite repository, cache/read model, ledger | store/README.md |
 | perceive/ | Extraction prompt, ChatModel adapter, topic buffer | perceive/README.md |
 | recall/ | Candidate retrieval, scoring, disclosure-aware assembly | recall/README.md |

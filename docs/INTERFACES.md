@@ -158,3 +158,11 @@ write-back. `recover_deliveries(now)` retries only local writes, even with the g
 gate disabled; it never invokes the model or sender. An interrupted or ambiguous send
 retains an unresolved intent and is not automatically resent. Resolving that transport
 uncertainty requires checking the platform; there is no transport receipt/query port yet.
+
+`ExtractionService.run(reason, limit)` owns the full extraction batch using injected
+`resolve_model(session_id) -> Awaitable[ChatModel | None]` and extraction callbacks.
+Missing providers leave both input and quota untouched; failures are reported after
+other ready sessions are attempted. Cancellation retains unfinished and later input.
+`MemoryMaintenance.run(today)` invokes injected self-impression, decay, merge and
+persona policies in that order. Neither service imports the host, storage adapters
+or policy implementations; the plugin supplies them during composition.

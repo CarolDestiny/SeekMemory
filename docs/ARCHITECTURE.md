@@ -226,3 +226,9 @@ explicitly marked as a documented seam. Tests alone are not a reason to keep a p
 - `AgentRuntime` exposes only production transitions: observe, context build, wait clearing,
   dispatch claim, retry scheduling and delivery marking. Test-only mutation helpers are not
   part of the runtime API.
+- `ExtractionService` in `app/extraction.py` owns topic batching, failed extraction retries,
+  per-batch quota and pending acknowledgement. The host supplies the configured `ChatModel`
+  and extraction implementation; the service imports no provider, SQLite or host SDK.
+- `MemoryMaintenance` in `app/maintenance.py` owns self-impression, decay, merge and persona
+  order. These policies are injected at composition. The host `_flush` and `_weekly` methods
+  are scheduling adapters and do not implement either business lifecycle.

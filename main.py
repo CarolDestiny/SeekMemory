@@ -21,9 +21,11 @@ from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 from .app.budget import budget_from_config, estimate_tokens
 from .app.checkpoint import CheckpointManager
-from .app.contracts import DialogueTurn
 from .app.dream import DreamCycle
-from .app.flush_policy import chunk_turns, decide_flush, select_topic_batches
+from .app.extraction import ExtractionService
+from .app.flush_policy import decide_flush
+from .app.maintenance import MemoryMaintenance
+from .app.ports import ChatModel
 from .app.runtime import (
     AgentRuntime,
     DBEpisodeStore,
@@ -54,6 +56,10 @@ from .core.capacity import (
 from .core.graph import Graph
 from .core.source import Source, make_source_id
 from .core.tree import Tree
+from .maintain.decay import decay_all
+from .maintain.merge import merge_similar
+from .maintain.persona import distill_self_persona
+from .maintain.self_impression import build_self_impressions
 from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
 from .perceive.calls import log_call
@@ -85,9 +91,6 @@ class Main(star.Star):
         self.hybrid_retriever: HybridRetriever | None = None
         self.buffer: Buffer | None = None
         self.checkpoint: CheckpointManager | None = None
-        self._flushing = False
-        self._flush_day = ""
-        self._flush_count = 0
         self.budget = budget_from_config(self._c)
         self.dream: DreamCycle | None = None
         self._schedulers: list[asyncio.Task] = []
@@ -121,6 +124,25 @@ class Main(star.Star):
         self._runtime_dispatching: set[str] = set()
         self._runtime_tick_lock = asyncio.Lock()
         self._init_engine()
+        self.extraction = ExtractionService(
+            db=self.db, buffer=self.buffer,
+            resolve_model=self._resolve_extraction_model,
+            extract=partial(
+                absorb, db=self.db, cache=self.cache, graph=self.graph,
+                log=partial(self.journal.record, "extract", "warning"),
+                owner_id=self.owner_umo.split(":")[-1] if self.owner_umo else "",
+                strict=True, stage=partial(self.journal.span, "extract"),
+            ),
+            journal=self.journal,
+            max_attempts=self.capacity.thresholds.extraction_max_attempts,
+        )
+        self.maintenance = MemoryMaintenance(
+            self_impressions=lambda today: build_self_impressions(self.db, self.cache, today=today),
+            decay=partial(decay_all, self.db, self.cache),
+            merge=partial(merge_similar, self.db, self.cache, threshold=0.6),
+            persona=partial(distill_self_persona, self.db, self.cache),
+            journal=self.journal,
+        )
         if self.db is not None:
             state_store = DBStateStore(self.db)
             self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
@@ -966,17 +988,17 @@ class Main(star.Star):
         return min(24, cap * 2) if "raise_batch_size" in decision.actions else cap
 
     def _should_flush(self, capacity: CapacityDecision | None = None) -> bool:
-        if self._flushing or self.buffer is None or self.db is None:
+        if self.extraction.running or self.buffer is None or self.db is None:
             return False
         capacity = capacity or self._observe_capacity()
         today = datetime.date.today().isoformat()
-        if self._flush_day != today:
-            self._flush_day, self._flush_count = today, 0
+        if self.extraction.day != today:
+            self.extraction.day, self.extraction.count = today, 0
         decision = decide_flush(
             pending=len(self.buffer.items),
             idle_seconds=self.buffer.idle_seconds(),
             worth_now=worth_now(self.buffer.items),
-            flushes_today=self._flush_count,
+            flushes_today=self.extraction.count,
             idle_flush_seconds=float(self._c("idle_flush_seconds", 0)),
             min_pending=int(self._c("min_pending", 8)),
             max_flushes_per_day=int(self._c("max_flushes_per_day", 2)),
@@ -996,7 +1018,7 @@ class Main(star.Star):
 
     @property
     def _dream_on(self) -> bool:
-        """梦境模式：白天只缓冲，抽取与进化都留到 dream 周期。"""
+        """梦境模式：白天可批量抽取，机器人人格沉淀留到 dream 周期。"""
         return bool(self.dream is not None and self.dream.enabled)
 
     async def _runtime_scheduler_tick(self) -> None:
@@ -1137,162 +1159,20 @@ class Main(star.Star):
         self._apply_capacity_maintenance(self._observe_capacity())
         await self._flush("夜间")
 
-    def _split_topics(
-        self, items: list[DialogueTurn], cap: int | None = None
-    ) -> list[tuple[str, str, list[DialogueTurn]]]:
-        """按会话轮询选择话题，保证长会话不会长期独占抽取批次。"""
-        return select_topic_batches(
-            items, int(cap or self._c("max_sessions_per_flush", 6))
-        )
+    async def _resolve_extraction_model(self, session_id: str) -> ChatModel | None:
+        """Adapt the host's configured provider to the application model port."""
+        provider = await self.context.get_using_provider_async(session_id or None)
+        return ProviderChatModel(provider) if provider else None
 
     async def _flush(self, reason: str, limit: int = 0) -> tuple[int, int]:
-        """按上游会话与结果契约抽取，处理成功前保留缓冲。
-
-        Args:
-            reason: 触发本次抽取的业务原因。
-
-        Raises:
-            Exception: 批次结束后传播首个会话失败，供任务执行器记录失败状态。
-        """
-        if (
-            self._flushing
-            or self.buffer is None
-            or not self.buffer.items
-            or self.db is None
-        ):
+        """Map host scheduling into the extraction batch use case."""
+        if self.db is None or self.buffer is None or not self.buffer.items:
             return 0, 0
-        self._flushing = True
-        try:
-            capacity = self._observe_capacity()
-            topics = self._split_topics(
-                list(self.buffer.items),
-                cap=limit or self._batch_cap(capacity),
-            )
-            ready_ids = self.db.ready_extraction_ids()
-            ready = []
-            failure: Exception | None = None
-            for umo, topic_id, part in topics:
-                part = [
-                    turn
-                    for turn in part
-                    if not turn.source_id or turn.source_id in ready_ids
-                ]
-                if not part:
-                    continue
-                try:
-                    with self.journal.span(
-                        "extract", "provider.resolve", session=umo, topic=topic_id
-                    ):
-                        prov = await self.context.get_using_provider_async(umo or None)
-                except Exception as exc:
-                    if self.buffer is not None:
-                        self.buffer.mark_failed(
-                            part,
-                            type(exc).__name__,
-                            max_attempts=self.capacity.thresholds.extraction_max_attempts,
-                        )
-                    failure = failure or exc
-                    continue
-                if not prov:
-                    self.journal.record(
-                        "extract",
-                        "warning",
-                        "该会话尚未配置模型服务，保留待抽取消息",
-                        stage="provider.resolve",
-                        context={"session": umo, "topic": topic_id},
-                    )
-                    continue
-                ready.append((umo, topic_id, part, prov))
-            if not ready:
-                if failure is not None:
-                    raise failure
-                return 0, 0
-            self._flush_count += 1
-            written = 0
-            for umo, topic_id, part, prov in ready:
-                for chunk in chunk_turns(part):
-                    try:
-                        with self.journal.span(
-                            "extract",
-                            "topic.extract",
-                            session=umo,
-                            topic=topic_id,
-                            messages=len(chunk),
-                        ) as metrics:
-                            outcome = await absorb(
-                                chunk,
-                                self.db,
-                                self.cache,
-                                self.graph,
-                                ProviderChatModel(prov),
-                                log=partial(self.journal.record, "extract", "warning"),
-                                owner_id=self.owner_umo.split(":")[-1]
-                                if self.owner_umo
-                                else "",
-                                strict=True,
-                                stage=partial(self.journal.span, "extract"),
-                            )
-                            metrics["written"] = outcome.written
-                            metrics["skipped"] = outcome.skipped
-                            if outcome.model_failed or outcome.retryable:
-                                raise RuntimeError("extraction failed; keep pending input")
-                    except Exception as exc:
-                        self.buffer.mark_failed(
-                            chunk,
-                            type(exc).__name__,
-                            max_attempts=self.capacity.thresholds.extraction_max_attempts,
-                        )
-                        failure = failure or exc
-                        break
-                    self.buffer.mark_succeeded(chunk)
-                    written += outcome.written
-                    logger.info(
-                        f"[seekmemory] {reason} extract {umo or 'unknown'}: "
-                        f"topic {topic_id}, {len(chunk)} turns, {outcome.written} written"
-                    )
-            self.journal.record(
-                "extract",
-                "info",
-                f"已尝试 {len(ready)} 个话题，写入 {written} 条记忆",
-                context={"topics": len(ready), "written": written},
-                stage="batch.complete",
-            )
-            if failure is not None:
-                raise failure
-            return written, len(ready)
-        finally:
-            self._flushing = False
+        capacity = self._observe_capacity()
+        return await self.extraction.run(reason, limit or self._batch_cap(capacity))
 
     async def _weekly(self) -> dict:
-        from .maintain.decay import decay_all
-        from .maintain.merge import merge_similar
-        from .maintain.persona import distill_self_persona
-        from .maintain.self_impression import build_self_impressions
-
+        """Map host scheduling into the maintenance use case."""
         if self.db is None or self.cache is None:
             return {}
-        today = datetime.date.today().isoformat()
-        with self.journal.span("weekly", "self_impression") as metrics:
-            self_made = build_self_impressions(self.db, self.cache, today=today)
-            metrics["made"] = self_made
-        with self.journal.span("weekly", "decay") as metrics:
-            dropped = decay_all(self.db, self.cache, today)
-            metrics["forgotten"] = dropped
-        with self.journal.span("weekly", "merge", threshold=0.6) as metrics:
-            merged = merge_similar(self.db, self.cache, threshold=0.6)
-            metrics["merged"] = merged
-        with self.journal.span("weekly", "persona") as metrics:
-            persona = distill_self_persona(self.db, self.cache, today)
-            metrics["updated"] = bool(persona)
-        self.journal.record(
-            "weekly",
-            "info",
-            f"遗忘 {dropped} 条，合并 {merged} 条，人格更新：{bool(persona)}",
-            self.jobs.task_id,
-        )
-        logger.info(
-            f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组，"
-            f"人格 {'已更新' if persona else '无变化'}"
-        )
-        return {"forgotten": dropped, "merged": merged,
-                "self_impressions": self_made, "persona": bool(persona)}
+        return self.maintenance.run(datetime.date.today().isoformat())
