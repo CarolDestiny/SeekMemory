@@ -508,7 +508,7 @@ class Main(star.Star):
                 session_id=str(getattr(event, "unified_msg_origin", "") or ""),
                 text=text,
                 speaker_id=str(event.get_self_id()),
-                turn_id=AstrBotRuntimeAdapter.turn_id(event),
+                turn_id=AstrBotRuntimeAdapter.reply_turn_id(event, text),
                 reply_to=AstrBotRuntimeAdapter.user_source_id(event),
                 at=datetime.datetime.now().isoformat(timespec="seconds"),
                 recall_ids=AstrBotRuntimeAdapter.recall_ids(event),
@@ -601,7 +601,6 @@ class Main(star.Star):
             {"tool": name, "ok": bool(tool_result)},
         )
 
-    @filter.on_astrbot_loaded()
     @property
     def _schedulers(self) -> list[asyncio.Task]:
         return self.background.tasks
@@ -619,6 +618,7 @@ class Main(star.Star):
         service = getattr(self, "capacity_service", None)
         return bool(service and service.degrade_recall)
 
+    @filter.on_astrbot_loaded()
     async def start_jobs(self) -> None:
         if not self.ready or self.jobs.closed or self.background.tasks:
             return

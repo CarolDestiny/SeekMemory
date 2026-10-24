@@ -53,6 +53,18 @@ class MainOwnershipTest(unittest.TestCase):
     def test_main_stays_a_composition_and_hook_shell(self) -> None:
         self.assertLessEqual(len(self.source.splitlines()), 800)
 
+    def test_start_jobs_remains_the_astrbot_loaded_hook(self) -> None:
+        tree = ast.parse(self.source)
+        start_jobs = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "start_jobs"
+        )
+        decorators = [
+            ast.unparse(decorator) for decorator in start_jobs.decorator_list
+        ]
+        self.assertIn("filter.on_astrbot_loaded()", decorators)
+
 
 class LayerDependencyTest(unittest.TestCase):
     def _imports(self, root: Path) -> list[str]:

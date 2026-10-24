@@ -10,6 +10,7 @@ try:
         WakeAction,
     )
     from ..app.runtime.recorder import RecordedReply
+    from ..core.source import make_source_id
     from ..app.runtime.tools import ToolPolicy, trace_tool_call
 except ImportError:
     from app.runtime.contracts import (
@@ -19,6 +20,7 @@ except ImportError:
         WakeAction,
     )
     from app.runtime.recorder import RecordedReply
+    from core.source import make_source_id
     from app.runtime.tools import ToolPolicy, trace_tool_call
 
 
@@ -80,6 +82,22 @@ class AstrBotRuntimeAdapter:
     @classmethod
     def user_source_id(cls, event) -> str:
         return str(cls.get_extra(event, "_seekmemory_source_id", "") or "")
+
+    @classmethod
+    def reply_turn_id(cls, event, text: str) -> str:
+        """Return the host turn id, preserving the legacy fallback identity."""
+        existing = cls.turn_id(event)
+        if existing:
+            return existing
+        try:
+            return make_source_id(
+                session_id=str(getattr(event, "unified_msg_origin", "") or ""),
+                speaker_id=str(event.get_sender_id()),
+                role="assistant",
+                text=str(text or ""),
+            )
+        except Exception:
+            return ""
 
     @classmethod
     def assistant_source_id(cls, event) -> str:
