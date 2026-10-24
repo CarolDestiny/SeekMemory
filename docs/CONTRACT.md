@@ -258,7 +258,7 @@ def signals(prev_user: str, cur_user: str) -> dict: ...
 | POST cancel | id，confirmed=true | `{id}`；仅取消当前匹配的活动任务 |
 
 update 拒绝多余字段，reason 为 1–300 字符，payload 为对象且序列化长度不超过 50,000，
-使用原有 family 校验器，统一调用上游 `DB.commit()`，通过 expected_revision 检测版本冲突。
+使用原有 family 校验器，统一调用上游 `db.artifacts.commit()`，通过 expected_revision 检测版本冲突。
 版本、版本级证据和账本在同一事务内提交，失败整体回滚；成功后更新 Cache。
 遗忘使用 `forget`，其他人工修订（含恢复）使用 `revise`；账本 before_hash/after_hash
 沿用上游语义，记录修订号字符串。内容哈希从版本的 blob 字段查看。
@@ -561,7 +561,7 @@ No additional per-chat model or network call is introduced.
 
 ## Atomic batch writes
 
-`DB.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.
+`db.artifacts.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.
 
 
 Lifecycle expiry and retention decay also use one `commit_many()` transaction: either all selected Artifacts become `forgotten`, or none do and the cache remains intact.

@@ -94,8 +94,9 @@ BM25 使用标准库字符 bigram 倒排索引，不调用模型或网络。正�
 BM25 本身无 SQL，现有 graph/source/history 路径仍可能查询 SQLite。
 本次不包含本地向量实现，不新增 semantic 字段或依赖；后续边界记录在 ISSUE-0024。
 
-All production writes now use `DB.commit()` with expected revision, version snapshots, evidence
-links and ledger entries. `DB.upsert()` remains only as a legacy compatibility primitive.
+All production writes use `db.artifacts.commit()` with expected revision, version snapshots,
+evidence links and ledger entries. `ArtifactRepository.upsert()` is a seed/benchmark primitive,
+not a production write path.
 
 ## Topic, subject and time
 
@@ -107,7 +108,7 @@ The extractor returns `subject_kind`, `subject_id`, `event_at` and validity date
 ## Current implementation status (v0.4.0)
 
 - Source is persisted for both user and assistant messages, including group sessions.
-- Production writes use CAS DB.commit with versions, evidence and ledger.
+- Production writes use CAS `db.artifacts.commit()` with versions, evidence and ledger.
 - Topic-aware DialogueTurn buffer with 24h TTL extraction trigger.
 - subject_kind/subject_id and event_at are part of extraction; Artifact created time is event time.
 - Recall applies disclosure before assembly; cross-session text is never injected raw.

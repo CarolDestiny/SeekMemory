@@ -26,7 +26,7 @@ exposes domain repositories; it contains no SQL.
 
 ## Transaction boundaries
 
-- Artifact commit: `nodes + versions + evidence + state_events + ledger` in one transaction.
+- Artifact commit: `blobs + nodes + versions + artifact_versions + evidence + state_events + ledger` in one transaction.
 - Source admission: `blobs + sources + extraction_state` in one transaction.
 - Runtime state and runtime episodes are separate from Source/Artifact memory.
 - Repositories share one connection; they never open their own database file.
