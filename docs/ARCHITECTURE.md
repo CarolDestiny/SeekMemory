@@ -10,16 +10,20 @@ Source is the only immutable truth. Artifact is a derived, versioned interpretat
 AstrBot events / cron / external input
         |
         v
-main.py: composition and adapters only
+main.py: AstrBot hooks + composition root only
         |
         v
-app/: use cases, DTOs, ports
+orchestration/: application services (access, recall, ingest, capacity,
+                maintenance, background scheduling)
+        |
+        v
+app/: host-agnostic DTOs, contracts, runtime and pure policy
         |
         v
 core/: Source, Artifact, Strength, versioning, disclosure
         ^
         |
-store/ perceive/: SQLite, cache, LLM adapter
+store/ perceive/ recall/ maintain/ adapters/: concrete ports
 ```
 
 ## Persistent model
@@ -129,16 +133,21 @@ The admin timeline shows each revision's own lineage and protected dialogue evid
 
 ## Agent Runtime boundary
 
-`app/runtime/` is host-agnostic and `AgentRuntime` is the single orchestration hub.
+`app/runtime/` is host-agnostic and `AgentRuntime` is the single run-lifecycle hub.
 `SessionState` is mutable per-session runtime state, `RunContext` is one inbound run,
 `RunDecision` is one attention/timing decision, `RunResult` is its observed outcome, and
 `EpisodeRecord` is the append-only business audit row. `TimingPolicy` owns pure time
 decisions, `Scheduler` owns due-session selection from persisted session state, and
 `WakePolicy` owns inbound-event attention only. `ModelGateway` and `MessageSender` are
-host ports. `RunRecorder`
-is the single write-back service for assistant Source, pending buffer and runtime episode
-records. AstrBot remains the transport/provider/platform host; `main.py` maps events into
-`RuntimeInput` and must not move AstrBot types into the runtime package.
+host ports. `RunRecorder` is the single write-back service for user/assistant Source,
+pending buffer and runtime episode records.
+
+`orchestration/` contains one service per application responsibility:
+`AccessPolicy` for permissions, `RecallService` for read assembly, `IngestService` for
+pending-buffer extraction, `CapacityService` for admission/maintenance, `MaintenanceService`
+for decay/merge/persona work, `RuntimeWorker` for due dispatch, and `BackgroundTasks` for
+periodic cadence. `main.py` only maps AstrBot events and composes these services; it must
+not construct Source rows, call `RunRecorder`, or contain extraction/capacity algorithms.
 
 The gate is explicit. With `runtime_gate_enabled=false`, wait windows and deferred dispatch
 are inactive; no runtime timer can cause a model call or message send. With the gate enabled,
@@ -153,17 +162,18 @@ The runtime has two production paths, and every retained runtime type must be re
 
 ```text
 AstrBot message event
--> Buffer Source projection
+-> main hook maps RuntimeInput
+-> AgentRuntime.accept_user()
+-> RunRecorder.record_user()/Buffer Source projection
 -> AgentRuntime.observe()
 -> optional event.should_call_llm() gate
--> MemoryContextPort
--> recall pipeline / disclosure
+-> MemoryContextPort / RecallService
 -> AstrBot model request
 -> capture_reply()
--> RunRecorder.record_reply()
+-> AgentRuntime.record_reply()
 -> after_message_sent()
--> RunRecorder.record_delivery()
--> EpisodeRecord
+-> AgentRuntime.record_delivery()
+-> RunRecorder delivery episode + SessionState delivery transition
 ```
 
 ### Deferred ambient reply
@@ -206,9 +216,10 @@ explicitly marked as a documented seam. Tests alone are not a reason to keep a p
   There is no second guard object for the same decision.
 - `RunRecorder` owns completed-run write-back; `main.py` must not write assistant Source or
   episodes directly.
-- `AgentRuntime.dispatch_deferred()` owns the deferred lifecycle: claim, recall context,
-  model call, platform send, retry scheduling and result recording. `main.py` only polls due
-  sessions, loads the latest user Source and maps it into `RunContext`.
+- `AgentRuntime` owns both normal-run transitions (`accept_user`, `record_reply`,
+  `record_delivery`, `record_error`) and the deferred lifecycle (`dispatch_deferred`).
+  `RuntimeWorker` owns due polling and in-flight dedupe; `main.py` only maps session state
+  to a `RunContext`.
 - `AgentRuntime` exposes only production transitions: observe, context build, wait clearing,
   dispatch claim, retry scheduling and delivery marking. Test-only mutation helpers are not
   part of the runtime API.

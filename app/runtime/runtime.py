@@ -15,11 +15,12 @@ from .contracts import (
     RunResult,
     RuntimeInput,
     SessionState,
-    StateStore,
+    UserRunReceipt,
+    SessionStateStore,
     TraceSink,
     WakeAction,
 )
-from .recorder import RunRecorder
+from .recorder import RecordedReply, RunRecorder
 from .wake import WakePolicy
 
 
@@ -28,7 +29,7 @@ class AgentRuntime:
 
     def __init__(
         self,
-        store: StateStore,
+        store: SessionStateStore,
         policy: WakePolicy | None = None,
         trace: TraceSink | None = None,
         clock: Callable[[], float] | None = None,
@@ -90,6 +91,112 @@ class AgentRuntime:
                 },
             )
         return decision
+
+    def accept_user(
+        self,
+        event: RuntimeInput,
+        *,
+        event_id: str = "",
+        deferred: bool = False,
+    ) -> UserRunReceipt:
+        """Record one user turn, then evaluate the run decision.
+
+        The host hook supplies only the reduced inbound event and optional host
+        event id. Source construction, pending projection and state transition
+        stay inside the runtime write path.
+        """
+        recorded = None
+        if self.recorder is not None:
+            recorded = self.recorder.record_user(
+                session_id=event.session_id,
+                text=event.text,
+                speaker_id=event.speaker_id,
+                event_id=event_id,
+                deferred=deferred,
+            )
+        decision = self.observe(event)
+        return UserRunReceipt(
+            decision=decision,
+            source_id=recorded.source_id if recorded is not None else "",
+            turn_id=recorded.turn_id if recorded is not None else "",
+        )
+
+    def record_reply(
+        self,
+        *,
+        run_id: str,
+        session_id: str,
+        text: str,
+        speaker_id: str,
+        turn_id: str = "",
+        reply_to: str = "",
+        at: str = "",
+        recall_ids=(),
+    ) -> RecordedReply | None:
+        """Write one completed assistant reply through the single recorder."""
+        if self.recorder is None:
+            return None
+        return self.recorder.record_reply(
+            run_id=run_id,
+            session_id=session_id,
+            text=text,
+            speaker_id=speaker_id,
+            turn_id=turn_id,
+            reply_to=reply_to,
+            at=at,
+            recall_ids=recall_ids,
+        )
+
+    def record_delivery(
+        self,
+        *,
+        run_id: str,
+        session_id: str,
+        decision: str,
+        reason: str,
+        response_chars: int = 0,
+        tool_calls=(),
+        user_source_id: str = "",
+        assistant_source_id: str = "",
+        now: float | None = None,
+    ) -> None:
+        """Commit one delivered normal run and advance session delivery state."""
+        if self.recorder is not None:
+            self.recorder.record_delivery(
+                run_id=run_id,
+                session_id=session_id,
+                decision=decision,
+                reason=reason,
+                response_chars=response_chars,
+                tool_calls=tool_calls,
+                user_source_id=user_source_id,
+                assistant_source_id=assistant_source_id,
+            )
+        self.mark_delivered(session_id, now)
+
+    def record_error(
+        self,
+        *,
+        run_id: str,
+        session_id: str,
+        decision: str,
+        reason: str,
+        error: object = "",
+        user_source_id: str = "",
+        assistant_source_id: str = "",
+    ) -> None:
+        """Write one failed normal run through the single recorder."""
+        if self.recorder is None:
+            return
+        self.recorder.record_error(
+            run_id=run_id,
+            session_id=session_id,
+            decision=decision,
+            reason=reason,
+            error=error,
+            user_source_id=user_source_id,
+            assistant_source_id=assistant_source_id,
+        )
 
     async def dispatch_deferred(
         self,

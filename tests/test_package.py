@@ -45,6 +45,7 @@ class PackageTests(unittest.TestCase):
             "perceive",
             "maintain",
             "webui",
+            "orchestration",
         ):
             for source in (ROOT / directory).rglob("*.py"):
                 target = self.root / source.relative_to(ROOT)
@@ -101,6 +102,8 @@ class PackageTests(unittest.TestCase):
                     "app/checkpoint.py",
                     "app/contracts.py",
                     "adapters/seekmemory_context.py",
+                    "orchestration/access.py",
+                    "orchestration/ingest_service.py",
                     "store/schema.sql",
                     "pages/memory/index.html",
                 }

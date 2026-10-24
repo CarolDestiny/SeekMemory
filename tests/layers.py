@@ -9,6 +9,7 @@ from __future__ import annotations
 LAYERS: dict[str, tuple[str, ...]] = {
     "unit": (
         "test_agent_runtime.py",
+        "test_architecture_boundaries.py",
         "test_artifact.py",
         "test_bm25.py",
         "test_calling.py",

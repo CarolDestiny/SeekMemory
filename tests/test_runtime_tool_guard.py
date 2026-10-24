@@ -16,7 +16,7 @@ from app.runtime import (  # noqa: E402
     normalize_tool_calls,
     safe_error_code,
 )
-from app.runtime.tools import trace_tool_call  # noqa: E402
+from adapters.astrbot_runtime import AstrBotRuntimeAdapter  # noqa: E402
 
 
 class Tool:
@@ -64,8 +64,9 @@ class ToolGuardTest(unittest.TestCase):
 
     def test_observation_policy_never_claims_enforcement(self) -> None:
         event = Event()
-        call = trace_tool_call(
-            event, "shell", {"command": "do not persist"}, ToolPolicy(("memory_",))
+        call = AstrBotRuntimeAdapter.observe_tool(
+            event, Tool("shell"), {"command": "do not persist"},
+            ToolPolicy(("memory_",)),
         )
         self.assertFalse(call.allowed)
         self.assertFalse(call.enforced)

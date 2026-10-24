@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from .contracts import SessionState, StateStore
+from .contracts import SessionState, SessionStateStore
 
 
 @dataclass(frozen=True)
@@ -33,9 +33,9 @@ class TimingPolicy:
 
 
 class Scheduler:
-    """Read-only due-session selector backed by a StateStore."""
+    """Read-only due-session selector backed by a SessionStateStore."""
 
-    def __init__(self, store: StateStore, policy: TimingPolicy | None = None) -> None:
+    def __init__(self, store: SessionStateStore, policy: TimingPolicy | None = None) -> None:
         self.store = store
         self.policy = policy or TimingPolicy()
 

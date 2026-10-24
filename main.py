@@ -12,18 +12,23 @@ import asyncio
 import datetime
 import json
 import time
-from functools import partial
 from pathlib import Path
 
 from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
-from .app.budget import budget_from_config, estimate_tokens
+from .app.budget import budget_from_config
+from .orchestration.access import AccessPolicy
+from .orchestration.background_tasks import BackgroundTasks
+from .orchestration.capacity_service import CapacityService
+from .orchestration.ingest_service import IngestService
+from .orchestration.maintenance_service import MaintenanceService
+from .orchestration.recall_service import RecallService
+from .orchestration.status_service import StatusService
 from .app.checkpoint import CheckpointManager
 from .app.contracts import DialogueTurn
 from .app.dream import DreamCycle
-from .app.flush_policy import chunk_turns, decide_flush, select_topic_batches
 from .app.runtime import (
     AgentRuntime,
     DBEpisodeStore,
@@ -35,29 +40,21 @@ from .app.runtime import (
     RunContext,
     RunRecorder,
     RuntimeInput,
+    RuntimeWorker,
     Scheduler,
     ToolPolicy,
 )
 from .app.runtime.tracing import RunTracer
 from .store.run_trace import TraceStore
 from .core.capacity import (
-    NORMAL,
-    PROTECTIVE,
-    SATURATED,
-    CapacityDecision,
     CapacityGovernor,
-    CapacitySnapshot,
     CapacityThresholds,
     load_thresholds,
 )
 from .core.graph import Graph
-from .core.source import Source, make_source_id
 from .core.tree import Tree
-from .perceive.absorb import absorb, worth_now
 from .perceive.buffer import Buffer
 from .perceive.calls import log_call
-from .perceive.model import ProviderChatModel
-from .recall.pipeline import build_block
 from .recall.retriever import HybridRetriever
 from .adapters.astrbot_actions import AstrBotActionPort
 from .adapters.astrbot_model import AstrBotModelGateway
@@ -84,12 +81,8 @@ class Main(star.Star):
         self.hybrid_retriever: HybridRetriever | None = None
         self.buffer: Buffer | None = None
         self.checkpoint: CheckpointManager | None = None
-        self._flushing = False
-        self._flush_day = ""
-        self._flush_count = 0
         self.budget = budget_from_config(self._c)
         self.dream: DreamCycle | None = None
-        self._schedulers: list[asyncio.Task] = []
         self.data_path = (
             Path(str(self._c("db_path", ""))).expanduser()
             if self._c("db_path", "")
@@ -110,16 +103,19 @@ class Main(star.Star):
         self.jobs = Jobs(self.journal)
         artifact_limit = max(1, int(self._c("max_episodes", 500)))
         self.capacity = CapacityGovernor(self._thresholds(artifact_limit))
-        self._capacity_state = NORMAL
-        self._capacity_action_mark = ""
-        self._degrade_recall = False
         self._last_context_chars = 0
-        self._backpressure = False
-        self._deferred_rows = 0
         self._last_runtime_prune_at = 0.0
-        self._runtime_dispatching: set[str] = set()
-        self._runtime_tick_lock = asyncio.Lock()
         self._init_engine()
+        self.recall = RecallService(
+            cache=self.cache,
+            graph=self.graph,
+            db=self.db,
+            budget=self.budget,
+            config=self._c,
+            owner_umo=lambda: self.owner_umo,
+            hybrid_retriever=self.hybrid_retriever,
+            log=lambda msg: logger.info(f"[seekmemory] {msg}"),
+        )
         if self.db is not None:
             state_store = DBStateStore(self.db)
             self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
@@ -150,7 +146,6 @@ class Main(star.Star):
             message_sender=self.actions,
             recorder=self.recorder,
         )
-        self.scheduler = Scheduler(self.runtime.store)
         if self.db is not None:
             try:
                 self.db.prune_runtime_episodes(
@@ -164,6 +159,64 @@ class Main(star.Star):
                 self.db, self._c,
                 log=lambda msg: logger.info(f"[seekmemory] {msg}"),
             )
+        self.scheduler = Scheduler(self.runtime.store)
+        self.capacity_service = CapacityService(
+            db=self.db,
+            cache=self.cache,
+            trace=self.trace,
+            journal=self.journal,
+            governor=self.capacity,
+            config=self._c,
+            logger=logger,
+            on_release=self._reload_buffer,
+        )
+        self.ingest = IngestService(
+            buffer=self.buffer,
+            db=self.db,
+            cache=self.cache,
+            graph=self.graph,
+            journal=self.journal,
+            config=self._c,
+            provider_for=context.get_using_provider_async,
+            owner_id=lambda: (
+                self.owner_umo.split(":")[-1] if self.owner_umo else ""
+            ),
+            logger=logger,
+        )
+        self.maintenance = MaintenanceService(
+            db=self.db,
+            cache=self.cache,
+            journal=self.journal,
+            task_id=lambda: self.jobs.task_id,
+            logger=logger,
+        )
+        self.status = StatusService(db=self.db)
+        self.runtime_worker = RuntimeWorker(
+            runtime=self.runtime,
+            scheduler=self.scheduler,
+            enabled=lambda: bool(self._c("runtime_gate_enabled", False)),
+            session_ids=lambda limit: (
+                self.db.list_runtime_state_sessions(limit=limit)
+                if self.db is not None else []
+            ),
+            run_context=self._make_run_context,
+            interval_seconds=lambda: float(self._c("runtime_tick_seconds", 5)),
+            max_attempts=lambda: int(self._c("runtime_dispatch_max_attempts", 3)),
+            base_seconds=lambda: float(self._c("runtime_dispatch_backoff_seconds", 2)),
+        )
+        self.background = BackgroundTasks(
+            jobs=self.jobs,
+            checkpoint=self.checkpoint,
+            buffer=self.buffer,
+            capacity=self.capacity_service,
+            ingest=self.ingest,
+            maintenance=self.maintenance,
+            dream=self.dream,
+            runtime_worker=self.runtime_worker,
+            journal=self.journal,
+            config=self._c,
+            logger=logger,
+        )
         self.web = WebRoutes(self)
         self.web.register()
 
@@ -212,10 +265,7 @@ class Main(star.Star):
         return load_thresholds(values)
 
     def _admit_deferred(self) -> bool:
-        """Park new extraction work while capacity admission is closed."""
-        if not self._backpressure:
-            return False
-        return self._deferred_rows < self.capacity.thresholds.defer_limit
+        return self.capacity_service.admit_deferred()
 
     @property
     def owner_umo(self) -> str:
@@ -270,35 +320,37 @@ class Main(star.Star):
             logger.error(f"[seekmemory] 初始化失败，记忆功能降级：{e}")
 
     # ---------------- 权限 ----------------
+    def _access_policy(self) -> AccessPolicy:
+        return AccessPolicy(
+            mode=str(self._c("open_to", "owner_only")),
+            owner_umo=self.owner_umo,
+            trusted_ids=frozenset(self.trusted_ids),
+            observe_groups=bool(self._c("observe_groups", True)),
+        )
+
     def _may_remember(self, event: AstrMessageEvent) -> bool:
-        """私聊侧的记忆权限（沿用 open_to 配置）。"""
-        mode = str(self._c("open_to", "owner_only"))
-        if mode == "everyone":
-            return True
-        umo = getattr(event, "unified_msg_origin", "")
-        if umo == self.owner_umo:
-            return True
-        if mode == "owner_and_trusted":
-            sid = str(event.get_sender_id())
-            return sid in self.trusted_ids or umo == self.owner_umo
-        return False
+        return self._access_policy().may_remember(
+            str(getattr(event, "unified_msg_origin", "") or ""),
+            str(event.get_sender_id()),
+        )
 
     def _group_chat(self, event: AstrMessageEvent) -> bool:
-        """是不是群聊消息。"""
-        umo = str(getattr(event, "unified_msg_origin", "") or "")
-        return ":GroupMessage:" in umo
+        return AccessPolicy.is_group(
+            str(getattr(event, "unified_msg_origin", "") or "")
+        )
 
     def _may_observe(self, event: AstrMessageEvent) -> bool:
-        """能不能把这句话记下来：私聊按 open_to，群聊按 observe_groups。"""
-        if self._may_remember(event):
-            return True
-        return bool(self._c("observe_groups", True)) and self._group_chat(event)
+        return self._access_policy().may_observe(
+            str(getattr(event, "unified_msg_origin", "") or ""),
+            str(event.get_sender_id()),
+        )
 
     def _may_recall(self, event: AstrMessageEvent) -> bool:
-        """能不能给她注入记忆：主人私聊 + 观察中的群；别人的私聊不注入。"""
-        return self._may_observe(event)
+        return self._access_policy().may_recall(
+            str(getattr(event, "unified_msg_origin", "") or ""),
+            str(event.get_sender_id()),
+        )
 
-    # ---------------- 读路径：注入 ----------------
     @filter.on_llm_request()
     async def inject_memory(self, event: AstrMessageEvent, req) -> None:
         trace_allowed = False
@@ -336,10 +388,12 @@ class Main(star.Star):
             context = self.runtime.build_context(runtime_input)
             block, info = context.text, context.info
             self._last_context_chars = len(block)
+            capacity_service = getattr(self, "capacity_service", None)
+            if capacity_service is not None:
+                capacity_service.set_context_chars(len(block))
             log_call(self._calls_path(), umo, info)
-            event.set_extra(
-                "_seekmemory_recall_ids",
-                tuple(str(item) for item in info.get("final_ids", ())),
+            AstrBotRuntimeAdapter.set_recall_ids(
+                event, info.get("final_ids", ())
             )
             self.journal.record(
                 "recall",
@@ -383,36 +437,14 @@ class Main(star.Star):
     def _recall_block(
         self, text: str, umo: str = "", private: bool = False, speaker: str = ""
     ) -> tuple[str, dict]:
-        """交给读路径模块：常驻层 + 检索 + 偶然浮现。"""
-        budget_chars = int(self.budget.injection_chars)
-        recall_k = int(self._c("recall_k", 8))
-        if self._degrade_recall:  # 容量紧张时减半
-            budget_chars = max(80, budget_chars // 2)
-            recall_k = max(1, recall_k // 2)
-
-        def conf(key: str, default):
-            """把预算注入到读路径配置里，其它键仍走插件配置。"""
-            if key == "budget_chars":
-                return budget_chars
-            if key == "recall_k":
-                return recall_k
-            return self._c(key, default)
-
-        return build_block(
-            self.cache,
-            self.graph,
-            self.db,
-            umo,
+        return self.recall.build(
             text,
+            umo,
             private,
-            conf,
-            self.owner_umo,
             speaker,
-            log=lambda msg: logger.info(f"[seekmemory] {msg}"),
-            hybrid_retriever=self.hybrid_retriever,
+            degraded=self._degrade_recall,
         )
 
-    # ---------------- 写路径：缓冲 ----------------
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def buffer_message(self, event: AstrMessageEvent) -> None:
         try:
@@ -423,28 +455,16 @@ class Main(star.Star):
                 return
             umo = str(getattr(event, "unified_msg_origin", "") or "")
             sender = str(event.get_sender_id())
-            event_id = str(
-                getattr(getattr(event, "message_obj", None), "message_id", "") or ""
-            )
-            now = datetime.datetime.now().isoformat(timespec="seconds")
-            source_id = make_source_id(
-                event_id=event_id,
-                session_id=umo,
-                speaker_id=sender,
-                role="user",
-                text=text,
-                at=now,
-            )
-            turn_id = event_id or source_id
-            source = Source(source_id, turn_id, umo, sender, "user", text, now)
-            self.buffer.add(
-                umo,
+            runtime_input = AstrBotRuntimeAdapter.from_event(
+                event,
                 text,
+                umo,
                 sender,
-                source_id,
-                now,
-                source=source,
-                turn_id=turn_id,
+                unread_count=len(self.buffer.items),
+            )
+            receipt = self.runtime.accept_user(
+                runtime_input,
+                event_id=AstrBotRuntimeAdapter.event_id(event),
                 deferred=self._admit_deferred(),
             )
             if self.buffer.save_error:
@@ -458,16 +478,12 @@ class Main(star.Star):
                 self._self_id = str(event.get_self_id())
             except Exception:
                 pass
-            event.set_extra("_seekmemory_turn_id", turn_id)
-            event.set_extra("_seekmemory_source_id", source_id)
-            decision = self.runtime.observe(
-                AstrBotRuntimeAdapter.from_event(
-                    event, text, umo, sender, unread_count=len(self.buffer.items)
-                )
-            )
-            AstrBotRuntimeAdapter.apply_decision(event, decision)
+            AstrBotRuntimeAdapter.bind_user(event, receipt)
+            AstrBotRuntimeAdapter.apply_decision(event, receipt.decision)
             AstrBotRuntimeAdapter.apply_llm_gate(
-                event, decision, bool(self._c("runtime_gate_enabled", False))
+                event,
+                receipt.decision,
+                bool(self._c("runtime_gate_enabled", False)),
             )
         except Exception:
             pass
@@ -477,7 +493,8 @@ class Main(star.Star):
         try:
             if self._may_observe(event):
                 self.run_tracer.response(
-                    event, "error" if getattr(response, "role", "") == "err" else "ok"
+                    event,
+                    "error" if getattr(response, "role", "") == "err" else "ok",
                 )
             if not self._may_observe(event) or self.db is None:
                 return
@@ -486,31 +503,18 @@ class Main(star.Star):
             text = str(getattr(response, "completion_text", "") or "").strip()
             if not text:
                 return
-            umo = str(getattr(event, "unified_msg_origin", "") or "")
-            turn_id = str(event.get_extra("_seekmemory_turn_id", "") or "")
-            if not turn_id:
-                turn_id = make_source_id(
-                    session_id=umo,
-                    speaker_id=str(event.get_sender_id()),
-                    role="assistant",
-                    text=text,
-                )
-            reply = self.recorder.record_reply(
+            reply = self.runtime.record_reply(
                 run_id=self.run_tracer.run_id(event),
-                session_id=umo,
+                session_id=str(getattr(event, "unified_msg_origin", "") or ""),
                 text=text,
                 speaker_id=str(event.get_self_id()),
-                turn_id=turn_id,
-                reply_to=str(event.get_extra("_seekmemory_source_id", "") or ""),
+                turn_id=AstrBotRuntimeAdapter.turn_id(event),
+                reply_to=AstrBotRuntimeAdapter.user_source_id(event),
                 at=datetime.datetime.now().isoformat(timespec="seconds"),
-                recall_ids=event.get_extra("_seekmemory_recall_ids", ()) or (),
+                recall_ids=AstrBotRuntimeAdapter.recall_ids(event),
             )
-            event.set_extra("_seekmemory_turn_id", reply.turn_id)
-            event.set_extra(
-                "_seekmemory_assistant_source_id", reply.assistant_source_id
-            )
-            event.set_extra("_seekmemory_reply_chars", reply.response_chars)
-            event.set_extra("_seekmemory_recall_ids", ())
+            if reply is not None:
+                AstrBotRuntimeAdapter.bind_reply(event, reply)
         except Exception:
             pass
 
@@ -520,26 +524,22 @@ class Main(star.Star):
             self.run_tracer.delivered(event)
         if not self._may_observe(event) or self.db is None:
             return
-        assistant_source_id = str(
-            event.get_extra("_seekmemory_assistant_source_id", "") or ""
-        )
+        assistant_source_id = AstrBotRuntimeAdapter.assistant_source_id(event)
         if not assistant_source_id:
             return
-        if event.get_extra("_seekmemory_episode_recorded", False):
+        if AstrBotRuntimeAdapter.episode_recorded(event):
             return
-        umo = str(getattr(event, "unified_msg_origin", "") or "")
-        self.runtime.mark_delivered(umo)
-        self.recorder.record_delivery(
+        self.runtime.record_delivery(
             run_id=self.run_tracer.run_id(event),
-            session_id=umo,
-            decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
-            reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
-            response_chars=int(event.get_extra("_seekmemory_reply_chars", 0) or 0),
-            tool_calls=event.get_extra("_seekmemory_tool_calls", ()) or (),
-            user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+            session_id=str(getattr(event, "unified_msg_origin", "") or ""),
+            decision=AstrBotRuntimeAdapter.runtime_action(event),
+            reason=AstrBotRuntimeAdapter.runtime_reason(event),
+            response_chars=AstrBotRuntimeAdapter.reply_chars(event),
+            tool_calls=AstrBotRuntimeAdapter.tool_calls(event),
+            user_source_id=AstrBotRuntimeAdapter.user_source_id(event),
             assistant_source_id=assistant_source_id,
         )
-        event.set_extra("_seekmemory_episode_recorded", True)
+        AstrBotRuntimeAdapter.mark_episode_recorded(event)
         self._maybe_prune_runtime_episodes()
 
     @filter.on_agent_begin()
@@ -550,8 +550,8 @@ class Main(star.Star):
             "runtime",
             "agent_begin",
             {
-                "decision": str(event.get_extra("_seekmemory_runtime_action", "") or ""),
-                "reason": str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+                "decision": AstrBotRuntimeAdapter.runtime_action(event),
+                "reason": AstrBotRuntimeAdapter.runtime_reason(event),
             },
         )
 
@@ -563,13 +563,13 @@ class Main(star.Star):
         self.trace.record("runtime", "agent_done", {"role": role})
         if role != "err":
             return
-        self.recorder.record_error(
+        self.runtime.record_error(
             run_id=self.run_tracer.run_id(event),
             session_id=str(getattr(event, "unified_msg_origin", "") or ""),
-            decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
-            reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+            decision=AstrBotRuntimeAdapter.runtime_action(event),
+            reason=AstrBotRuntimeAdapter.runtime_reason(event),
             error="agent_error",
-            user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+            user_source_id=AstrBotRuntimeAdapter.user_source_id(event),
         )
         self._maybe_prune_runtime_episodes()
 
@@ -602,36 +602,34 @@ class Main(star.Star):
         )
 
     @filter.on_astrbot_loaded()
+    @property
+    def _schedulers(self) -> list[asyncio.Task]:
+        return self.background.tasks
+
+    @property
+    def _flushing(self) -> bool:
+        return bool(getattr(self, "ingest", None) and self.ingest.flushing)
+
+    @property
+    def _flush_count(self) -> int:
+        return int(getattr(self, "ingest", None).flush_count) if getattr(self, "ingest", None) else 0
+
+    @property
+    def _degrade_recall(self) -> bool:
+        service = getattr(self, "capacity_service", None)
+        return bool(service and service.degrade_recall)
+
     async def start_jobs(self) -> None:
-        if not self.ready or self.jobs.closed or self._schedulers:
+        if not self.ready or self.jobs.closed or self.background.tasks:
             return
-        operations = [
-            self._weekly_loop,
-            self._checkpoint_loop,
-            self._dream_loop,
-            self._runtime_loop,
-        ]
-        if self._dream_on:
-            # 白天也要批量入库：只抽取、不进化，进化留给 dream。
-            operations.append(self._ingest_loop)
-        else:  # 兼容旧行为：梦境关掉才保留白天/夜间抽取
-            operations += [self._nightly_loop, self._idle_loop]
-        self._schedulers = [
-            asyncio.create_task(operation()) for operation in operations
-        ]
-        self.journal.record("scheduler", "running", "维护定时任务已启动")
+        self.background.start()
 
     async def initialize(self) -> None:
-        """插件激活时启动定时任务，兼容热重载。"""
         await self.start_jobs()
 
     async def terminate(self) -> None:
-        """依次取消本实例任务、移除路由并关闭存储。"""
         self.ready = False
-        for task in self._schedulers:
-            task.cancel()
-        await asyncio.gather(*self._schedulers, return_exceptions=True)
-        self._schedulers.clear()
+        await self.background.stop()
         await self.jobs.close()
         self.web.close()
         if self.buffer is not None:
@@ -641,618 +639,101 @@ class Main(star.Star):
         if self.db is not None:
             self.db.close()
             self.db = None
-        self.journal.record("plugin", "stopped", "插件资源已释放")
+        self.journal.record("plugin", "stopped", "plugin resources released")
 
     async def _checkpoint_loop(self) -> None:
-        while True:
-            interval = max(60, int(self._c("checkpoint_seconds", 1800)))
-            await asyncio.sleep(interval)
-            try:
-                if self.checkpoint is not None:
-                    self.checkpoint.flush()
-            except Exception as e:
-                logger.error(f"[seekmemory] checkpoint failed: {e}")
+        await self.background._checkpoint_loop()
 
     async def _nightly_loop(self) -> None:
-        while True:
-            await asyncio.sleep(
-                self._seconds_until(str(self._c("summary_time", "23:50")))
-            )
-            try:
-                self.jobs.submit("nightly", self._nightly)
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 夜间整理失败：{e}")
-                self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
+        await self.background._nightly_loop()
 
     async def _weekly_loop(self) -> None:
-        while True:
-            await asyncio.sleep(
-                self._seconds_until("23:55", weekday=self._c("weekly_day", 6))
-            )
-            try:
-                self.jobs.submit("weekly", self._weekly)
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 每周整理失败：{e}")
-                self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
+        await self.background._weekly_loop()
 
     @staticmethod
     def _seconds_until(hhmm: str, weekday: int | None = None) -> float:
-        try:
-            hh, mm = (int(x) for x in hhmm.split(":"))
-            if not 0 <= hh <= 23 or not 0 <= mm <= 59:
-                raise ValueError("定时时间无效")
-        except Exception:
-            hh, mm = 23, 50
-        now = datetime.datetime.now()
-        target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        if target <= now:
-            target += datetime.timedelta(days=1)
-        if weekday is not None:
-            weekday = int(weekday) % 7
-            while target.weekday() != weekday:
-                target += datetime.timedelta(days=1)
-        return max((target - now).total_seconds(), 60)
+        return BackgroundTasks.seconds_until(hhmm, weekday)
 
-    # ---------------- 抽取：空闲触发 + 夜间兜底 ----------------
-    def _capacity_snapshot(self) -> CapacitySnapshot:
-        """Collect bounded usage metrics without exposing row content."""
-        usage = self.db.capacity_usage() if self.db is not None else {}
-        trace_rows = self.trace.count
-        trace_age = self.trace.oldest_age_seconds()
-        return CapacitySnapshot(
-            source_rows=int(usage.get("source_rows", 0)),
-            source_bytes=int(usage.get("source_bytes", 0)),
-            pending_rows=int(usage.get("pending_rows", 0)),
-            pending_oldest_age_seconds=float(
-                usage.get("pending_oldest_age_seconds", 0.0)
-            ),
-            deferred_rows=int(usage.get("deferred_rows", 0)),
-            dead_rows=int(usage.get("dead_rows", 0)),
-            db_bytes=int(usage.get("db_bytes", 0)),
-            artifact_count=int(usage.get("artifact_count", 0)),
-            artifact_bytes=int(usage.get("artifact_bytes", 0)),
-            expired_artifacts=int(usage.get("expired_artifacts", 0)),
-            context_chars_per_turn=self._last_context_chars,
-            trace_rows=trace_rows,
-            trace_oldest_age_seconds=trace_age,
-        )
+    def _reload_buffer(self) -> None:
+        if self.buffer is not None:
+            self.buffer.reload()
+
+    def _capacity_snapshot(self):
+        return self.capacity_service.snapshot()
 
     @staticmethod
     def _json_object(raw: object) -> dict:
-        """Decode one stored JSON object, tolerating nested string history."""
-        value = raw
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except (TypeError, ValueError):
-                return {}
-        return value if isinstance(value, dict) else {}
+        return StatusService.json_object(raw)
 
     @classmethod
     def _header_evidence(cls, raw_header: object) -> tuple[list[str], list[str]]:
-        """Read a single revision's stored lineage without inheriting the head."""
-        header = cls._json_object(raw_header)
-        lineage = cls._json_object(header.get("lineage"))
-
-        def ids(*names: str) -> list[str]:
-            for name in names:
-                value = lineage.get(name)
-                if isinstance(value, str):
-                    try:
-                        value = json.loads(value)
-                    except (TypeError, ValueError):
-                        continue
-                if not isinstance(value, (list, tuple)):
-                    continue
-                out: list[str] = []
-                for item in value:
-                    if not isinstance(item, str):
-                        continue
-                    text = item.strip()
-                    if text and text not in out:
-                        out.append(text)
-                return out
-            return []
-
-        return ids("derived_from", "derivedFrom"), ids("sources", "sourceIds")
+        return StatusService.header_evidence(raw_header)
 
     def persona_status(self) -> dict | None:
-        """Return the current global persona and its revision timeline.
-
-        Each revision carries only the evidence recorded in its own historical
-        header. A missing or malformed header yields empty arrays; the current
-        head lineage is never copied onto older revisions and source text is
-        never exposed here.
-        """
-        if self.db is None:
-            return None
-        active = [art for art in self.db.list(family="persona", state="active")]
-        if not active:
-            return None
-        current = max(active, key=lambda art: art.header.revision)
-        evidence: dict[int, tuple[list[str], list[str]]] = {}
-        inspected = self.db.inspect_record(current.header.id)
-        for row in inspected.get("versions", []):
-            try:
-                revision = int(row.get("revision") or 0)
-            except (TypeError, ValueError):
-                continue
-            evidence[revision] = self._header_evidence(row.get("header"))
-        revisions = []
-        for row in self.db.history(current.header.id):
-            revision = int(row.get("revision") or 0)
-            derived_from, source_ids = evidence.get(revision, ([], []))
-            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-            revisions.append({
-                "revision": revision,
-                "at": str(row.get("at") or ""),
-                "op": str(row.get("op") or ""),
-                "text": str(payload.get("text") or ""),
-                "derivedFrom": list(derived_from),
-                "sourceIds": list(source_ids),
-            })
-        return {
-            "id": current.header.id,
-            "revision": int(current.header.revision),
-            "text": str(current.payload.get("text") or ""),
-            "revisions": revisions,
-        }
+        return self.status.persona()
 
     def capacity_status(self) -> dict:
-        """Return a content-free capacity report for the WebUI status endpoint."""
-        snapshot = self._capacity_snapshot()
-        decision = self.capacity.evaluate(snapshot)
-        queue = self.db.queue_counts() if self.db is not None else {}
-        return {
-            "state": decision.state,
-            "actions": list(decision.actions),
-            "reasons": list(decision.reasons),
-            "pressure": decision.pressure,
-            "snapshot": {
-                "sourceRows": snapshot.source_rows,
-                "sourceBytes": snapshot.source_bytes,
-                "pendingRows": snapshot.pending_rows,
-                "deferredRows": snapshot.deferred_rows,
-                "deadRows": snapshot.dead_rows,
-                "databaseBytes": snapshot.db_bytes,
-                "artifactCount": snapshot.artifact_count,
-                "artifactBytes": snapshot.artifact_bytes,
-                "contextChars": snapshot.context_chars_per_turn,
-                "traceRows": snapshot.trace_rows,
-            },
-            "queue": {str(key): int(value) for key, value in queue.items()},
-        }
+        return self.capacity_service.status()
 
-    def _observe_capacity(self) -> CapacityDecision:
-        """Evaluate and journal capacity transitions for scheduler decisions."""
-        snapshot = self._capacity_snapshot()
-        decision = self.capacity.evaluate(snapshot)
-        self._degrade_recall = "degrade_recall" in decision.actions
-        self._backpressure = "backpressure" in decision.actions
-        self._deferred_rows = snapshot.deferred_rows
-        if decision.state != self._capacity_state:
-            self.journal.record(
-                "capacity",
-                "warning" if decision.state != NORMAL else "info",
-                f"容量状态切换为 {decision.state}",
-                stage="governor",
-                context={
-                    "pending": snapshot.pending_rows,
-                    "deferred": snapshot.deferred_rows,
-                    "dead": snapshot.dead_rows,
-                    "databaseBytes": snapshot.db_bytes,
-                    "artifacts": snapshot.artifact_count,
-                    "actions": len(decision.actions),
-                    "pressure": decision.pressure,
-                },
-            )
-            if decision.state == PROTECTIVE:
-                logger.warning("[seekmemory] 容量进入保护状态")
-            self.trace.record(
-                "capacity",
-                decision.state,
-                {
-                    "pending": snapshot.pending_rows,
-                    "deferred": snapshot.deferred_rows,
-                    "dead": snapshot.dead_rows,
-                    "databaseBytes": snapshot.db_bytes,
-                    "pressure": decision.pressure,
-                },
-            )
-            self._capacity_state = decision.state
-        return decision
+    def _observe_capacity(self):
+        return self.capacity_service.observe()
 
-    def _apply_capacity_maintenance(self, decision: CapacityDecision) -> None:
-        """Release parked writes on headroom; run lifecycle actions hourly."""
-        if ("release_deferred" in decision.actions and self._deferred_rows
-                and self.db is not None):
-            released = self.db.release_deferred(self.capacity.thresholds.release_batch)
-            if released:
-                self._deferred_rows = max(0, self._deferred_rows - released)
-                if self.buffer is not None:
-                    self.buffer.reload()
-                self.journal.record(
-                    "capacity",
-                    "info",
-                    "积压写入已重新入队",
-                    stage="admission",
-                    context={"released": released},
-                )
-        actions = set(decision.actions)
-        actionable = {
-            "compact_artifacts",
-            "forget_expired",
-            "trim_trace",
-            "alert",
-        }
-        if not actionable.intersection(actions):
-            return
-        mark = datetime.datetime.now().strftime("%Y%m%d%H")
-        if mark == self._capacity_action_mark:
-            return
-        self._capacity_action_mark = mark
-        if "compact_artifacts" in actions and self.db and self.cache:
-            from .maintain.merge import merge_similar
+    def _apply_capacity_maintenance(self, decision) -> None:
+        self.capacity_service.apply_maintenance(decision)
 
-            with self.journal.span("capacity", "compact_artifacts") as metrics:
-                metrics["merged"] = merge_similar(
-                    self.db,
-                    self.cache,
-                    threshold=0.6,
-                    limit=50,
-                )
-        if "forget_expired" in actions and self.db and self.cache:
-            from .maintain.lifecycle import forget_expired
+    def _batch_cap(self, decision) -> int:
+        return self.capacity_service.batch_cap(decision)
 
-            with self.journal.span("capacity", "forget_expired") as metrics:
-                metrics["forgotten"] = forget_expired(self.db, self.cache)
-        if "trim_trace" in actions:
-            with self.journal.span("capacity", "trim_trace") as metrics:
-                metrics["removed"] = self.trace.trim(
-                    self.capacity.thresholds.trace_pressured_rows
-                )
-        if "alert" in actions:
-            self.journal.record(
-                "capacity",
-                "warning",
-                "容量保护告警",
-                stage="governor",
-                context={"state": decision.state},
-            )
-        self.trace.record(
-            "maintenance",
-            decision.state,
-            {"actions": len(actions), "deferred": self._deferred_rows},
-        )
-
-    def _batch_cap(self, decision: CapacityDecision) -> int:
-        cap = max(1, int(self._c("max_sessions_per_flush", 6)))
-        return min(24, cap * 2) if "raise_batch_size" in decision.actions else cap
-
-    def _should_flush(self, capacity: CapacityDecision | None = None) -> bool:
-        if self._flushing or self.buffer is None or self.db is None:
-            return False
-        capacity = capacity or self._observe_capacity()
-        today = datetime.date.today().isoformat()
-        if self._flush_day != today:
-            self._flush_day, self._flush_count = today, 0
-        decision = decide_flush(
-            pending=len(self.buffer.items),
-            idle_seconds=self.buffer.idle_seconds(),
-            worth_now=worth_now(self.buffer.items),
-            flushes_today=self._flush_count,
-            idle_flush_seconds=float(self._c("idle_flush_seconds", 0)),
-            min_pending=int(self._c("min_pending", 8)),
-            max_flushes_per_day=int(self._c("max_flushes_per_day", 2)),
-            backlog_flush_at=int(self._c("backlog_flush_at", 30)),
-            topic_age_seconds=self.buffer.oldest_topic_age(),
-            topic_ttl_seconds=float(self._c("topic_ttl_seconds", 86400)),
-            dream_only=self._dream_on,
-        )
-        if decision.should:
-            return True
-        if self._dream_on:
-            return False
-        return (
-            capacity.state in (SATURATED, PROTECTIVE)
-            and "schedule_extraction" in capacity.actions
-        )
+    def _should_flush(self, capacity=None) -> bool:
+        return self.background.should_flush()
 
     @property
     def _dream_on(self) -> bool:
-        """梦境模式：白天只缓冲，抽取与进化都留到 dream 周期。"""
         return bool(self.dream is not None and self.dream.enabled)
 
-    async def _runtime_scheduler_tick(self) -> None:
-        if self.db is None or not bool(self._c("runtime_gate_enabled", False)):
-            return
-        async with self._runtime_tick_lock:
-            now = time.time()
-            due = self.scheduler.due(
-                self.db.list_runtime_state_sessions(limit=100), now
-            )
-            for item in due:
-                session_id = item.session_id
-                if session_id in self._runtime_dispatching:
-                    continue
-                try:
-                    self._runtime_dispatching.add(session_id)
-                    try:
-                        await self._dispatch_deferred(session_id, now)
-                    finally:
-                        self._runtime_dispatching.discard(session_id)
-                except Exception:
-                    continue
-
-    async def _dispatch_deferred(self, session_id: str, now: float) -> None:
-        """Generate one deferred group reply after the ambient wait expires."""
-        if not bool(self._c("runtime_gate_enabled", False)):
-            return
+    def _make_run_context(self, session_id: str, now: float) -> RunContext:
         source = self.db.latest_user_source(session_id) if self.db is not None else None
         source = source or {}
-        text = str(source.get("text") or "").strip()
-        source_id = str(source.get("id") or "")
-        await self.runtime.dispatch_deferred(
-            RunContext(
-                session_id=session_id,
-                text=text,
-                source_id=source_id,
-                bot_id=str(getattr(self, "_self_id", "") or "bot"),
-                at=now,
-            ),
-            max_attempts=int(self._c("runtime_dispatch_max_attempts", 3)),
-            base_seconds=float(self._c("runtime_dispatch_backoff_seconds", 2)),
+        return RunContext(
+            session_id=session_id,
+            text=str(source.get("text") or "").strip(),
+            source_id=str(source.get("id") or ""),
+            bot_id=str(getattr(self, "_self_id", "") or "bot"),
+            at=now,
         )
+
+    async def _runtime_scheduler_tick(self) -> None:
+        await self.runtime_worker.tick()
+
+    async def _dispatch_deferred(self, session_id: str, now: float) -> None:
+        await self.runtime_worker.dispatch(session_id, now)
 
     async def _runtime_loop(self) -> None:
-        while True:
-            await asyncio.sleep(max(1, int(self._c("runtime_tick_seconds", 5))))
-            try:
-                await self._runtime_scheduler_tick()
-            except Exception as e:  # noqa: BLE001
-                self.journal.record("runtime", "failed", "runtime tick failed", error=e)
+        await self.runtime_worker.run_forever()
 
     async def _idle_loop(self) -> None:
-        """聊完安静一会儿就抽，不用等到半夜。"""
-        while True:
-            await asyncio.sleep(30)
-            try:
-                capacity = self._observe_capacity()
-                self._apply_capacity_maintenance(capacity)
-                await self._runtime_scheduler_tick()
-                if self._should_flush(capacity):
-                    self.jobs.submit("idle", lambda: self._flush("空闲"))
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 空闲抽取失败：{e}")
-                self.journal.record("scheduler", "failed", "定时任务提交失败", error=e)
+        await self.background._idle_loop()
 
     async def _ingest_loop(self) -> None:
-        """白天批量入库：积压够多就按批抽取，让记忆跟得上聊天。
-
-        和 dream 分工——这里只负责"抽取成记忆"，合并/修订印象/沉淀人格
-        仍然只在 dream 里做，避免白天人格漂移。
-        """
-        while True:
-            interval = max(120, int(self._c("ingest_interval_seconds", 600)))
-            await asyncio.sleep(interval)
-            try:
-                if self.buffer is None or not self.buffer.items:
-                    continue
-                if not self._c("ingest_enabled", True):
-                    continue
-                if len(self.buffer.items) < int(self._c("ingest_min_pending", 20)):
-                    continue
-                cap = max(1, int(self._c("ingest_batch_topics", 20)))
-                self.jobs.submit("ingest", lambda: self._flush("定时批量", limit=cap))
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 定时批量抽取失败：{e}")
+        await self.background._ingest_loop()
 
     async def _dream_loop(self) -> None:
-        """每天 dream_time 跑一次进化；启动时若已过点且没做，立刻补一次。"""
-        if self.dream is not None and self.dream.due():
-            try:
-                self.jobs.submit("dream", self._run_dream)
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 补跑梦境失败：{e}")
-        while True:
-            await asyncio.sleep(
-                self._seconds_until(str(self._c("dream_time", "03:30")))
-            )
-            try:
-                self.jobs.submit("dream", self._run_dream)
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"[seekmemory] 梦境任务提交失败：{e}")
-                self.journal.record("scheduler", "failed", "梦境提交失败", error=e)
+        await self.background._dream_loop()
 
     async def _run_dream(self) -> None:
-        """一次梦境：批量抽取当天的缓冲，再做整理与人格沉淀。"""
-        if self.dream is None or self.buffer is None:
-            return
-        self._apply_capacity_maintenance(self._observe_capacity())
-        result = await self.dream.run(
-            flush_once=self._flush,
-            pending=lambda: len(self.buffer.items),
-            maintain=self._dream_maintain,
-        )
-        self.journal.record(
-            "dream",
-            result.status,
-            f"{result.date}：{result.batches} 个话题 / 写入 {result.written} 条"
-            + (f" / {len(result.errors)} 个错误" if result.errors else ""),
-            self.jobs.task_id,
-            context={
-                "date": result.date,
-                "batches": result.batches,
-                "written": result.written,
-                "errors": list(result.errors),
-            },
-        )
+        await self.background.run_dream()
 
     async def _dream_maintain(self) -> dict:
-        """抽取之后的整理：遗忘、合并、人格沉淀。"""
-        return await self._weekly()
+        return await self.background.dream_maintain()
 
     async def _nightly(self) -> None:
-        """夜间兜底：把白天没来得及抽的尾巴抽掉。"""
-        self._apply_capacity_maintenance(self._observe_capacity())
-        await self._flush("夜间")
+        await self.background.nightly()
 
-    def _split_topics(
-        self, items: list[DialogueTurn], cap: int | None = None
-    ) -> list[tuple[str, str, list[DialogueTurn]]]:
-        """按会话轮询选择话题，保证长会话不会长期独占抽取批次。"""
-        return select_topic_batches(
-            items, int(cap or self._c("max_sessions_per_flush", 6))
-        )
+    def _split_topics(self, items: list[DialogueTurn], cap: int | None = None):
+        return self.ingest.split_topics(items, cap)
 
     async def _flush(self, reason: str, limit: int = 0) -> tuple[int, int]:
-        """按上游会话与结果契约抽取，处理成功前保留缓冲。
-
-        Args:
-            reason: 触发本次抽取的业务原因。
-
-        Raises:
-            Exception: 批次结束后传播首个会话失败，供任务执行器记录失败状态。
-        """
-        if (
-            self._flushing
-            or self.buffer is None
-            or not self.buffer.items
-            or self.db is None
-        ):
-            return 0, 0
-        self._flushing = True
-        try:
-            capacity = self._observe_capacity()
-            topics = self._split_topics(
-                list(self.buffer.items),
-                cap=limit or self._batch_cap(capacity),
-            )
-            ready_ids = self.db.ready_extraction_ids()
-            ready = []
-            failure: Exception | None = None
-            for umo, topic_id, part in topics:
-                part = [
-                    turn
-                    for turn in part
-                    if not turn.source_id or turn.source_id in ready_ids
-                ]
-                if not part:
-                    continue
-                try:
-                    with self.journal.span(
-                        "extract", "provider.resolve", session=umo, topic=topic_id
-                    ):
-                        prov = await self.context.get_using_provider_async(umo or None)
-                except Exception as exc:
-                    if self.buffer is not None:
-                        self.buffer.mark_failed(
-                            part,
-                            type(exc).__name__,
-                            max_attempts=self.capacity.thresholds.extraction_max_attempts,
-                        )
-                    failure = failure or exc
-                    continue
-                if not prov:
-                    self.journal.record(
-                        "extract",
-                        "warning",
-                        "该会话尚未配置模型服务，保留待抽取消息",
-                        stage="provider.resolve",
-                        context={"session": umo, "topic": topic_id},
-                    )
-                    continue
-                ready.append((umo, topic_id, part, prov))
-            if not ready:
-                if failure is not None:
-                    raise failure
-                return 0, 0
-            self._flush_count += 1
-            written = 0
-            for umo, topic_id, part, prov in ready:
-                for chunk in chunk_turns(part):
-                    try:
-                        with self.journal.span(
-                            "extract",
-                            "topic.extract",
-                            session=umo,
-                            topic=topic_id,
-                            messages=len(chunk),
-                        ) as metrics:
-                            outcome = await absorb(
-                                chunk,
-                                self.db,
-                                self.cache,
-                                self.graph,
-                                ProviderChatModel(prov),
-                                log=partial(self.journal.record, "extract", "warning"),
-                                owner_id=self.owner_umo.split(":")[-1]
-                                if self.owner_umo
-                                else "",
-                                strict=True,
-                                stage=partial(self.journal.span, "extract"),
-                            )
-                            metrics["written"] = outcome.written
-                            metrics["skipped"] = outcome.skipped
-                            if outcome.model_failed or outcome.retryable:
-                                raise RuntimeError("extraction failed; keep pending input")
-                    except Exception as exc:
-                        self.buffer.mark_failed(
-                            chunk,
-                            type(exc).__name__,
-                            max_attempts=self.capacity.thresholds.extraction_max_attempts,
-                        )
-                        failure = failure or exc
-                        break
-                    self.buffer.mark_succeeded(chunk)
-                    written += outcome.written
-                    logger.info(
-                        f"[seekmemory] {reason} extract {umo or 'unknown'}: "
-                        f"topic {topic_id}, {len(chunk)} turns, {outcome.written} written"
-                    )
-            self.journal.record(
-                "extract",
-                "info",
-                f"已尝试 {len(ready)} 个话题，写入 {written} 条记忆",
-                context={"topics": len(ready), "written": written},
-                stage="batch.complete",
-            )
-            if failure is not None:
-                raise failure
-            return written, len(ready)
-        finally:
-            self._flushing = False
+        return await self.background.flush(reason, limit)
 
     async def _weekly(self) -> dict:
-        from .maintain.decay import decay_all
-        from .maintain.merge import merge_similar
-        from .maintain.persona import distill_self_persona
-        from .maintain.self_impression import build_self_impressions
-
-        if self.db is None or self.cache is None:
-            return {}
-        today = datetime.date.today().isoformat()
-        with self.journal.span("weekly", "self_impression") as metrics:
-            self_made = build_self_impressions(self.db, self.cache, today=today)
-            metrics["made"] = self_made
-        with self.journal.span("weekly", "decay") as metrics:
-            dropped = decay_all(self.db, self.cache, today)
-            metrics["forgotten"] = dropped
-        with self.journal.span("weekly", "merge", threshold=0.6) as metrics:
-            merged = merge_similar(self.db, self.cache, threshold=0.6)
-            metrics["merged"] = merged
-        with self.journal.span("weekly", "persona") as metrics:
-            persona = distill_self_persona(self.db, self.cache, today)
-            metrics["updated"] = bool(persona)
-        self.journal.record(
-            "weekly",
-            "info",
-            f"遗忘 {dropped} 条，合并 {merged} 条，人格更新：{bool(persona)}",
-            self.jobs.task_id,
-        )
-        logger.info(
-            f"[seekmemory] 每周整理：遗忘 {dropped} 条，合并 {merged} 组，"
-            f"人格 {'已更新' if persona else '无变化'}"
-        )
-        return {"forgotten": dropped, "merged": merged,
-                "self_impressions": self_made, "persona": bool(persona)}
+        return await self.background.weekly()

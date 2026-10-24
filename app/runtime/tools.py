@@ -80,28 +80,16 @@ class ToolPolicy:
                 continue
         return tuple(removed)
 
-    def trace_call(self, event, tool_name: str, tool_args) -> ToolCall:
-        """Record advisory metadata for one observed tool call."""
+    def trace_call(self, tool_name: str, tool_args) -> ToolCall:
+        """Classify one observed tool call without touching a host object."""
         name = str(tool_name or "")
         args = tool_args if isinstance(tool_args, dict) else {}
-        call = ToolCall(
+        return ToolCall(
             name=name,
             allowed=self.allows(name),
             args_keys=tuple(sorted(str(key) for key in args)),
             enforced=False,
         )
-        try:
-            existing = event.get_extra("_seekmemory_tool_calls", ()) or ()
-            event.set_extra("_seekmemory_tool_calls", tuple(existing) + (name,))
-            mismatches = event.get_extra("_seekmemory_tool_policy_mismatches", ()) or ()
-            if not call.allowed:
-                event.set_extra(
-                    "_seekmemory_tool_policy_mismatches", tuple(mismatches) + (name,)
-                )
-            event.set_extra("_seekmemory_tool_policy_enforced", False)
-        except Exception:  # noqa: BLE001 - trace must not break host
-            pass
-        return call
 
 
 def tool_result_failed(tool_result: Any) -> bool:
@@ -121,7 +109,6 @@ def tool_result_failed(tool_result: Any) -> bool:
     return status in {"error", "failed", "failure", "cancelled", "canceled"}
 
 
-def trace_tool_call(event, tool_name: str, tool_args,
-                    policy: ToolPolicy) -> ToolCall:
+def trace_tool_call(tool_name: str, tool_args, policy: ToolPolicy) -> ToolCall:
     """Compatibility helper for the old function-style call site."""
-    return policy.trace_call(event, tool_name, tool_args)
+    return policy.trace_call(tool_name, tool_args)

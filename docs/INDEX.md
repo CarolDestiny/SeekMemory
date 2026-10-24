@@ -39,7 +39,10 @@ v0.3.1 + WebUI branch
 main.py / AstrBot adapter
         |
         v
-app/ use cases and ports
+orchestration/ application services
+        |
+        v
+app/ DTOs, contracts, runtime and pure policy
         |
         v
 core/ Artifact kernel
@@ -52,6 +55,8 @@ Rules:
 
 - core/ imports no storage, SDK, plugin or app code.
 - app/ imports core/ only; external systems stay behind ports.
+- orchestration/ composes app/, core/, recall/, perceive/ and maintain/; it imports no AstrBot or adapter code.
+- main.py is the only AstrBot hook/composition layer and contains no extraction, capacity or maintenance algorithm.
 - store/ is the only place that writes SQL.
 - webui/routes.py adapts the host. webui/service.py calls core/store/recall.
 - webui/jobs.py and webui/journal.py stay independent of the host.
