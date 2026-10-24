@@ -164,7 +164,8 @@ CREATE TABLE IF NOT EXISTS runtime_episodes (
     outcome             TEXT NOT NULL DEFAULT '',
     error               TEXT NOT NULL DEFAULT '',
     user_source_id      TEXT NOT NULL DEFAULT '',
-    assistant_source_id TEXT NOT NULL DEFAULT ''
+    assistant_source_id TEXT NOT NULL DEFAULT '',
+    run_id              TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_runtime_episodes_session
 ON runtime_episodes(session_id, at, id);
