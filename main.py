@@ -32,6 +32,7 @@ from .app.runtime import (
     JsonStateStore,
     JsonlEpisodeStore,
     MemoryContext,
+    RunContext,
     RunRecorder,
     RuntimeInput,
     Scheduler,
@@ -59,6 +60,7 @@ from .perceive.model import ProviderChatModel
 from .recall.pipeline import build_block
 from .recall.retriever import HybridRetriever
 from .adapters.astrbot_actions import AstrBotActionPort
+from .adapters.astrbot_model import AstrBotModelGateway
 from .adapters.astrbot_runtime import AstrBotRuntimeAdapter
 from .adapters.seekmemory_context import SeekMemoryContextAdapter
 from .store.cache import Cache
@@ -119,27 +121,11 @@ class Main(star.Star):
         self._runtime_tick_lock = asyncio.Lock()
         self._init_engine()
         if self.db is not None:
-            self.runtime = AgentRuntime(
-                DBStateStore(self.db),
-                trace=self.trace,
-                clock=time.time,
-                memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
-                wait_seconds=(
-                    int(self._c("runtime_wait_seconds", 5))
-                    if bool(self._c("runtime_gate_enabled", False)) else 0
-                ),
-            )
+            state_store = DBStateStore(self.db)
             self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
         else:
-            self.runtime = AgentRuntime(
-                JsonStateStore(str(self.data_path.parent / "runtime_state.json")),
-                trace=self.trace,
-                clock=time.time,
-                memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
-                wait_seconds=(
-                    int(self._c("runtime_wait_seconds", 5))
-                    if bool(self._c("runtime_gate_enabled", False)) else 0
-                ),
+            state_store = JsonStateStore(
+                str(self.data_path.parent / "runtime_state.json")
             )
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
@@ -150,6 +136,19 @@ class Main(star.Star):
             checkpoint=self.checkpoint,
             episodes=self.episode_recorder,
             cache=self.cache,
+        )
+        self.runtime = AgentRuntime(
+            state_store,
+            trace=self.trace,
+            clock=time.time,
+            memory_context=SeekMemoryContextAdapter(self._runtime_memory_context),
+            wait_seconds=(
+                int(self._c("runtime_wait_seconds", 5))
+                if bool(self._c("runtime_gate_enabled", False)) else 0
+            ),
+            model_gateway=AstrBotModelGateway(context),
+            message_sender=self.actions,
+            recorder=self.recorder,
         )
         self.scheduler = Scheduler(self.runtime.store)
         if self.db is not None:
@@ -989,13 +988,6 @@ class Main(star.Star):
         """Generate one deferred group reply after the ambient wait expires."""
         if not bool(self._c("runtime_gate_enabled", False)):
             return
-        state = self.runtime.store.get(session_id)
-        wait_due = state.wait_until > 0 and state.wait_until <= now
-        retry_due = state.next_retry_at > 0 and state.next_retry_at <= now
-        if not (wait_due or retry_due):
-            return
-        if state.wait_until > now or (state.next_retry_at and state.next_retry_at > now):
-            return
         source = self.db.latest_user_source(session_id) if self.db is not None else None
         if not source:
             self.runtime.clear_wait(session_id, now)
@@ -1005,60 +997,16 @@ class Main(star.Star):
             self.runtime.clear_wait(session_id, now)
             return
         source_id = str(source.get("id") or "")
-        attempts = self.runtime.claim_dispatch(session_id, source_id, now)
-        run_id = self.recorder.new_run_id()
-        runtime_input = RuntimeInput(
-            session_id=session_id,
-            text=text,
-            private=False,
-            at=now,
-        )
-        try:
-            context = self.runtime.build_context(runtime_input)
-            provider = await self.context.get_using_provider_async(session_id)
-            if provider is None:
-                raise RuntimeError("no_provider")
-            response = await provider.text_chat(
-                prompt=text,
-                system_prompt=context.text or None,
-            )
-            reply = str(getattr(response, "completion_text", "") or "").strip()
-            if not reply:
-                raise RuntimeError("empty_response")
-            sent = await self.actions.send(session_id, reply)
-            if sent is False:
-                raise RuntimeError("send_failed")
-        except Exception as exc:  # noqa: BLE001 - runtime action is fail-open
-            self.runtime.schedule_retry(
-                session_id, now, attempts,
-                max_attempts=int(self._c("runtime_dispatch_max_attempts", 3)),
-                base_seconds=float(self._c("runtime_dispatch_backoff_seconds", 2)),
-            )
-            self.recorder.record_deferred_error(
-                run_id=run_id,
+        await self.runtime.dispatch_deferred(
+            RunContext(
                 session_id=session_id,
-                user_source_id=source_id,
-                error=exc,
-                at=datetime.datetime.now().isoformat(timespec="seconds"),
-            )
-            self.trace.record(
-                "runtime", "deferred_failed",
-                {"error": type(exc).__name__, "attempt": attempts},
-            )
-            return
-        at = datetime.datetime.now().isoformat(timespec="seconds")
-        recorded = self.recorder.record_deferred_reply(
-            run_id=run_id,
-            session_id=session_id,
-            text=reply,
-            speaker_id=str(getattr(self, "_self_id", "") or "bot"),
-            user_source_id=source_id,
-            at=at,
-        )
-        self.runtime.mark_delivered(session_id, now)
-        self.trace.record(
-            "runtime", "deferred_delivered",
-            {"chars": recorded.response_chars, "attempt": attempts},
+                text=text,
+                source_id=source_id,
+                bot_id=str(getattr(self, "_self_id", "") or "bot"),
+                at=now,
+            ),
+            max_attempts=int(self._c("runtime_dispatch_max_attempts", 3)),
+            base_seconds=float(self._c("runtime_dispatch_backoff_seconds", 2)),
         )
 
     async def _runtime_loop(self) -> None:

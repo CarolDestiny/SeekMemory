@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from adapters.astrbot_model import AstrBotModelGateway  # noqa: E402
 from adapters.astrbot_runtime import AstrBotRuntimeAdapter  # noqa: E402
 from app.runtime import WakeAction, RunDecision  # noqa: E402
 
@@ -68,6 +71,38 @@ class AdapterTest(unittest.TestCase):
         event.is_at_or_wake_command = True
         result = AstrBotRuntimeAdapter.from_event(event, "hello", "g1", "u1")
         self.assertTrue(result.mentioned)
+
+    def test_model_gateway_resolves_provider_and_returns_text(self) -> None:
+        class Provider:
+            async def text_chat(self, prompt, system_prompt=None):
+                self.prompt = prompt
+                self.system_prompt = system_prompt
+                return SimpleNamespace(completion_text="  reply  ")
+
+        class Context:
+            def __init__(self):
+                self.provider = Provider()
+
+            async def get_using_provider_async(self, session_id):
+                self.session_id = session_id
+                return self.provider
+
+        context = Context()
+        text = asyncio.run(
+            AstrBotModelGateway(context).complete("s1", "hello", "memory")
+        )
+        self.assertEqual(text, "reply")
+        self.assertEqual(context.session_id, "s1")
+        self.assertEqual(context.provider.prompt, "hello")
+        self.assertEqual(context.provider.system_prompt, "memory")
+
+    def test_model_gateway_reports_missing_provider(self) -> None:
+        class Context:
+            async def get_using_provider_async(self, session_id):
+                return None
+
+        with self.assertRaises(RuntimeError):
+            asyncio.run(AstrBotModelGateway(Context()).complete("s1", "hello"))
 
     def test_decision_is_exposed_as_event_metadata(self) -> None:
         event = Event(False)

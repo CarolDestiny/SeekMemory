@@ -91,6 +91,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Due ambient wait had no reply dispatch | covered by `tests/test_webui_host.py` (host layer) |
 | Deferred dispatch failure duplicated or retried forever | covered by `tests/test_webui_host.py`, `tests/test_agent_runtime.py` |
 | Deferred assistant reply was not written back to memory | covered by `tests/test_webui_host.py` (host layer) |
+| Deferred lifecycle lived in the AstrBot host entrypoint | covered by `tests/test_agent_runtime.py` and `tests/test_webui_host.py` |
 | Runtime DB failures could break replies | covered by `tests/test_runtime_actions.py` |
 | Runtime episode retention was unbounded | covered by `tests/test_runtime_actions.py` |
 | User impressions were composed into persona | covered by `tests/test_self_impression.py` |

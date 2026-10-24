@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+import datetime
 from typing import Callable
 
 from .contracts import (
     MemoryContext,
     MemoryContextPort,
+    MessageSender,
+    ModelGateway,
+    RunContext,
+    RunDecision,
+    RunResult,
     RuntimeInput,
     SessionState,
     StateStore,
     TraceSink,
     WakeAction,
-    RunDecision,
 )
+from .recorder import RunRecorder
 from .wake import WakePolicy
 
 
@@ -28,6 +34,9 @@ class AgentRuntime:
         clock: Callable[[], float] | None = None,
         memory_context: MemoryContextPort | None = None,
         wait_seconds: float = 0.0,
+        model_gateway: ModelGateway | None = None,
+        message_sender: MessageSender | None = None,
+        recorder: RunRecorder | None = None,
     ) -> None:
         self.store = store
         self.policy = policy or WakePolicy()
@@ -35,6 +44,9 @@ class AgentRuntime:
         self.clock = clock or (lambda: 0.0)
         self.memory_context = memory_context
         self.wait_seconds = max(0.0, float(wait_seconds))
+        self.model_gateway = model_gateway
+        self.message_sender = message_sender
+        self.recorder = recorder
 
     def build_context(self, event: RuntimeInput) -> MemoryContext:
         if self.memory_context is None:
@@ -78,6 +90,112 @@ class AgentRuntime:
                 },
             )
         return decision
+
+    async def dispatch_deferred(
+        self,
+        context: RunContext,
+        *,
+        max_attempts: int = 3,
+        base_seconds: float = 2.0,
+    ) -> RunResult:
+        """Claim, generate, send and record one deferred run.
+
+        Host adapters provide the model and sender ports. The runtime owns the
+        lifecycle and bounded retry; callers only map the latest Source into a
+        RunContext.
+        """
+        session_id = str(context.session_id or "")
+        source_id = str(context.source_id or "")
+        text = str(context.text or "").strip()
+        now = float(context.at or self.clock())
+        run_id = str(context.run_id or "")
+        if not text:
+            self.clear_wait(session_id, now)
+            return RunResult(run_id, session_id, False, error="empty_source")
+        state = self.store.get(session_id)
+        wait_due = state.wait_until > 0 and state.wait_until <= now
+        retry_due = state.next_retry_at > 0 and state.next_retry_at <= now
+        if not (wait_due or retry_due):
+            return RunResult(run_id, session_id, False, error="not_due")
+        if state.wait_until > now or (
+            state.next_retry_at and state.next_retry_at > now
+        ):
+            return RunResult(run_id, session_id, False, error="not_due")
+        if self.model_gateway is None or self.message_sender is None:
+            return RunResult(run_id, session_id, False, error="runtime_port_missing")
+        if self.recorder is None:
+            return RunResult(run_id, session_id, False, error="recorder_missing")
+        if not run_id:
+            run_id = self.recorder.new_run_id()
+
+        attempts = self.claim_dispatch(session_id, source_id, now)
+        runtime_input = RuntimeInput(
+            session_id=session_id,
+            text=text,
+            private=False,
+            at=now,
+        )
+        try:
+            memory = self.build_context(runtime_input)
+            reply = await self.model_gateway.complete(
+                session_id, text, memory.text or None
+            )
+            if not str(reply or "").strip():
+                raise RuntimeError("empty_response")
+            sent = await self.message_sender.send(session_id, reply)
+            if sent is False:
+                raise RuntimeError("send_failed")
+        except Exception as exc:  # noqa: BLE001 - runtime action is fail-open
+            self.schedule_retry(
+                session_id,
+                now,
+                attempts,
+                max_attempts=max_attempts,
+                base_seconds=base_seconds,
+            )
+            self.recorder.record_deferred_error(
+                run_id=run_id,
+                session_id=session_id,
+                user_source_id=source_id,
+                error=exc,
+                at=datetime.datetime.now().isoformat(timespec="seconds"),
+            )
+            if self.trace is not None:
+                self.trace.record(
+                    "runtime",
+                    "deferred_failed",
+                    {"error": type(exc).__name__, "attempt": attempts},
+                )
+            return RunResult(
+                run_id,
+                session_id,
+                False,
+                error=type(exc).__name__,
+            )
+
+        at = datetime.datetime.now().isoformat(timespec="seconds")
+        recorded = self.recorder.record_deferred_reply(
+            run_id=run_id,
+            session_id=session_id,
+            text=reply,
+            speaker_id=str(context.bot_id or "bot"),
+            user_source_id=source_id,
+            at=at,
+        )
+        self.mark_delivered(session_id, now)
+        if self.trace is not None:
+            self.trace.record(
+                "runtime",
+                "deferred_delivered",
+                {"chars": recorded.response_chars, "attempt": attempts},
+            )
+        return RunResult(
+            run_id,
+            session_id,
+            True,
+            assistant_source_id=recorded.assistant_source_id,
+            response_chars=recorded.response_chars,
+        )
 
     def clear_wait(self, session_id: str, now: float | None = None) -> SessionState:
         state = self.store.get(session_id)

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,6 +18,7 @@ from app.runtime import (  # noqa: E402
     InMemoryStateStore,
     JsonStateStore,
     MemoryContext,
+    RunContext,
     RuntimeInput,
     SessionState,
     WakeAction,
@@ -307,6 +310,152 @@ class WakePolicyTest(unittest.TestCase):
         runtime = AgentRuntime(store, clock=lambda: 200)
         runtime.observe(RuntimeInput("s1", "ambient", at=200))
         runtime.mark_delivered("s1", now=200)
+
+    def test_deferred_dispatch_owns_generate_send_and_record(self) -> None:
+        class Model:
+            def __init__(self):
+                self.calls = []
+
+            async def complete(self, session_id, prompt, system_prompt=None):
+                self.calls.append((session_id, prompt, system_prompt))
+                return "deferred reply"
+
+        class Sender:
+            def __init__(self):
+                self.sent = []
+
+            async def send(self, session_id, text):
+                self.sent.append((session_id, text))
+                return True
+
+        class Recorder:
+            def __init__(self):
+                self.replies = []
+                self.errors = []
+
+            def new_run_id(self):
+                return "run-1"
+
+            def record_deferred_reply(self, **kwargs):
+                self.replies.append(kwargs)
+                return SimpleNamespace(
+                    response_chars=len(kwargs["text"]),
+                    assistant_source_id="a1",
+                )
+
+            def record_deferred_error(self, **kwargs):
+                self.errors.append(kwargs)
+
+        store = InMemoryStateStore()
+        state = store.get("s1")
+        state.wait_until = 100
+        store.put(state)
+        model, sender, recorder = Model(), Sender(), Recorder()
+        runtime = AgentRuntime(
+            store,
+            clock=lambda: 100,
+            memory_context=SimpleNamespace(
+                build_context=lambda event: MemoryContext(text="memory")
+            ),
+            model_gateway=model,
+            message_sender=sender,
+            recorder=recorder,
+        )
+        result = asyncio.run(runtime.dispatch_deferred(RunContext(
+            session_id="s1", text="hello", source_id="u1", bot_id="bot", at=100,
+        )))
+        self.assertTrue(result.delivered)
+        self.assertEqual(result.assistant_source_id, "a1")
+        self.assertEqual(model.calls, [("s1", "hello", "memory")])
+        self.assertEqual(sender.sent, [("s1", "deferred reply")])
+        self.assertEqual(recorder.replies[0]["run_id"], "run-1")
+        self.assertEqual(store.get("s1").wait_until, 0.0)
+
+    def test_deferred_dispatch_rejects_not_due_state(self) -> None:
+        class Model:
+            def __init__(self):
+                self.calls = 0
+
+            async def complete(self, session_id, prompt, system_prompt=None):
+                self.calls += 1
+                return "must not run"
+
+        class Sender:
+            async def send(self, session_id, text):
+                raise AssertionError("must not send")
+
+        class Recorder:
+            def new_run_id(self):
+                return "run-id"
+
+            def record_deferred_reply(self, **kwargs):
+                raise AssertionError("must not record")
+
+            def record_deferred_error(self, **kwargs):
+                raise AssertionError("must not record")
+
+        store = InMemoryStateStore()
+        state = store.get("s1")
+        state.wait_until = 300
+        store.put(state)
+        model = Model()
+        runtime = AgentRuntime(
+            store,
+            clock=lambda: 100,
+            model_gateway=model,
+            message_sender=Sender(),
+            recorder=Recorder(),
+        )
+        result = asyncio.run(runtime.dispatch_deferred(RunContext(
+            session_id="s1", text="hello", source_id="u1", at=100,
+        )))
+        self.assertFalse(result.delivered)
+        self.assertEqual(result.error, "not_due")
+        self.assertEqual(model.calls, 0)
+
+    def test_deferred_dispatch_failure_schedules_retry_without_raising(self) -> None:
+        class Model:
+            async def complete(self, session_id, prompt, system_prompt=None):
+                raise RuntimeError("secret provider detail")
+
+        class Sender:
+            async def send(self, session_id, text):
+                return True
+
+        class Recorder:
+            def __init__(self):
+                self.errors = []
+
+            def new_run_id(self):
+                return "run-fail"
+
+            def record_deferred_reply(self, **kwargs):
+                raise AssertionError("must not record a reply")
+
+            def record_deferred_error(self, **kwargs):
+                self.errors.append(kwargs)
+
+        store = InMemoryStateStore()
+        state = store.get("s1")
+        state.wait_until = 100
+        store.put(state)
+        recorder = Recorder()
+        runtime = AgentRuntime(
+            store,
+            clock=lambda: 100,
+            model_gateway=Model(),
+            message_sender=Sender(),
+            recorder=recorder,
+        )
+        result = asyncio.run(runtime.dispatch_deferred(RunContext(
+            session_id="s1", text="hello", source_id="u1", at=100,
+        )))
+        self.assertFalse(result.delivered)
+        self.assertEqual(result.error, "RuntimeError")
+        self.assertEqual(recorder.errors[0]["error"].__class__, RuntimeError)
+        state = store.get("s1")
+        self.assertGreater(state.wait_until, 100)
+        self.assertEqual(state.next_retry_at, state.wait_until)
 
     def test_runtime_package_does_not_import_astrbot(self) -> None:
         root = Path(__file__).resolve().parents[1] / "app" / "runtime"
