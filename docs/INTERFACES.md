@@ -125,3 +125,36 @@ remains available when the memory engine is unavailable. Run IDs are random, nev
 `select(..., diagnostics=dict)` optionally fills gate counts and threshold without changing its
 return value, ordering, exploration seed or privacy rules. A non-evaluated gate is distinct from
 zero candidates passing an evaluated gate.
+
+## Delivery and recovery (GitHub #61)
+
+`build_block()` is read-only, including ordinary calls without `dry_run=True`.
+Its info contains `designated_ids` and `designated_revisions` for designated bodies
+actually retained by assembly. Historical impression notes use each revision's own
+header and Source origins; snapshots without a reliable disclosure header are omitted.
+`DB.history()` adds the stored `header` dictionary to each existing result row.
+
+`RunRecorder.record_reply()` stages recall and designated IDs without reinforcing or
+consuming memory. `record_delivery()` returns `bool`, confirms those effects after
+successful transport delivery and raises on failed persistence. It also accepts explicit
+`recall_ids`, `designated_ids` and `designated_revisions` for recovery. Completion is
+memoized only after success; recent maps are bounded to 1024 entries by default, and
+completed database episodes prevent replay after eviction or restart.
+
+`EpisodeRecorder.record()` and built-in episode sinks return a success boolean.
+`EpisodeRecorder.completed(run_id)` checks a durable delivered episode where supported;
+`DB.runtime_episode_by_run_id(run_id)` returns that row or `None`.
+
+`RunContext` adds trailing `speaker_id=""`; old positional fields retain their order.
+`DB.latest_user_source()` includes the actual `speaker_id` from stored Source metadata.
+`AgentRuntime.mark_delivered(..., read_through_seq=...)` acknowledges only that input
+watermark, preserving later unread input and its waiting deadline.
+
+`AgentRuntime(..., deferred_store=...)` accepts a `DeferredStore` port. Its temporary
+`DeferredReply` stores the run ID, reply, parent Source, input watermark and delivery
+effects separately from session state, traces and episodes. `DBDeferredStore` persists
+this protected outbox through the DB facade. Sent rows are removed after successful
+write-back. `recover_deliveries(now)` retries only local writes, even with the generation
+gate disabled; it never invokes the model or sender. An interrupted or ambiguous send
+retains an unresolved intent and is not automatically resent. Resolving that transport
+uncertainty requires checking the platform; there is no transport receipt/query port yet.

@@ -1,8 +1,7 @@
-"""Observe-only AgentRuntime orchestration."""
+"""Host-neutral attention, delivery acknowledgement and deferred orchestration."""
 
 from __future__ import annotations
 
-import datetime
 from typing import Callable
 
 from .contracts import (
@@ -19,8 +18,13 @@ from .contracts import (
     TraceSink,
     WakeAction,
 )
+from .deferred import DeferredDispatcher
+from .deferred_store import DeferredStore, InMemoryDeferredStore
 from .recorder import RunRecorder
 from .wake import WakePolicy
+
+
+DISPATCH_LEASE_SECONDS = 60.0
 
 
 class AgentRuntime:
@@ -37,6 +41,7 @@ class AgentRuntime:
         model_gateway: ModelGateway | None = None,
         message_sender: MessageSender | None = None,
         recorder: RunRecorder | None = None,
+        deferred_store: DeferredStore | None = None,
     ) -> None:
         self.store = store
         self.policy = policy or WakePolicy()
@@ -47,6 +52,7 @@ class AgentRuntime:
         self.model_gateway = model_gateway
         self.message_sender = message_sender
         self.recorder = recorder
+        self.deferred = DeferredDispatcher(self, deferred_store or InMemoryDeferredStore())
 
     def build_context(self, event: RuntimeInput) -> MemoryContext:
         if self.memory_context is None:
@@ -98,104 +104,14 @@ class AgentRuntime:
         max_attempts: int = 3,
         base_seconds: float = 2.0,
     ) -> RunResult:
-        """Claim, generate, send and record one deferred run.
-
-        Host adapters provide the model and sender ports. The runtime owns the
-        lifecycle and bounded retry; callers only map the latest Source into a
-        RunContext.
-        """
-        session_id = str(context.session_id or "")
-        source_id = str(context.source_id or "")
-        text = str(context.text or "").strip()
-        now = float(context.at or self.clock())
-        run_id = str(context.run_id or "")
-        state = self.store.get(session_id)
-        wait_due = state.wait_until > 0 and state.wait_until <= now
-        retry_due = state.next_retry_at > 0 and state.next_retry_at <= now
-        if not (wait_due or retry_due):
-            return RunResult(run_id, session_id, False, error="not_due")
-        if state.wait_until > now or (
-            state.next_retry_at and state.next_retry_at > now
-        ):
-            return RunResult(run_id, session_id, False, error="not_due")
-        if not text:
-            self.clear_wait(session_id, now)
-            return RunResult(run_id, session_id, False, error="empty_source")
-        if self.model_gateway is None or self.message_sender is None:
-            return RunResult(run_id, session_id, False, error="runtime_port_missing")
-        if self.recorder is None:
-            return RunResult(run_id, session_id, False, error="recorder_missing")
-        if not run_id:
-            run_id = self.recorder.new_run_id()
-
-        attempts = self.claim_dispatch(session_id, source_id, now)
-        runtime_input = RuntimeInput(
-            session_id=session_id,
-            text=text,
-            private=False,
-            at=now,
+        """Generate and deliver, or recover an already delivered outbox entry."""
+        return await self.deferred.dispatch(
+            context, max_attempts=max_attempts, base_seconds=base_seconds,
         )
-        try:
-            memory = self.build_context(runtime_input)
-            reply = await self.model_gateway.complete(
-                session_id, text, memory.text or None
-            )
-            if not str(reply or "").strip():
-                raise RuntimeError("empty_response")
-            sent = await self.message_sender.send(session_id, reply)
-            if sent is False:
-                raise RuntimeError("send_failed")
-        except Exception as exc:  # noqa: BLE001 - runtime action is fail-open
-            self.schedule_retry(
-                session_id,
-                now,
-                attempts,
-                max_attempts=max_attempts,
-                base_seconds=base_seconds,
-            )
-            self.recorder.record_deferred_error(
-                run_id=run_id,
-                session_id=session_id,
-                user_source_id=source_id,
-                error=exc,
-                at=datetime.datetime.now().isoformat(timespec="seconds"),
-            )
-            if self.trace is not None:
-                self.trace.record(
-                    "runtime",
-                    "deferred_failed",
-                    {"error": type(exc).__name__, "attempt": attempts},
-                )
-            return RunResult(
-                run_id,
-                session_id,
-                False,
-                error=type(exc).__name__,
-            )
 
-        at = datetime.datetime.now().isoformat(timespec="seconds")
-        recorded = self.recorder.record_deferred_reply(
-            run_id=run_id,
-            session_id=session_id,
-            text=reply,
-            speaker_id=str(context.bot_id or "bot"),
-            user_source_id=source_id,
-            at=at,
-        )
-        self.mark_delivered(session_id, now)
-        if self.trace is not None:
-            self.trace.record(
-                "runtime",
-                "deferred_delivered",
-                {"chars": recorded.response_chars, "attempt": attempts},
-            )
-        return RunResult(
-            run_id,
-            session_id,
-            True,
-            assistant_source_id=recorded.assistant_source_id,
-            response_chars=recorded.response_chars,
-        )
+    def recover_deliveries(self, now: float | None = None) -> tuple[RunResult, ...]:
+        """Retry delivered-run write-back without model calls or message sends."""
+        return self.deferred.recover(self.clock() if now is None else now)
 
     def clear_wait(self, session_id: str, now: float | None = None) -> SessionState:
         state = self.store.get(session_id)
@@ -207,7 +123,7 @@ class AgentRuntime:
 
     def claim_dispatch(self, session_id: str, source_id: str,
                        now: float | None = None) -> int:
-        """Claim one deferred dispatch before any await and count attempts."""
+        """Claim before awaiting; a lease restores unfinished generation after restart."""
         moment = self.clock() if now is None else now
         state = self.store.get(session_id)
         sid = str(source_id or "")
@@ -216,16 +132,25 @@ class AgentRuntime:
         state.last_dispatched_source_id = sid
         state.dispatch_attempts += 1
         state.wait_until = 0.0
-        state.next_retry_at = 0.0
+        state.next_retry_at = moment + DISPATCH_LEASE_SECONDS
         state.last_seen_at = moment
         self.store.put(state)
+        if getattr(self.store, "last_error", ""):
+            raise RuntimeError("dispatch_state_write_failed")
         return state.dispatch_attempts
 
     def schedule_retry(self, session_id: str, now: float, attempts: int,
                        max_attempts: int = 3, base_seconds: float = 2.0,
-                       cap_seconds: float = 60.0) -> SessionState:
+                       cap_seconds: float = 60.0,
+                       read_through_seq: int | None = None) -> SessionState:
         """Schedule bounded retry for a failed deferred dispatch."""
         state = self.store.get(session_id)
+        if read_through_seq is not None and state.last_unread_seq > read_through_seq:
+            # A failure in an older run cannot cancel newer pending traffic.
+            state.next_retry_at = 0.0
+            state.dispatch_attempts = 0
+            self.store.put(state)
+            return state
         tries = max(1, int(attempts))
         if tries >= max(1, int(max_attempts)):
             state.wait_until = 0.0
@@ -241,15 +166,32 @@ class AgentRuntime:
         self.store.put(state)
         return state
 
-    def mark_delivered(self, session_id: str, now: float | None = None) -> SessionState:
+    def mark_delivered(self, session_id: str, now: float | None = None,
+                       *, read_through_seq: int | None = None,
+                       dispatched_source_id: str | None = None) -> SessionState:
+        """Acknowledge only the input captured by the delivered run."""
         moment = self.clock() if now is None else now
         state = self.store.get(session_id)
-        state.last_spoke_at = moment
-        state.cooldown_until = moment + max(0.0, state.reply_cooldown_seconds)
-        state.unread_count = 0
-        state.read_through_seq = max(state.read_through_seq, state.last_unread_seq)
-        state.wait_until = 0.0
-        state.next_retry_at = 0.0
-        state.dispatch_attempts = 0
+        if getattr(self.store, "last_error", ""):
+            raise RuntimeError("delivery_state_read_failed")
+        state.last_spoke_at = max(state.last_spoke_at, moment)
+        state.cooldown_until = max(
+            state.cooldown_until, moment + max(0.0, state.reply_cooldown_seconds)
+        )
+        watermark = state.last_unread_seq if read_through_seq is None else min(
+            state.last_unread_seq, max(0, int(read_through_seq))
+        )
+        state.read_through_seq = max(state.read_through_seq, watermark)
+        state.unread_count = max(0, state.last_unread_seq - state.read_through_seq)
+        if (dispatched_source_id is not None
+                and state.last_dispatched_source_id == dispatched_source_id):
+            state.next_retry_at = 0.0
+            state.dispatch_attempts = 0
+        if state.unread_count == 0:
+            state.wait_until = 0.0
+            state.next_retry_at = 0.0
+            state.dispatch_attempts = 0
         self.store.put(state)
+        if getattr(self.store, "last_error", ""):
+            raise RuntimeError("delivery_state_write_failed")
         return state

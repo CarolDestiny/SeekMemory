@@ -169,3 +169,13 @@ CREATE TABLE IF NOT EXISTS runtime_episodes (
 );
 CREATE INDEX IF NOT EXISTS idx_runtime_episodes_session
 ON runtime_episodes(session_id, at, id);
+
+
+-- Protected temporary outbox. Body never enters runtime state/episodes/traces.
+-- A sending row after restart has uncertain transport delivery and must not resend.
+CREATE TABLE IF NOT EXISTS deferred_replies (
+    run_id     TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL UNIQUE,
+    status     TEXT NOT NULL CHECK(status IN ('sending', 'sent')),
+    payload    TEXT NOT NULL
+);

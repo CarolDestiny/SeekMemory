@@ -108,6 +108,7 @@ class DBStateStore:
         key = str(session_id or "")
         try:
             raw = self.db.get_runtime_state(key)
+            self.last_error = ""
         except Exception as exc:  # noqa: BLE001 - runtime state is fail-open
             self.last_error = type(exc).__name__
             return SessionState(session_id=key)

@@ -39,6 +39,7 @@ from .app.runtime import (
     ToolPolicy,
 )
 from .app.runtime.tracing import RunTracer
+from .app.runtime.deferred_store import DBDeferredStore
 from .store.run_trace import TraceStore
 from .core.capacity import (
     NORMAL,
@@ -149,6 +150,7 @@ class Main(star.Star):
             model_gateway=AstrBotModelGateway(context),
             message_sender=self.actions,
             recorder=self.recorder,
+            deferred_store=DBDeferredStore(self.db) if self.db is not None else None,
         )
         self.scheduler = Scheduler(self.runtime.store)
         if self.db is not None:
@@ -335,11 +337,23 @@ class Main(star.Star):
             )
             context = self.runtime.build_context(runtime_input)
             block, info = context.text, context.info
+            if event.get_extra("_seekmemory_read_through_seq") is None:
+                event.set_extra(
+                    "_seekmemory_read_through_seq",
+                    self.runtime.store.get(umo).last_unread_seq,
+                )
             self._last_context_chars = len(block)
             log_call(self._calls_path(), umo, info)
             event.set_extra(
                 "_seekmemory_recall_ids",
                 tuple(str(item) for item in info.get("final_ids", ())),
+            )
+            event.set_extra(
+                "_seekmemory_designated_ids",
+                tuple(str(item) for item in info.get("designated_ids", ())),
+            )
+            event.set_extra(
+                "_seekmemory_designated_revisions", info.get("designated_revisions", {}),
             )
             self.journal.record(
                 "recall",
@@ -465,6 +479,10 @@ class Main(star.Star):
                     event, text, umo, sender, unread_count=len(self.buffer.items)
                 )
             )
+            event.set_extra(
+                "_seekmemory_read_through_seq",
+                self.runtime.store.get(umo).last_unread_seq,
+            )
             AstrBotRuntimeAdapter.apply_decision(event, decision)
             AstrBotRuntimeAdapter.apply_llm_gate(
                 event, decision, bool(self._c("runtime_gate_enabled", False))
@@ -504,13 +522,14 @@ class Main(star.Star):
                 reply_to=str(event.get_extra("_seekmemory_source_id", "") or ""),
                 at=datetime.datetime.now().isoformat(timespec="seconds"),
                 recall_ids=event.get_extra("_seekmemory_recall_ids", ()) or (),
+                designated_ids=event.get_extra("_seekmemory_designated_ids", ()) or (),
+                designated_revisions=event.get_extra("_seekmemory_designated_revisions", {}) or {},
             )
             event.set_extra("_seekmemory_turn_id", reply.turn_id)
             event.set_extra(
                 "_seekmemory_assistant_source_id", reply.assistant_source_id
             )
             event.set_extra("_seekmemory_reply_chars", reply.response_chars)
-            event.set_extra("_seekmemory_recall_ids", ())
         except Exception:
             pass
 
@@ -528,18 +547,32 @@ class Main(star.Star):
         if event.get_extra("_seekmemory_episode_recorded", False):
             return
         umo = str(getattr(event, "unified_msg_origin", "") or "")
-        self.runtime.mark_delivered(umo)
-        self.recorder.record_delivery(
-            run_id=self.run_tracer.run_id(event),
-            session_id=umo,
-            decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
-            reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
-            response_chars=int(event.get_extra("_seekmemory_reply_chars", 0) or 0),
-            tool_calls=event.get_extra("_seekmemory_tool_calls", ()) or (),
-            user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
-            assistant_source_id=assistant_source_id,
-        )
+        try:
+            self.runtime.mark_delivered(
+                umo, read_through_seq=event.get_extra("_seekmemory_read_through_seq", 0),
+            )
+            recorded = self.recorder.record_delivery(
+                run_id=self.run_tracer.run_id(event),
+                session_id=umo,
+                decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
+                reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+                response_chars=int(event.get_extra("_seekmemory_reply_chars", 0) or 0),
+                tool_calls=event.get_extra("_seekmemory_tool_calls", ()) or (),
+                user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+                assistant_source_id=assistant_source_id,
+                recall_ids=event.get_extra("_seekmemory_recall_ids", ()) or (),
+                designated_ids=event.get_extra("_seekmemory_designated_ids", ()) or (),
+                designated_revisions=event.get_extra("_seekmemory_designated_revisions", {}) or {},
+            )
+        except Exception as exc:
+            self.journal.record("runtime", "failed", "送达后的记录待重试", error=exc)
+            return
+        if not recorded:
+            return
         event.set_extra("_seekmemory_episode_recorded", True)
+        event.set_extra("_seekmemory_recall_ids", ())
+        event.set_extra("_seekmemory_designated_ids", ())
+        event.set_extra("_seekmemory_designated_revisions", {})
         self._maybe_prune_runtime_episodes()
 
     @filter.on_agent_begin()
@@ -563,14 +596,17 @@ class Main(star.Star):
         self.trace.record("runtime", "agent_done", {"role": role})
         if role != "err":
             return
-        self.recorder.record_error(
-            run_id=self.run_tracer.run_id(event),
-            session_id=str(getattr(event, "unified_msg_origin", "") or ""),
-            decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
-            reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
-            error="agent_error",
-            user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
-        )
+        try:
+            self.recorder.record_error(
+                run_id=self.run_tracer.run_id(event),
+                session_id=str(getattr(event, "unified_msg_origin", "") or ""),
+                decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
+                reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+                error="agent_error",
+                user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+            )
+        except Exception as exc:
+            self.journal.record("runtime", "failed", "运行失败记录未保存", error=exc)
         self._maybe_prune_runtime_episodes()
 
     @filter.on_using_llm_tool()
@@ -964,10 +1000,13 @@ class Main(star.Star):
         return bool(self.dream is not None and self.dream.enabled)
 
     async def _runtime_scheduler_tick(self) -> None:
-        if self.db is None or not bool(self._c("runtime_gate_enabled", False)):
+        if self.db is None:
             return
         async with self._runtime_tick_lock:
             now = time.time()
+            self.runtime.recover_deliveries(now)
+            if not bool(self._c("runtime_gate_enabled", False)):
+                return
             due = self.scheduler.due(
                 self.db.list_runtime_state_sessions(limit=100), now
             )
@@ -997,6 +1036,7 @@ class Main(star.Star):
                 session_id=session_id,
                 text=text,
                 source_id=source_id,
+                speaker_id=str(source.get("speaker_id") or ""),
                 bot_id=str(getattr(self, "_self_id", "") or "bot"),
                 at=now,
             ),

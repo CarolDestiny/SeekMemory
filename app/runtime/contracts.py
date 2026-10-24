@@ -46,6 +46,7 @@ class RunContext:
     bot_id: str = ""
     at: float = 0.0
     run_id: str = ""
+    speaker_id: str = ""
 
 
 @dataclass(frozen=True)

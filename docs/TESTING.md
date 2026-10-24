@@ -103,6 +103,14 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Windows clock collisions silently lost runtime audit rows | covered by `tests/test_runtime_actions.py` |
 | Due wait/retry selection and per-session scheduler isolation were untested | covered by `tests/test_runtime_scheduler.py` |
 | Repeated run callbacks duplicated assistant Source, checkpoint or episode rows | covered by `tests/test_run_recorder.py` |
+| Context preparation consumed designated memory before successful send | covered by `tests/test_privacy_outputs.py`, `tests/test_webui_host.py` |
+| A historical impression inherited its newer head's disclosure permission | covered by `tests/test_privacy_outputs.py` |
+| Response generation reinforced memory before platform delivery | covered by `tests/test_run_recorder.py`, `tests/test_webui_host.py` |
+| An old reply acknowledged messages received during generation | covered by `tests/test_deferred_recovery.py`, `tests/test_webui_host.py` |
+| Sent deferred write-back failed and was lost or resent after restart | covered by `tests/test_deferred_recovery.py`, `tests/test_webui_host.py` |
+| Failed episode persistence was memoized as completed | covered by `tests/test_run_recorder.py` |
+| Recent-run eviction/restart duplicated successful delivery effects | covered by `tests/test_run_recorder.py` |
+| Deferred recall lost the original speaker | covered by `tests/test_deferred_recovery.py` |
 
 ## Staging and model probes
 

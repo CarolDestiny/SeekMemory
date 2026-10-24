@@ -30,6 +30,11 @@ a migration plan and a contract or scenario test.
 - A topic larger than the model window is split or retained; it is never silently marked complete.
 - A corrupted pending file must not silently become an empty queue.
 - A failed reply request must not reinforce artifacts that were never delivered.
+- Generating a reply is not delivery. Reinforcement and designated-memory consumption
+  require a successful platform delivery callback or sender result.
+- A sent deferred reply with failed write-back remains in a protected durable outbox;
+  recovery retries local writes only. Ambiguous transport outcomes must not be auto-resent.
+- A delivered run acknowledges only its captured input sequence, never later arrivals.
 - Every state-changing operation records a bounded error type or reason without logging message bodies.
 
 ## 4. Privacy and disclosure
@@ -70,6 +75,10 @@ a migration plan and a contract or scenario test.
 - `shareable` is not a display label; it is part of the disclosure contract.
 - `payload` is treated as immutable after commit. Mutating it in place bypasses cache and index consistency.
 - Historical versions must preserve the disclosure-relevant header values.
+- Historical impression text is checked against its own snapshot and evidence origins.
+  A missing disclosure snapshot cannot inherit permission from the current head.
+- A designated-delivery receipt identifies the assembled revision; delivery of an old
+  revision must not consume a newer revision's body.
 
 ## 8. Self-impression and persona (GitHub #15)
 

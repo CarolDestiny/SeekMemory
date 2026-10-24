@@ -1,14 +1,14 @@
-"""recall.scope：按 scope 决定一条记忆能不能进入当前会话的候选池。
+"""recall.scope：普通记忆进入全局候选池，表达程度由披露规则决定。
 
-private 只给归属会话；shared 全员可见；shadow 全员可见但只保留影子，
-正文由 recall.assemble 遮蔽。归属 umo 按以下顺序推导：
+private、shared、shadow 可参与跨会话检索；只有允许全文披露时才注入正文。
+secret 不进入普通上下文，designated 保留指定会话的交付限制。
+指定交付的归属会话按以下顺序推导：
 
 1. payload 里写入时记录的 owner_umo / umo（新数据）；
 2. lineage.sources 反查 sources.umo（由调用方注入 lookup，本模块不碰 SQL）；
 3. said_by 本身是 umo（形如 ``napcat:FriendMessage:123``）。
 
-三条都取不到时按“只给 owner_umo 会话”处理；owner_umo 也未配置则 private
-不可见（保守优先，避免把别人的私聊注入给所有人）。
+三条都取不到时只允许配置的 owner_umo 会话；未配置则不交付指定记忆。
 """
 
 from __future__ import annotations

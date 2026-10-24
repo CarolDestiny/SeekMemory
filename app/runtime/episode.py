@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import threading
-import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -145,15 +144,21 @@ def delivery_failure_metadata(error: Any = None) -> dict[str, Any]:
 
 
 class EpisodeSink(Protocol):
-    def append(self, episode: EpisodeRecord) -> None: ...
+    def append(self, episode: EpisodeRecord) -> bool: ...
 
 
 class EpisodeRecorder:
     def __init__(self, sink: EpisodeSink) -> None:
         self.sink = sink
 
-    def record(self, episode: EpisodeRecord) -> None:
-        self.sink.append(episode)
+    def record(self, episode: EpisodeRecord) -> bool:
+        """Return an explicit receipt; legacy sinks returning None still succeed."""
+        return self.sink.append(episode) is not False
+
+    def completed(self, run_id: str) -> bool:
+        """Consult durable delivery receipts when the sink provides them."""
+        completed = getattr(self.sink, "completed", None)
+        return bool(completed is not None and completed(run_id))
 
 
 class JsonlEpisodeStore:
@@ -164,7 +169,7 @@ class JsonlEpisodeStore:
         self._lock = threading.RLock()
         self.last_error = ""
 
-    def append(self, episode: EpisodeRecord) -> None:
+    def append(self, episode: EpisodeRecord) -> bool:
         with self._lock:
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -174,8 +179,10 @@ class JsonlEpisodeStore:
                     handle.write(json.dumps(payload, ensure_ascii=False,
                                             sort_keys=True) + "\n")
                 self.last_error = ""
+                return True
             except Exception as exc:  # noqa: BLE001 - episode logging is fail-open
                 self.last_error = type(exc).__name__
+                return False
 
 
 class DBEpisodeStore:
@@ -185,12 +192,19 @@ class DBEpisodeStore:
         self.db = db
         self.last_error = ""
 
-    def append(self, episode: EpisodeRecord) -> None:
+    def completed(self, run_id: str) -> bool:
+        """Check delivery by run id; read failure must not look like absence."""
+        row = self.db.runtime_episode_by_run_id(str(run_id or ""))
+        return bool(row and row.get("delivered"))
+
+    def append(self, episode: EpisodeRecord) -> bool:
         payload = asdict(episode)
         payload["id"] = f"ep_{uuid.uuid4().hex}"
         payload["tool_calls"] = list(normalize_tool_calls(episode.tool_calls))
         try:
             self.db.append_runtime_episode(payload)
             self.last_error = ""
+            return True
         except Exception as exc:  # noqa: BLE001 - episode logging is fail-open
             self.last_error = type(exc).__name__
+            return False

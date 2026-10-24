@@ -25,6 +25,8 @@ from app.ports import (
     SourceStore,
     StateStore,
 )
+from app.runtime.contracts import RunContext
+from app.runtime.deferred_store import DeferredReply
 from core.retrieval import RetrievalCandidate
 from perceive.model import ProviderChatModel
 from recall.retriever import HybridRetriever
@@ -55,6 +57,18 @@ class ProtocolSurfaceTest(unittest.TestCase):
 
 
 class ContractDataclassTest(unittest.TestCase):
+    def test_run_context_preserves_old_positional_fields_and_adds_speaker(self):
+        context = RunContext("s", "text", "source", "bot", 1.0, "run")
+        self.assertEqual(context.run_id, "run")
+        self.assertEqual(context.speaker_id, "")
+        self.assertEqual(RunContext("s", "text", speaker_id="u1").speaker_id, "u1")
+
+    def test_deferred_outbox_defaults_are_separate_from_session_state(self):
+        reply = DeferredReply("run", "s", "body", "bot", "source", 1, "at")
+        self.assertEqual(reply.status, "sending")
+        self.assertEqual(reply.recall_ids, ())
+        self.assertEqual(reply.designated_ids, ())
+
     def test_chat_request_defaults(self):
         req = ChatRequest("s", "system", "prompt")
         self.assertEqual(req.max_tokens, 800)

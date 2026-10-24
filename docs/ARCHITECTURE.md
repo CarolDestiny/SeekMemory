@@ -163,6 +163,7 @@ AstrBot message event
 -> RunRecorder.record_reply()
 -> after_message_sent()
 -> RunRecorder.record_delivery()
+-> designated confirmation + retained-memory reinforcement
 -> EpisodeRecord
 ```
 
@@ -175,10 +176,13 @@ runtime state with wait deadline
 -> AgentRuntime.dispatch_deferred(RunContext)
 -> claim_dispatch()
 -> ModelGateway.complete()
+-> protected durable delivery intent
 -> MessageSender.send()
+-> durable sent receipt
 -> RunRecorder.record_deferred_reply()
 -> assistant Source + extraction buffer
 -> EpisodeRecord
+-> acknowledge captured input sequence + remove temporary outbox
 ```
 
 ### Explicit boundaries
@@ -188,6 +192,16 @@ runtime state with wait deadline
   `on_using_llm_tool` trace is not a veto.
 - `RunRecorder` owns assistant Source, pending-buffer and episode write-back. Run id is the
   idempotency boundary so repeated callbacks cannot duplicate those writes.
+- Context assembly is read-only. Generated responses stage retained IDs; delivery effects
+  require successful transport. Historical impression notes pass disclosure using each
+  historical revision's own header and evidence origins. Incomplete old headers are omitted.
+- A sent deferred reply remains recoverable independently of wait/retry state and the
+  generation gate. Its protected temporary outbox is separate from content-free session
+  state and audit metadata; it is deleted after successful write-back. Recovery never
+  regenerates or resends a confirmed delivery. Ambiguous sends retain an unresolved intent;
+  automatic transport reconciliation is unavailable without a host receipt/query port.
+- Reply completion acknowledges only the input sequence captured for that run. Later
+  messages keep their unread count and wait deadline.
 - `RunTrace` is an admin observability stream, separate from the append-only runtime
   episode audit. It is not an Artifact or Source.
 - `runtime_gate_enabled=false` keeps both wait and deferred dispatch inactive.

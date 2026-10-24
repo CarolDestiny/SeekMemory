@@ -6,32 +6,51 @@
 
 from __future__ import annotations
 
+import json
+
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..core.artifact import Artifact
+    from ..core.artifact import Artifact, make
+    from ..core.disclosure import DisclosureLevel, RecallScene, decide
     from ..store.cache import Cache
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from core.artifact import Artifact
+    from core.artifact import Artifact, make
+    from core.disclosure import DisclosureLevel, RecallScene, decide
     from store.cache import Cache
 
 MAX_SIDE = 22   # 旧说法最长字数，超了就截断
 
 
-def _texts(cache: Cache, art: Artifact) -> list[str]:
-    """取这条记忆的正文版本链（旧→新），去掉连续重复。"""
+def _history(cache: Cache, art: Artifact) -> list[dict]:
+    """只读完整历史快照；缺少隐私元数据的旧记录不能据此输出正文。"""
     db = getattr(cache, "db", None)
     if db is None:
         return []
     try:
-        rows = db.history(art.header.id)
+        return db.history(art.header.id)
     except Exception:  # noqa: BLE001 - 读不到历史就当作没有
         return []
-    out: list[str] = []
-    for row in rows:
-        payload = row.get("payload") or {}
-        text = str(payload.get("text") or "").strip()
-        if text and (not out or out[-1] != text):
-            out.append(text)
-    return out
+
+
+def _snapshot(row: dict, entity_id: str) -> Artifact | None:
+    """只按该版本自己的头和正文重建，不借用当前版本的归属或来源。"""
+    header = row.get("header")
+    required = {"revision", "scope", "shareable", "subject_id", "lineage"}
+    if not isinstance(header, dict) or not required.issubset(header):
+        return None
+    if header.get("id", entity_id) != entity_id or header.get("family", "memory") != "memory":
+        return None
+    payload = row.get("payload")
+    if not isinstance(payload, dict) or payload.get("level") != "impression":
+        return None
+    try:
+        fields = {key: value for key, value in header.items() if key != "family"}
+        fields["id"] = entity_id
+        for key in ("lineage", "strength", "time"):
+            if isinstance(fields.get(key), str):
+                fields[key] = json.loads(fields[key])
+        return make("memory", payload, **fields)
+    except (TypeError, ValueError):
+        return None
 
 
 def _trim(text: str) -> str:
@@ -62,24 +81,37 @@ def _when(iso: str) -> str:
     return "以前"
 
 
-def _first_at(cache: Cache, art: Artifact) -> str:
-    """最早一版的时间，用来把「以前」说具体。"""
+def trajectory(cache: Cache, art: Artifact, scene: RecallScene | None = None,
+               relevance: float = 1.0) -> str:
+    """返回允许全文披露的旧印象；未知会话或缺少版本头时保守省略。"""
+    if scene is None:
+        return ""
+    current = str(art.payload.get("text") or "").strip()
     db = getattr(cache, "db", None)
-    if db is None:
-        return ""
+    rows = _history(cache, art)
+    snapshots = [_snapshot(row, art.header.id) for row in rows]
+    source_ids = list(dict.fromkeys(
+        source_id for snapshot in snapshots if snapshot is not None
+        for source_id in snapshot.header.lineage.sources
+    ))
     try:
-        rows = db.history(art.header.id)
-    except Exception:  # noqa: BLE001
+        origin_by_source = db.source_umos(source_ids) if db is not None else {}
+    except Exception:  # noqa: BLE001 - do not infer origins after a read failure
         return ""
-    return str(rows[0].get("at") or "") if rows else ""
-
-
-def trajectory(cache: Cache, art: Artifact) -> str:
-    """返回「（三周前觉得…）」；只有一版、没变、太长，都返回空串。"""
-    texts = _texts(cache, art)
-    if len(texts) < 2:
-        return ""
-    old = _trim(texts[0])
-    if not old:
-        return ""
-    return f"（{_when(_first_at(cache, art))}觉得{old}）"
+    for row, snapshot in zip(rows, snapshots):
+        if snapshot is None or snapshot.header.revision >= art.header.revision:
+            continue
+        text = str(snapshot.payload.get("text") or "").strip()
+        if not text or text == current:
+            continue
+        try:
+            origins = tuple(origin_by_source.get(source_id, "")
+                            for source_id in snapshot.header.lineage.sources)
+            if decide(snapshot, scene, relevance, origins).level != DisclosureLevel.FULL:
+                continue
+        except Exception:  # noqa: BLE001 - historical context is optional
+            continue
+        old = _trim(text)
+        if old:
+            return f"（{_when(str(row.get('at') or ''))}觉得{old}）"
+    return ""

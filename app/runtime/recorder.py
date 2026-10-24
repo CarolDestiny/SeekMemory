@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import datetime
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Iterable, Protocol
+from typing import Any, Iterable, Mapping, Protocol
 from uuid import uuid4
 
 try:
@@ -12,6 +13,7 @@ try:
 except ImportError:  # top-level package import in scripts/tests
     from core.source import Source, make_source_id
 from .episode import EpisodeRecord, normalize_tool_calls, safe_error_code
+from ..delivery import confirm_designated_delivery
 
 
 class SourceSink(Protocol):
@@ -30,7 +32,8 @@ class CheckpointSink(Protocol):
 
 
 class EpisodeWriter(Protocol):
-    def record(self, episode: EpisodeRecord) -> None: ...
+    def record(self, episode: EpisodeRecord) -> bool: ...
+    def completed(self, run_id: str) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,9 @@ class RecordedReply:
     turn_id: str
     assistant_source_id: str
     response_chars: int
+    recall_ids: tuple[str, ...] = ()
+    designated_ids: tuple[str, ...] = ()
+    designated_revisions: Mapping[str, int] | None = None
 
 
 class RunRecorder:
@@ -59,6 +65,7 @@ class RunRecorder:
         episodes: EpisodeWriter | None,
         cache: Any | None = None,
         clock=None,
+        max_records: int = 1024,
     ) -> None:
         self.db = db
         self.buffer = buffer
@@ -66,8 +73,25 @@ class RunRecorder:
         self.episodes = episodes
         self.cache = cache
         self.clock = clock or (lambda: datetime.datetime.now().isoformat(timespec="seconds"))
-        self._replies: dict[str, RecordedReply] = {}
-        self._episodes: set[str] = set()
+        self.max_records = max(1, int(max_records))
+        self._replies: OrderedDict[str, RecordedReply] = OrderedDict()
+        self._episodes: OrderedDict[str, bool] = OrderedDict()
+        self._reinforced: OrderedDict[str, set[str]] = OrderedDict()
+
+    def _remember(self, records: OrderedDict, key: str, value: Any) -> None:
+        records[key] = value
+        records.move_to_end(key)
+        while len(records) > max(1, self.max_records):
+            records.popitem(last=False)
+
+    def _delivery_completed(self, key: str) -> bool:
+        if self._episodes.get(key):
+            return True
+        completed = getattr(self.episodes, "completed", None)
+        if completed is not None and completed(key):
+            self._remember(self._episodes, key, True)
+            return True
+        return False
 
     @staticmethod
     def new_run_id() -> str:
@@ -84,6 +108,8 @@ class RunRecorder:
         reply_to: str = "",
         at: str = "",
         recall_ids: Iterable[str] = (),
+        designated_ids: Iterable[str] = (),
+        designated_revisions: Mapping[str, int] | None = None,
         source_suffix: str = "assistant",
     ) -> RecordedReply:
         """Write one assistant Source and its pending projection exactly once."""
@@ -98,15 +124,7 @@ class RunRecorder:
         session = str(session_id or "")
         speaker = str(speaker_id or "")
         moment = str(at or self.clock())
-        turn = str(turn_id or "").strip()
-        if not turn:
-            turn = make_source_id(
-                session_id=session,
-                speaker_id=speaker,
-                role="assistant",
-                text=clean,
-                at=moment,
-            )
+        turn = str(turn_id or "").strip() or f"run:{key}"
         source_id = make_source_id(
             event_id=f"{turn}:{source_suffix or 'assistant'}",
             session_id=session,
@@ -124,9 +142,10 @@ class RunRecorder:
             moment,
             reply_to=str(reply_to or "") or None,
         )
-        if self.db is not None:
+        completed = self._delivery_completed(key)
+        if self.db is not None and not completed:
             self.db.append_sources([source])
-        if self.buffer is not None:
+        if self.buffer is not None and not completed:
             self.buffer.add(
                 session,
                 clean,
@@ -137,10 +156,13 @@ class RunRecorder:
                 turn_id=turn,
                 role="assistant",
             )
-        if self.checkpoint is not None:
-            self._reinforce_recall(recall_ids, moment)
-        result = RecordedReply(key, session, turn, source_id, len(clean))
-        self._replies[key] = result
+        result = RecordedReply(
+            key, session, turn, source_id, len(clean),
+            tuple(dict.fromkeys(recall_ids or ())),
+            tuple(dict.fromkeys(designated_ids or ())),
+            dict(designated_revisions) if designated_revisions is not None else None,
+        )
+        self._remember(self._replies, key, result)
         return result
 
     def record_delivery(
@@ -156,10 +178,34 @@ class RunRecorder:
         user_source_id: str = "",
         assistant_source_id: str = "",
         at: str = "",
-    ) -> None:
-        """Record a successful platform delivery once for this run."""
+        recall_ids: Iterable[str] = (),
+        designated_ids: Iterable[str] = (),
+        designated_revisions: Mapping[str, int] | None = None,
+    ) -> bool:
+        """Confirm delivery effects; failed writes remain retryable."""
+        key = str(run_id or "").strip() or self.new_run_id()
+        if self._delivery_completed(key):
+            return True
+        staged = self._replies.get(key)
+        retained = tuple(dict.fromkeys(
+            (*getattr(staged, "recall_ids", ()), *(recall_ids or ()))
+        ))
+        designated = tuple(dict.fromkeys(
+            (*getattr(staged, "designated_ids", ()), *(designated_ids or ()))
+        ))
+        moment = str(at or self.clock())
+        revisions = (
+            designated_revisions if designated_revisions is not None
+            else getattr(staged, "designated_revisions", None)
+        )
+        if designated:
+            confirm_designated_delivery(
+                self.db, self.cache, designated, at=moment,
+                expected_revisions=revisions,
+            )
+        self._reinforce_recall(key, retained, moment)
         self._record_episode(
-            run_id=run_id,
+            run_id=key,
             session_id=session_id,
             decision=decision,
             reason=reason,
@@ -170,8 +216,11 @@ class RunRecorder:
             outcome="ok",
             user_source_id=user_source_id,
             assistant_source_id=assistant_source_id,
-            at=at,
+            at=moment,
         )
+        self._remember(self._episodes, key, True)
+        self._reinforced.pop(key, None)
+        return True
 
     def record_error(
         self,
@@ -212,6 +261,9 @@ class RunRecorder:
         decision: str = "wait",
         reason: str = "deferred_wait",
         at: str = "",
+        recall_ids: Iterable[str] = (),
+        designated_ids: Iterable[str] = (),
+        designated_revisions: Mapping[str, int] | None = None,
     ) -> RecordedReply:
         """Persist a deferred assistant reply and its delivered episode."""
         reply = self.record_reply(
@@ -223,6 +275,9 @@ class RunRecorder:
             reply_to=user_source_id,
             at=at,
             source_suffix="deferred",
+            recall_ids=recall_ids,
+            designated_ids=designated_ids,
+            designated_revisions=designated_revisions,
         )
         self.record_delivery(
             run_id=run_id,
@@ -234,6 +289,9 @@ class RunRecorder:
             user_source_id=user_source_id,
             assistant_source_id=reply.assistant_source_id,
             at=at,
+            recall_ids=recall_ids,
+            designated_ids=designated_ids,
+            designated_revisions=designated_revisions,
         )
         return reply
 
@@ -259,13 +317,20 @@ class RunRecorder:
             at=at,
         )
 
-    def _reinforce_recall(self, recall_ids: Iterable[str], at: str) -> None:
+    def _reinforce_recall(self, run_id: str, recall_ids: Iterable[str], at: str) -> None:
         if self.checkpoint is None:
             return
+        completed = self._reinforced.get(run_id)
+        if completed is None:
+            completed = set()
+            self._remember(self._reinforced, run_id, completed)
         for art_id in recall_ids or ():
+            if art_id in completed:
+                continue
             art = self.cache.get(str(art_id)) if self.cache is not None else None
             if art is not None and getattr(art.header, "family", "") == "memory":
                 self.checkpoint.record(art, at=at)
+            completed.add(art_id)
 
     def _record_episode(
         self,
@@ -289,7 +354,7 @@ class RunRecorder:
             return
         if self.episodes is None:
             return
-        self.episodes.record(EpisodeRecord(
+        persisted = self.episodes.record(EpisodeRecord(
             session_id=str(session_id or ""),
             at=str(at or self.clock()),
             decision=str(decision or ""),
@@ -304,5 +369,7 @@ class RunRecorder:
             assistant_source_id=str(assistant_source_id or ""),
             run_id=key,
         ))
+        if persisted is False:
+            raise RuntimeError("episode_write_failed")
         if key:
-            self._episodes.add(key)
+            self._remember(self._episodes, key, bool(delivered))

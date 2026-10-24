@@ -27,6 +27,7 @@ from .episode import (
     normalize_tool_calls,
     safe_error_code,
 )
+from .deferred_store import DBDeferredStore, DeferredReply, DeferredStore, InMemoryDeferredStore
 from .recorder import RecordedReply, RunRecorder
 from .runtime import AgentRuntime
 from .scheduler import DueRun, Scheduler, TimingPolicy
@@ -43,6 +44,10 @@ __all__ = [
     "AgentRuntime",
     "AttentionLevel",
     "DBEpisodeStore",
+    "DBDeferredStore",
+    "DeferredReply",
+    "DeferredStore",
+    "InMemoryDeferredStore",
     "DBStateStore",
     "EpisodeOutcome",
     "EpisodeRecorder",

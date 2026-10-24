@@ -45,6 +45,31 @@ class HostContext:
         return self.provider
 
 
+class MemoryEvent:
+    """Minimal host callback event shared by delivery boundary scenarios."""
+
+    def __init__(self, session="bot:GroupMessage:g1", text="hello", event_id="u1"):
+        self.unified_msg_origin = session
+        self.message_str = text
+        self.message_obj = SimpleNamespace(message_id=event_id)
+        self.extras = {}
+
+    def is_private_chat(self):
+        return ":FriendMessage:" in self.unified_msg_origin
+
+    def get_sender_id(self):
+        return "u1"
+
+    def get_self_id(self):
+        return "bot"
+
+    def get_extra(self, key, default=None):
+        return self.extras.get(key, default)
+
+    def set_extra(self, key, value):
+        self.extras[key] = value
+
+
 @unittest.skipIf(Main is None, "AstrBot host is not installed")
 class HostTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
@@ -554,6 +579,44 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(actions.sent, [])
         self.assertGreater(self.plugin.runtime.store.get(session_id).wait_until, now)
 
+    async def test_gate_off_recovers_sent_writeback_without_model_or_resend(self) -> None:
+        from unittest.mock import patch
+
+        self.plugin.cfg["runtime_gate_enabled"] = True
+        event = MemoryEvent(text="ambient message", event_id="recover-user")
+        await self.plugin.buffer_message(event)
+        state = self.plugin.runtime.store.get(event.unified_msg_origin)
+        state.wait_until = time.time() - 1
+        self.plugin.runtime.store.put(state)
+        sends = []
+
+        class Provider:
+            async def text_chat(self, prompt, system_prompt=None):
+                return SimpleNamespace(completion_text="recover this reply")
+
+        class Sender:
+            async def send(self, session, text):
+                sends.append((session, text))
+                return True
+
+        self.context.provider = Provider()
+        self.plugin.runtime.message_sender = Sender()
+        with patch.object(self.plugin.db, "append_sources", side_effect=OSError("synthetic")):
+            await self.plugin._dispatch_deferred(event.unified_msg_origin, time.time())
+        self.assertEqual(len(sends), 1)
+        self.assertEqual(self.plugin.db.list_runtime_episodes(event.unified_msg_origin), [])
+        self.plugin.cfg["runtime_gate_enabled"] = False
+        self.plugin.runtime.model_gateway = None
+        self.plugin.runtime.message_sender = None
+        await self.plugin._runtime_scheduler_tick()
+        await self.plugin._runtime_scheduler_tick()
+        self.assertEqual(len(sends), 1)
+        rows = self.plugin.db.list_runtime_episodes(event.unified_msg_origin)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["delivered"])
+        self.assertTrue(any(turn.role == "assistant" and turn.text == "recover this reply"
+                            for turn in self.plugin.buffer.items))
+
     async def test_missing_source_keeps_future_deferred_wait(self) -> None:
         session_id = "bot:GroupMessage:g-missing-source"
         now = time.time()
@@ -766,7 +829,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tools.removed, [])
         self.assertEqual([tool.name for tool in tools.tools], ["shell_exec"])
 
-    async def test_reinforcement_waits_for_successful_response(self) -> None:
+    async def test_reinforcement_waits_for_successful_delivery(self) -> None:
         from types import SimpleNamespace
 
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
@@ -826,12 +889,13 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await self.plugin.capture_reply(
             event, SimpleNamespace(role="assistant", completion_text="ok")
         )
-        self.assertEqual(self.plugin.checkpoint.pending(), 1)
+        self.assertEqual(self.plugin.checkpoint.pending(), 0)
         pending = self.plugin.db.pending_extractions()
         self.assertTrue(any(
             row["role"] == "assistant" and row["text"] == "ok" for row in pending
         ))
         await self.plugin.record_delivery(event)
+        self.assertEqual(self.plugin.checkpoint.pending(), 1)
         await self.plugin.observe_agent_done(event, None, SimpleNamespace(role="assistant"))
         trace = self.plugin.run_traces.snapshot()
         self.assertEqual(len(trace["runs"]), 1)
@@ -853,6 +917,53 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         failures = self.plugin.db.list_runtime_episodes("bot:GroupMessage:g1")
         self.assertEqual(len(failures), 2)
         self.assertEqual(failures[0]["outcome"], "error")
+
+    async def test_old_normal_reply_preserves_new_unread_message(self) -> None:
+        first = MemoryEvent(event_id="first")
+        await self.plugin.buffer_message(first)
+        await self.plugin.inject_memory(first, SimpleNamespace(system_prompt=""))
+        await self.plugin.capture_reply(
+            first, SimpleNamespace(role="assistant", completion_text="first reply")
+        )
+        second = MemoryEvent(text="new message", event_id="second")
+        await self.plugin.buffer_message(second)
+        await self.plugin.record_delivery(first)
+        state = self.plugin.runtime.store.get(first.unified_msg_origin)
+        self.assertEqual(state.read_through_seq, 1)
+        self.assertEqual(state.last_unread_seq, 2)
+        self.assertEqual(state.unread_count, 1)
+
+    async def test_designated_confirmation_waits_for_send_and_retries_failed_write(self) -> None:
+        from unittest.mock import patch
+
+        self.plugin.cfg["open_to"] = "everyone"
+        artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
+        event = MemoryEvent("bot:FriendMessage:u1", "book")
+        await self.plugin.buffer_message(event)
+        source_id = event.get_extra("_seekmemory_source_id")
+        art = artifact.make(
+            "designated", {"text": "synthetic book list", "trigger": "book"},
+            scope="private", subject_id="u1",
+            lineage=artifact.Lineage(sources=(source_id,)),
+        )
+        self.plugin.db.commit(art, expected_revision=0, op="create", source_ids=(source_id,))
+        self.plugin.cache.put(art)
+        req = SimpleNamespace(system_prompt="")
+        await self.plugin.inject_memory(event, req)
+        self.assertIn("synthetic book list", req.system_prompt)
+        self.assertFalse(self.plugin.db.get(art.header.id).payload.get("given"))
+        await self.plugin.capture_reply(
+            event, SimpleNamespace(role="assistant", completion_text="here is the list")
+        )
+        self.assertFalse(self.plugin.db.get(art.header.id).payload.get("given"))
+        with patch.object(self.plugin.db, "commit", side_effect=OSError("synthetic")):
+            await self.plugin.record_delivery(event)
+        self.assertFalse(event.get_extra("_seekmemory_episode_recorded", False))
+        self.assertFalse(self.plugin.db.get(art.header.id).payload.get("given"))
+        await self.plugin.record_delivery(event)
+        self.assertTrue(self.plugin.db.get(art.header.id).payload.get("given"))
+        self.assertTrue(event.get_extra("_seekmemory_episode_recorded"))
+        self.assertEqual(len(self.plugin.db.list_runtime_episodes(event.unified_msg_origin)), 1)
 
     async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")

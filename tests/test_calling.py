@@ -10,7 +10,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.artifact import Strength, content_of, make  # noqa: E402
+from core.artifact import Lineage, Strength, content_of, make  # noqa: E402
+from core.disclosure import RecallScene  # noqa: E402
+from core.source import Source  # noqa: E402
 from maintain.impression import revise_impression  # noqa: E402
 from recall.drift import best_of, eligible, should_drift  # noqa: E402
 from recall.assemble import build as assemble  # noqa: E402
@@ -181,18 +183,26 @@ class TrajectoryTest(unittest.TestCase):
 
     def _cache(self):
         db, cache = temp_cache()
-        old = mem("他有点倔", level="impression", weight=1.6)
-        db.upsert(old)
+        self.addCleanup(db.close)
+        source = Source("history-source", "history-turn", "g1", "u1", "user",
+                        "synthetic fixture", "2026-10-22T12:00:00")
+        db.append_sources([source])
+        old = make("memory", {"text": "他有点倔", "level": "impression"},
+                   subject_id="u1", lineage=Lineage(sources=(source.id,)),
+                   strength=Strength(weight=1.6))
+        db.commit(old, expected_revision=0, op="create", source_ids=(source.id,))
         cache.put(old)
         self.assertEqual(trajectory(cache, old), "")  # 只有一版没有轨迹
-        new = mem("他有点倔，但真有事会帮", level="impression", weight=1.8)
+        new = make("memory", {"text": "他有点倔，但真有事会帮", "level": "impression"},
+                   subject_id="u1", lineage=Lineage(sources=(source.id,)),
+                   strength=Strength(weight=1.8))
         got = revise_impression(db, cache, new)
         self.assertIsNotNone(got)
         return cache, got
 
     def test_trajectory_text(self):
         cache, art = self._cache()
-        note = trajectory(cache, art)
+        note = trajectory(cache, art, RecallScene("g1", "u1"))
         self.assertIn("觉得", note)
         self.assertIn("有点倔", note)
 
@@ -205,7 +215,7 @@ class TrajectoryTest(unittest.TestCase):
 
     def test_note_rendered_after_impression(self):
         cache, art = self._cache()
-        note = trajectory(cache, art)
+        note = trajectory(cache, art, RecallScene("g1", "u1"))
         block = assemble([art], budget=500, notes={art.header.id: note})
         self.assertIn("觉得", block)
 

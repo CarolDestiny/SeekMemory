@@ -12,7 +12,7 @@
     "default": "owner_only"
   },
   "observe_groups": {
-    "description": "群聊也写入记忆（只在该群可见，不进私聊、不进其它群）",
+    "description": "群聊也写入记忆（可跨会话检索，是否展示详情由隐私披露规则决定）",
     "type": "bool",
     "default": true
   },

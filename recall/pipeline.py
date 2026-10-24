@@ -21,7 +21,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..core.graph import Graph
     from ..core.bot_behavior import trusted_self_persona
     from ..recall.assemble import build_with_meta as assemble_text_meta
-    from ..recall.designated import deliverable, mark_given
+    from ..recall.designated import deliverable
     from ..recall.drift import best_of as drift_best
     from ..recall.drift import should_drift
     from ..recall.gate import pinned
@@ -48,7 +48,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from store.db import DB
 
     from recall.assemble import build_with_meta as assemble_text_meta
-    from recall.designated import deliverable, mark_given
+    from recall.designated import deliverable
     from recall.drift import best_of as drift_best
     from recall.drift import should_drift
     from recall.gate import pinned
@@ -126,7 +126,7 @@ def build_block(
     Args:
         cache: 运行中的活跃 Artifact 缓存。
         graph: 用于激活扩散的关系图。
-        db: 用于归属查询和指定交付的数据库。
+        db: 用于归属和历史快照只读查询的数据库。
         umo: 完整会话标识。
         text: 触发召回的输入消息。
         private: 是否为私聊。
@@ -134,7 +134,7 @@ def build_block(
         owner_umo: 配置中的所有者会话。
         speaker: 实际发送者身份。
         log: 召回摘要回调。
-        dry_run: 管理预览时跳过交付状态写入。
+        dry_run: 兼容管理预览调用；所有召回均只读，不确认交付。
         hybrid_retriever: 可选的长生命周期检索器，实现既有 Retriever 协议。
 
     Returns:
@@ -165,6 +165,10 @@ def build_block(
             "chars": 0,
             "picked_ids": (),
             "pinned_ids": (),
+            "final_ids": (),
+            "dropped_ids": (),
+            "designated_ids": (),
+            "designated_revisions": {},
             "disclosure": {},
             "fallback": "",
             "candidates": 0,
@@ -280,7 +284,8 @@ def build_block(
     for art in safe_pinned + picked:
         try:
             if str(art.payload.get("level") or "") == "impression":
-                note = trajectory(cache, art)
+                relevance = 1.0 if art in safe_pinned or mode != "none" else 0.5
+                note = trajectory(cache, art, scene, relevance)
                 if note:
                     notes[art.header.id] = note
         except Exception:  # noqa: BLE001 - trajectory is optional
@@ -293,8 +298,10 @@ def build_block(
         notes=notes,
         overrides=overrides,
     )
-    if not dry_run:
-        mark_given(db, cache, safe_designated + picked, block)
+    designated_ids = tuple(
+        art.header.id for art in safe_designated
+        if art.header.id in final_ids and art.header.scope != "shadow"
+    )
     info = {
         "mode": mode,
         "picked": len(picked),
@@ -304,6 +311,11 @@ def build_block(
         "picked_ids": tuple(a.header.id for a in picked),
         "final_ids": final_ids,
         "dropped_ids": dropped_ids,
+        "designated_ids": designated_ids,
+        "designated_revisions": {
+            art.header.id: art.header.revision for art in safe_designated
+            if art.header.id in designated_ids
+        },
         "disclosure": disclosure_info,
         "pinned_ids": tuple(a.header.id for a in safe_pinned),
         "fallback": fallback,

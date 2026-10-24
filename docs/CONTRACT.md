@@ -264,7 +264,8 @@ detail 的 header 可选包含 subject_id、said_by 和 time；前端保留缺�
 detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整目录后由前端分页，不提供大库流式加载。
 
 无认证 401，方法错误 405，记录不存在 404，输入错误 400，版本冲突/任务繁忙 409，
-引擎不可用 503，未预期异常 500。诊断调用 `build_block(..., dry_run=True)`，跳过 designated 的 mark_given。
+引擎不可用 503，未预期异常 500。诊断调用 `build_block(..., dry_run=True)`；所有上下文构建均只读。
+指定记忆的交付编号和版本随结果返回，成功发送后才由 RunRecorder 确认；发送期间改版不消费新版。
 模型检测失败仍返回其他检测结果；错误只记录类型，不把异常内容泄漏到生命周期日志。
 
 `webui/service.py` 无宿主依赖；`routes.py` 负责宿主适配；`jobs.py` 管理单一活动任务；

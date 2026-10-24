@@ -218,6 +218,7 @@ class DB:
                 "strength": _dump(h.strength),
                 "time": _dump(h.time),
                 "said_by": h.said_by,
+                "shareable": h.shareable,
                 "revision": int(h.revision),
                 "lineage": _dump(h.lineage),
                 "subject_id": h.subject_id,
@@ -291,15 +292,15 @@ class DB:
                 )
 
     def history(self, node_id: str) -> list[dict]:
-        """返回一条记忆的版本链（旧→新）：revision / at / payload。"""
+        """返回版本链和每版自己的头部快照，不借用当前修订的隐私信息。"""
         rows = self.conn.execute(
-            "SELECT v.revision, v.op, v.at, b.content FROM artifact_versions v "
+            "SELECT v.revision, v.op, v.at, b.content, v.header FROM artifact_versions v "
             "JOIN blobs b ON v.blob = b.hash WHERE v.entity = ? "
             "ORDER BY v.revision ASC",
             (node_id,),
         ).fetchall()
         out = []
-        for revision, op, at, content in rows:
+        for revision, op, at, content, header in rows:
             try:
                 payload = json.loads(content)
             except Exception:  # noqa: BLE001 - 坏内容跳过，不拖垮整条链
@@ -310,6 +311,7 @@ class DB:
                     "op": str(op),
                     "at": str(at),
                     "payload": payload,
+                    "header": _loads(header),
                 }
             )
         return out
@@ -931,6 +933,7 @@ class DB:
                 "strength": _dump(h.strength),
                 "time": _dump(h.time),
                 "said_by": h.said_by,
+                "shareable": h.shareable,
                 "revision": int(h.revision),
                 "lineage": _dump(h.lineage),
                 "subject_id": h.subject_id,
@@ -1094,6 +1097,13 @@ class DB:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def runtime_episode_by_run_id(self, run_id: str) -> dict[str, Any] | None:
+        """Return a durable run receipt so bounded process caches can be evicted."""
+        row = self.conn.execute(
+            "SELECT * FROM runtime_episodes WHERE run_id = ?", (str(run_id or ""),)
+        ).fetchone()
+        return dict(row) if row is not None else None
+
     def prune_runtime_episodes(self, retention_days: int = 30,
                                max_rows: int = 5000) -> int:
         """Trim runtime audit rows by age and count; never touches Source.
@@ -1130,10 +1140,46 @@ class DB:
     def latest_user_source(self, session_id: str) -> dict[str, Any] | None:
         """Return the newest user Source metadata/text for a session."""
         row = self.conn.execute(
-            "SELECT s.id, s.umo, s.at, s.role, b.content AS text "
+            "SELECT s.id, s.umo, s.at, s.role, s.flags, b.content AS text "
             "FROM sources s JOIN blobs b ON b.hash = s.blob "
             "WHERE s.umo = ? AND s.role = 'user' "
-            "ORDER BY s.at DESC, s.id DESC LIMIT 1",
+            "ORDER BY s.at DESC, s.rowid DESC LIMIT 1",
             (str(session_id or ""),),
         ).fetchone()
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        result = dict(row)
+        flags = _loads(result.pop("flags", "{}"))
+        result["speaker_id"] = str(flags.get("speaker_id") or "")
+        return result
+
+    def get_deferred_reply(self, session_id: str) -> dict[str, Any] | None:
+        """Read a protected pending delivery; database errors must block resend."""
+        row = self.conn.execute(
+            "SELECT payload FROM deferred_replies WHERE session_id = ?",
+            (str(session_id or ""),),
+        ).fetchone()
+        return json.loads(row["payload"]) if row is not None else None
+
+    def put_deferred_reply(self, payload: dict[str, Any]) -> None:
+        """Persist an intent or delivery receipt before subsequent side effects."""
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO deferred_replies(run_id, session_id, status, payload) "
+                "VALUES(?, ?, ?, ?) ON CONFLICT(run_id) DO UPDATE SET "
+                "status=excluded.status, payload=excluded.payload",
+                (str(payload["run_id"]), str(payload["session_id"]),
+                 str(payload["status"]), _dump(payload)),
+            )
+
+    def remove_deferred_reply(self, run_id: str) -> None:
+        """Remove temporary body only after completed write-back or failed send."""
+        with self.conn:
+            self.conn.execute("DELETE FROM deferred_replies WHERE run_id = ?", (str(run_id),))
+
+    def sent_deferred_replies(self) -> list[dict[str, Any]]:
+        """List confirmed deliveries awaiting local write-back, independent of gate."""
+        rows = self.conn.execute(
+            "SELECT payload FROM deferred_replies WHERE status = 'sent' ORDER BY rowid"
+        ).fetchall()
+        return [json.loads(row["payload"]) for row in rows]
