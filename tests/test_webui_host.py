@@ -379,7 +379,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event.get_extra("_seekmemory_recall_ids"), ("a1", "2"))
         self.assertTrue(req.system_prompt.startswith("base"))
         self.assertIn("memory block", req.system_prompt)
-        self.assertEqual(self.plugin._last_context_chars, len("memory block"))
+        self.assertEqual(self.plugin.capacity_service.context_chars, len("memory block"))
         journal_event = next(
             row for row in reversed(self.plugin.journal.events)
             if row["kind"] == "recall" and row["stage"] == "assemble"
@@ -411,7 +411,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await self.plugin.inject_memory(empty_event, empty_req)
         self.assertEqual(empty_req.system_prompt, "base")
         self.assertEqual(empty_event.get_extra("_seekmemory_recall_ids"), ("a1",))
-        self.assertEqual(self.plugin._last_context_chars, 0)
+        self.assertEqual(self.plugin.capacity_service.context_chars, 0)
 
     async def test_inject_memory_fails_open_without_leaking_error_detail(self) -> None:
         class Event:

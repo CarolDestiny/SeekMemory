@@ -186,7 +186,7 @@ AstrBot message event
 
 ```text
 runtime state with wait deadline
--> _runtime_scheduler_tick()
+-> RuntimeWorker.tick()
 -> Scheduler + TimingPolicy
 -> AgentRuntime.dispatch_deferred(RunContext)
 -> claim_dispatch()

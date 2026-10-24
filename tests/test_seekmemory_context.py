@@ -177,9 +177,18 @@ class Event:
         self.extras[key] = value
 
 
+class FakeCapacity:
+    def __init__(self):
+        self.context_chars = 0
+
+    def set_context_chars(self, value):
+        self.context_chars = value
+
+
 class FakeMain(main_module.Main):
     def __init__(self, data_dir):
         self.ready = True
+        self.capacity_service = FakeCapacity()
         self.cache = object()
         self.data_path = Path(data_dir) / "memory.db"
         self.journal = journal_module.Journal(Path(data_dir) / "journal.jsonl")
@@ -229,7 +238,7 @@ with tempfile.TemporaryDirectory() as temp:
     ], plugin.calls
     assert event.get_extra("_seekmemory_recall_ids") == ("a1", "2")
     assert req.system_prompt.startswith("base") and "memory block" in req.system_prompt
-    assert plugin._last_context_chars == len("memory block")
+    assert plugin.capacity_service.context_chars == len("memory block")
     trace = plugin.run_traces.snapshot()
     assert trace["events"][0]["event"] == "llm_request"
     assert trace["events"][0]["recall"]["artifact_ids"] == ["a1"]
@@ -254,7 +263,7 @@ with tempfile.TemporaryDirectory() as temp:
     asyncio.run(plugin.inject_memory(empty_event, empty_req))
     assert empty_req.system_prompt == "base"
     assert empty_event.get_extra("_seekmemory_recall_ids") == ("a1",)
-    assert plugin._last_context_chars == 0
+    assert plugin.capacity_service.context_chars == 0
 
     def fail_recall(text, umo="", private=False, speaker=""):
         raise RuntimeError("db path /secret")

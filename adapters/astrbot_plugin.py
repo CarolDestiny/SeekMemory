@@ -94,7 +94,6 @@ class AstrBotPlugin(AstrBotHooks):
         self.jobs = Jobs(self.journal)
         artifact_limit = max(1, int(self._c("max_episodes", 500)))
         self.capacity = CapacityGovernor(self._thresholds(artifact_limit))
-        self._last_context_chars = 0
         self._last_runtime_prune_at = 0.0
         self._init_engine()
         self.recall = RecallService(
@@ -333,10 +332,6 @@ class AstrBotPlugin(AstrBotHooks):
     def _reload_buffer(self) -> None:
         if self.buffer is not None:
             self.buffer.reload()
-
-    @classmethod
-    def _header_evidence(cls, raw_header: object) -> tuple[list[str], list[str]]:
-        return StatusService.header_evidence(raw_header)
 
     def _make_run_context(self, session_id: str, now: float) -> RunContext:
         source = self.db.latest_user_source(session_id) if self.db is not None else None

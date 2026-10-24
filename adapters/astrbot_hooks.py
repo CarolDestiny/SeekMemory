@@ -45,17 +45,6 @@ class AstrBotHooks:
             observe_groups=bool(self._c("observe_groups", True)),
         )
 
-    def _may_remember(self, event: AstrMessageEvent) -> bool:
-        return self._access_policy().may_remember(
-            str(getattr(event, "unified_msg_origin", "") or ""),
-            str(event.get_sender_id()),
-        )
-
-    def _group_chat(self, event: AstrMessageEvent) -> bool:
-        return AccessPolicy.is_group(
-            str(getattr(event, "unified_msg_origin", "") or "")
-        )
-
     def _may_observe(self, event: AstrMessageEvent) -> bool:
         return self._access_policy().may_observe(
             str(getattr(event, "unified_msg_origin", "") or ""),
@@ -103,7 +92,6 @@ class AstrBotHooks:
             )
             context = self.runtime.build_context(runtime_input)
             block, info = context.text, context.info
-            self._last_context_chars = len(block)
             capacity_service = getattr(self, "capacity_service", None)
             if capacity_service is not None:
                 capacity_service.set_context_chars(len(block))
