@@ -11,7 +11,7 @@ try:
     from ...core.source import Source, make_source_id
 except ImportError:  # top-level package import in scripts/tests
     from core.source import Source, make_source_id
-from .episode import RuntimeEpisode, normalize_tool_calls, safe_error_code
+from .episode import EpisodeRecord, normalize_tool_calls, safe_error_code
 
 
 class SourceSink(Protocol):
@@ -30,7 +30,7 @@ class CheckpointSink(Protocol):
 
 
 class EpisodeWriter(Protocol):
-    def record(self, episode: RuntimeEpisode) -> None: ...
+    def record(self, episode: EpisodeRecord) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -289,7 +289,7 @@ class RunRecorder:
             return
         if self.episodes is None:
             return
-        self.episodes.record(RuntimeEpisode(
+        self.episodes.record(EpisodeRecord(
             session_id=str(session_id or ""),
             at=str(at or self.clock()),
             decision=str(decision or ""),

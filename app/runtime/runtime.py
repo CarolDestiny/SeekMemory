@@ -8,17 +8,17 @@ from .contracts import (
     MemoryContext,
     MemoryContextPort,
     RuntimeInput,
-    SocialState,
+    SessionState,
     StateStore,
     TraceSink,
     WakeAction,
-    WakeDecision,
+    RunDecision,
 )
 from .wake import WakePolicy
 
 
 class AgentRuntime:
-    """Owns wake decisions and social state, independent of the host framework."""
+    """Owns attention decisions and session state, independent of the host framework."""
 
     def __init__(
         self,
@@ -41,7 +41,7 @@ class AgentRuntime:
             return MemoryContext()
         return self.memory_context.build_context(event)
 
-    def observe(self, event: RuntimeInput) -> WakeDecision:
+    def observe(self, event: RuntimeInput) -> RunDecision:
         now = event.at if event.at else self.clock()
         state = self.store.get(event.session_id)
         state.last_seen_at = now
@@ -55,8 +55,7 @@ class AgentRuntime:
         decision = self.policy.evaluate(event, state, now)
         state.last_action = decision.action.value
         state.last_reason = decision.reason
-        if decision.action in (WakeAction.REPLY, WakeAction.PROACTIVE):
-            state.last_wake_at = now
+        if decision.action is WakeAction.REPLY:
             state.ignored_streak = 0
         elif decision.action is WakeAction.IGNORE:
             state.ignored_streak += 1
@@ -80,39 +79,7 @@ class AgentRuntime:
             )
         return decision
 
-    def quiet(self, session_id: str, seconds: float, now: float | None = None) -> SocialState:
-        moment = self.clock() if now is None else now
-        state = self.store.get(session_id)
-        state.quiet_until = max(state.quiet_until, moment + max(0.0, float(seconds)))
-        state.last_action = "quiet"
-        state.last_reason = "quiet_window"
-        self.store.put(state)
-        return state
-
-    def wait(self, session_id: str, seconds: float, now: float | None = None) -> SocialState:
-        moment = self.clock() if now is None else now
-        state = self.store.get(session_id)
-        state.wait_until = max(state.wait_until, moment + max(0.0, float(seconds)))
-        state.last_action = "wait"
-        state.last_reason = "waiting"
-        self.store.put(state)
-        return state
-
-    def mark_read(self, session_id: str, through_seq: int,
-                  now: float | None = None) -> SocialState:
-        state = self.store.get(session_id)
-        requested = max(0, int(through_seq))
-        # Never let the watermark move beyond the newest observed sequence.
-        watermark = min(requested, max(0, int(state.last_unread_seq)))
-        state.read_through_seq = max(state.read_through_seq, watermark)
-        state.unread_count = max(
-            0, int(state.last_unread_seq) - state.read_through_seq
-        )
-        state.last_seen_at = self.clock() if now is None else now
-        self.store.put(state)
-        return state
-
-    def clear_wait(self, session_id: str, now: float | None = None) -> SocialState:
+    def clear_wait(self, session_id: str, now: float | None = None) -> SessionState:
         state = self.store.get(session_id)
         state.wait_until = 0.0
         state.next_retry_at = 0.0
@@ -138,7 +105,7 @@ class AgentRuntime:
 
     def schedule_retry(self, session_id: str, now: float, attempts: int,
                        max_attempts: int = 3, base_seconds: float = 2.0,
-                       cap_seconds: float = 60.0) -> SocialState:
+                       cap_seconds: float = 60.0) -> SessionState:
         """Schedule bounded retry for a failed deferred dispatch."""
         state = self.store.get(session_id)
         tries = max(1, int(attempts))
@@ -156,12 +123,11 @@ class AgentRuntime:
         self.store.put(state)
         return state
 
-    def mark_delivered(self, session_id: str, now: float | None = None) -> SocialState:
+    def mark_delivered(self, session_id: str, now: float | None = None) -> SessionState:
         moment = self.clock() if now is None else now
         state = self.store.get(session_id)
         state.last_spoke_at = moment
         state.cooldown_until = moment + max(0.0, state.reply_cooldown_seconds)
-        state.reply_count += 1
         state.unread_count = 0
         state.read_through_seq = max(state.read_through_seq, state.last_unread_seq)
         state.wait_until = 0.0

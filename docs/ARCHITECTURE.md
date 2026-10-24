@@ -130,8 +130,10 @@ The admin timeline shows each revision's own lineage and protected dialogue evid
 ## Agent Runtime boundary
 
 `app/runtime/` is host-agnostic and `AgentRuntime` is the single orchestration hub.
-`TimingPolicy` owns pure time decisions, `Scheduler` owns due-session selection from
-persisted session state, and `WakePolicy` owns inbound-event attention only. `RunRecorder`
+`SessionState` is mutable per-session runtime state, `RunDecision` is one attention/timing
+decision, and `EpisodeRecord` is the append-only business audit row. `TimingPolicy` owns
+pure time decisions, `Scheduler` owns due-session selection from persisted session state,
+and `WakePolicy` owns inbound-event attention only. `RunRecorder`
 is the single write-back service for assistant Source, pending buffer and runtime episode
 records. AstrBot remains the transport/provider/platform host; `main.py` maps events into
 `RuntimeInput` and must not move AstrBot types into the runtime package.
@@ -159,7 +161,7 @@ AstrBot message event
 -> RunRecorder.record_reply()
 -> after_message_sent()
 -> RunRecorder.record_delivery()
--> RuntimeEpisode
+-> EpisodeRecord
 ```
 
 ### Deferred ambient reply
@@ -173,7 +175,7 @@ runtime state with wait deadline
 -> AstrBotActionPort.send()
 -> RunRecorder.record_deferred_reply()
 -> assistant Source + extraction buffer
--> RuntimeEpisode
+-> EpisodeRecord
 ```
 
 ### Explicit boundaries
@@ -201,3 +203,6 @@ explicitly marked as a documented seam. Tests alone are not a reason to keep a p
   There is no second guard object for the same decision.
 - `RunRecorder` owns completed-run write-back; `main.py` must not write assistant Source or
   episodes directly.
+- `AgentRuntime` exposes only production transitions: observe, context build, wait clearing,
+  dispatch claim, retry scheduling and delivery marking. Test-only mutation helpers are not
+  part of the runtime API.

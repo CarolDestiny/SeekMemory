@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 try:
-    from ..app.runtime.contracts import RuntimeInput, WakeAction, WakeDecision
+    from ..app.runtime.contracts import RuntimeInput, WakeAction, RunDecision
     from ..app.runtime.tools import ToolPolicy, trace_tool_call
 except ImportError:
-    from app.runtime.contracts import RuntimeInput, WakeAction, WakeDecision
+    from app.runtime.contracts import RuntimeInput, WakeAction, RunDecision
     from app.runtime.tools import ToolPolicy, trace_tool_call
 
 
@@ -39,22 +39,20 @@ class AstrBotRuntimeAdapter:
         )
 
     @staticmethod
-    def apply_decision(event, decision: WakeDecision) -> None:
+    def apply_decision(event, decision: RunDecision) -> None:
         try:
             event.set_extra("_seekmemory_runtime_action", decision.action.value)
             event.set_extra("_seekmemory_runtime_reason", decision.reason)
-            event.set_extra("_seekmemory_runtime_defer_until", decision.defer_until)
         except Exception:  # noqa: BLE001 - observability must not break the host
             return
 
     @staticmethod
-    def apply_llm_gate(event, decision: WakeDecision, enabled: bool) -> None:
+    def apply_llm_gate(event, decision: RunDecision, enabled: bool) -> None:
         if not enabled:
             return
         try:
             event.should_call_llm(
-                decision.must_reply
-                or decision.action in (WakeAction.REPLY, WakeAction.PROACTIVE)
+                decision.must_reply or decision.action is WakeAction.REPLY
             )
         except Exception:  # noqa: BLE001 - host version may not expose the gate
             return

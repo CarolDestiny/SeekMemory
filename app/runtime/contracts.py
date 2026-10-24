@@ -19,8 +19,6 @@ class WakeAction(str, Enum):
     OBSERVE = "observe"
     WAIT = "wait"
     REPLY = "reply"
-    PROACTIVE = "proactive"
-    SLEEP = "sleep"
 
 
 @dataclass(frozen=True)
@@ -32,30 +30,25 @@ class RuntimeInput:
     speaker_id: str = ""
     private: bool = False
     mentioned: bool = False
-    name_mentioned: bool = False
     question: bool = False
-    reply_to_bot: bool = False
-    keyword_hit: bool = False
     unread_count: int = 0
     unread_seq: int = 0
     at: float = 0.0
 
 
 @dataclass
-class SocialState:
+class SessionState:
     """Per-session timing and attention state. This is not memory."""
 
     session_id: str
     last_seen_at: float = 0.0
     last_spoke_at: float = 0.0
-    last_wake_at: float = 0.0
     quiet_until: float = 0.0
     wait_until: float = 0.0
     cooldown_until: float = 0.0
     unread_count: int = 0
     last_unread_seq: int = 0
     read_through_seq: int = 0
-    reply_count: int = 0
     ignored_streak: int = 0
     dispatch_attempts: int = 0
     next_retry_at: float = 0.0
@@ -63,24 +56,19 @@ class SocialState:
     last_action: str = ""
     last_reason: str = ""
     reply_cooldown_seconds: float = 30.0
-    proactive_idle_seconds: float = 1800.0
-    proactive_probability: float = 0.1
 
 
 @dataclass(frozen=True)
-class WakeDecision:
+class RunDecision:
     action: WakeAction
     reason: str
     attention: AttentionLevel = AttentionLevel.AMBIENT
     must_reply: bool = False
-    defer_until: float = 0.0
-    wait_seconds: float = 0.0
-    confidence: float = 1.0
 
 
 class StateStore(Protocol):
-    def get(self, session_id: str) -> SocialState: ...
-    def put(self, state: SocialState) -> None: ...
+    def get(self, session_id: str) -> SessionState: ...
+    def put(self, state: SessionState) -> None: ...
 
 
 class TraceSink(Protocol):
