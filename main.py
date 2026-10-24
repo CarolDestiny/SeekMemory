@@ -34,7 +34,7 @@ from .app.runtime import (
     MemoryContext,
     RuntimeEpisode,
     RuntimeInput,
-    SchedulerPolicy,
+    Scheduler,
     ToolPolicy,
 )
 from .app.runtime.tracing import RunTracer
@@ -104,7 +104,6 @@ class Main(star.Star):
         self.tool_policy = ToolPolicy(
             allowed_prefixes=("memory_", "search_memory", "query_memory")
         )
-        self.scheduler = SchedulerPolicy()
         self.actions = AstrBotActionPort(context)
         self.jobs = Jobs(self.journal)
         artifact_limit = max(1, int(self._c("max_episodes", 500)))
@@ -145,6 +144,7 @@ class Main(star.Star):
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
             )
+        self.scheduler = Scheduler(self.runtime.store)
         if self.db is not None:
             try:
                 self.db.prune_runtime_episodes(
@@ -995,33 +995,19 @@ class Main(star.Star):
             return
         async with self._runtime_tick_lock:
             now = time.time()
-            for session_id in self.db.list_runtime_state_sessions(limit=100):
+            due = self.scheduler.due(
+                self.db.list_runtime_state_sessions(limit=100), now
+            )
+            for item in due:
+                session_id = item.session_id
                 if session_id in self._runtime_dispatching:
                     continue
                 try:
-                    state = self.runtime.store.get(session_id)
-                    decisions = self.scheduler.evaluate(state, now)
-                    for decision in decisions:
-                        if decision.action.value not in ("proactive", "wait"):
-                            continue
-                        self.trace.record(
-                            "runtime",
-                            "scheduler_" + decision.action.value,
-                            {
-                                "event": decision.event.value,
-                                "reason": decision.reason,
-                                "due": bool(decision.due),
-                            },
-                        )
-                    wait_due = any(
-                        item.event.value == "wait" and item.due for item in decisions
-                    )
-                    if wait_due and state.wait_until and state.wait_until <= now:
-                        self._runtime_dispatching.add(session_id)
-                        try:
-                            await self._dispatch_deferred(session_id, now)
-                        finally:
-                            self._runtime_dispatching.discard(session_id)
+                    self._runtime_dispatching.add(session_id)
+                    try:
+                        await self._dispatch_deferred(session_id, now)
+                    finally:
+                        self._runtime_dispatching.discard(session_id)
                 except Exception:
                     continue
 

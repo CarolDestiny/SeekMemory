@@ -100,7 +100,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Persona consolidation partially committed or lost stable identity | covered by `tests/test_persona.py` |
 | An old persona revision displayed a newer revision's private evidence | covered by `tests/test_webui_host.py` and `dashboard/tests/persona-evidence.test.ts` |
 | Windows clock collisions silently lost runtime audit rows | covered by `tests/test_runtime_actions.py` |
-| Wait, quiet, proactive and per-session rate-limit scheduling were untested | covered by `tests/test_runtime_scheduler.py` |
+| Due wait/retry selection and per-session scheduler isolation were untested | covered by `tests/test_runtime_scheduler.py` |
 
 ## Staging and model probes
 

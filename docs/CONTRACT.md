@@ -587,14 +587,12 @@ An extraction item may include an optional `supersedes` exact-text hint. After t
 
 ## Runtime scheduler
 
-`app/runtime/scheduler.py` exposes a pure `SchedulerPolicy` over `SocialState` and an explicit
-`now` value. `evaluate_wait(wait_until, now)` distinguishes `wait_due` from `wait_not_due`;
-`evaluate_quiet(state, now)` reports `quiet_window` or `quiet_clear`; and
-`evaluate_proactive(state, now, *, rng=None, seed=None)` applies the idle threshold,
-quiet window, per-session cooldown and proactive probability. Seeded decisions are stable
-and an injectable random source is supported. The policy performs no I/O, sleeping, host
-imports or state mutation; `evaluate()` returns decisions in the stable order
-quiet, wait (when supplied), proactive.
+`app/runtime/scheduler.py` separates a pure `TimingPolicy` from a read-only `Scheduler`.
+`TimingPolicy.evaluate(state, now)` reports a `DueRun` for an elapsed wait or retry deadline,
+and `Scheduler.due(session_ids, now)` reads persisted state for each session and returns the
+due runs. The scheduler performs no sends, generation, mutation, sleeping, host imports or
+wall-clock reads. One broken session is skipped without blocking other sessions. Proactive
+generation is not implemented and has no timing path in this layer.
 
 ## Runtime actions and episodes
 
@@ -630,4 +628,4 @@ operations or alter recall/disclosure/tool policy. This log is not an immutable 
 
 ## Runtime integration policy
 
-Wake attention is prioritized as private > direct (@ / reply-to-bot) > addressed (name / question / keyword) > ambient. Private and direct attention cannot be muted by wait, quiet or cooldown. `wait` is a defer for ambient group traffic and must carry a reply path; it is never a hard mute for direct attention. `ToolPolicy.filter_tool_set()` removes disallowed tools from `req.func_tool` before the model sees them. The runtime loop runs `SchedulerPolicy` over persisted runtime sessions; a due ambient wait dispatches a deferred reply through the host provider, persists the assistant Source, records an episode, and retries provider/send failures with bounded per-session backoff (`runtime_dispatch_max_attempts`, `runtime_dispatch_backoff_seconds`). Proactive decisions remain trace-only for now.
+Wake attention is prioritized as private > direct (@ / reply-to-bot) > addressed (name / question / keyword) > ambient. Private and direct attention cannot be muted by wait, quiet or cooldown. `wait` is a defer for ambient group traffic and must carry a reply path; it is never a hard mute for direct attention. `ToolPolicy.filter_tool_set()` removes disallowed tools from `req.func_tool` before the model sees them. The runtime loop asks `Scheduler` / `TimingPolicy` for due persisted runtime sessions; a due ambient wait dispatches a deferred reply through the host provider, persists the assistant Source, records an episode, and retries provider/send failures with bounded per-session backoff (`runtime_dispatch_max_attempts`, `runtime_dispatch_backoff_seconds`). Proactive decisions remain trace-only for now.
