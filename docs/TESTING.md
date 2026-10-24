@@ -101,6 +101,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | An old persona revision displayed a newer revision's private evidence | covered by `tests/test_webui_host.py` and `dashboard/tests/persona-evidence.test.ts` |
 | Windows clock collisions silently lost runtime audit rows | covered by `tests/test_runtime_actions.py` |
 | Due wait/retry selection and per-session scheduler isolation were untested | covered by `tests/test_runtime_scheduler.py` |
+| Repeated run callbacks duplicated assistant Source, checkpoint or episode rows | covered by `tests/test_run_recorder.py` |
 
 ## Staging and model probes
 

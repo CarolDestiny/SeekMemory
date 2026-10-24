@@ -131,9 +131,10 @@ The admin timeline shows each revision's own lineage and protected dialogue evid
 
 `app/runtime/` is host-agnostic and `AgentRuntime` is the single orchestration hub.
 `TimingPolicy` owns pure time decisions, `Scheduler` owns due-session selection from
-persisted session state, and `WakePolicy` owns inbound-event attention only. AstrBot
-remains the transport/provider/platform host; `main.py` maps events into `RuntimeInput`
-and must not move AstrBot types into the runtime package.
+persisted session state, and `WakePolicy` owns inbound-event attention only. `RunRecorder`
+is the single write-back service for assistant Source, pending buffer and runtime episode
+records. AstrBot remains the transport/provider/platform host; `main.py` maps events into
+`RuntimeInput` and must not move AstrBot types into the runtime package.
 
 The gate is explicit. With `runtime_gate_enabled=false`, wait windows and deferred dispatch
 are inactive; no runtime timer can cause a model call or message send. With the gate enabled,
@@ -155,7 +156,9 @@ AstrBot message event
 -> recall pipeline / disclosure
 -> AstrBot model request
 -> capture_reply()
+-> RunRecorder.record_reply()
 -> after_message_sent()
+-> RunRecorder.record_delivery()
 -> RuntimeEpisode
 ```
 
@@ -168,6 +171,7 @@ runtime state with wait deadline
 -> claim_dispatch()
 -> provider.text_chat()
 -> AstrBotActionPort.send()
+-> RunRecorder.record_deferred_reply()
 -> assistant Source + extraction buffer
 -> RuntimeEpisode
 ```
@@ -177,6 +181,8 @@ runtime state with wait deadline
 - Proactive generation is not implemented and has no scheduling path yet.
 - `ToolPolicy.filter_tool_set()` filters `req.func_tool` before the model sees tools; the advisory
   `on_using_llm_tool` trace is not a veto.
+- `RunRecorder` owns assistant Source, pending-buffer and episode write-back. Run id is the
+  idempotency boundary so repeated callbacks cannot duplicate those writes.
 - `RunTrace` is an admin observability stream, separate from the append-only runtime
   episode audit. It is not an Artifact or Source.
 - `runtime_gate_enabled=false` keeps both wait and deferred dispatch inactive.
@@ -193,3 +199,5 @@ explicitly marked as a documented seam. Tests alone are not a reason to keep a p
   generate, or mutate state.
 - `ToolPolicy` owns both the enforced `req.func_tool` filter and the advisory tool-call trace.
   There is no second guard object for the same decision.
+- `RunRecorder` owns completed-run write-back; `main.py` must not write assistant Source or
+  episodes directly.

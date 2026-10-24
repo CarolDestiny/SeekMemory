@@ -32,6 +32,7 @@ class RuntimeEpisode:
     error: str = ""
     user_source_id: str = ""
     assistant_source_id: str = ""
+    run_id: str = ""
 
 
 @dataclass(frozen=True)

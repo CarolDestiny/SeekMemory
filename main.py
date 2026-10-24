@@ -32,7 +32,7 @@ from .app.runtime import (
     JsonStateStore,
     JsonlEpisodeStore,
     MemoryContext,
-    RuntimeEpisode,
+    RunRecorder,
     RuntimeInput,
     Scheduler,
     ToolPolicy,
@@ -144,6 +144,13 @@ class Main(star.Star):
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
             )
+        self.recorder = RunRecorder(
+            db=self.db,
+            buffer=self.buffer,
+            checkpoint=self.checkpoint,
+            episodes=self.episode_recorder,
+            cache=self.cache,
+        )
         self.scheduler = Scheduler(self.runtime.store)
         if self.db is not None:
             try:
@@ -481,53 +488,22 @@ class Main(star.Star):
             if not text:
                 return
             umo = str(getattr(event, "unified_msg_origin", "") or "")
-            turn_id = str(event.get_extra("_seekmemory_turn_id", "") or "")
-            if not turn_id:
-                turn_id = make_source_id(
-                    session_id=umo,
-                    speaker_id=str(event.get_sender_id()),
-                    role="assistant",
-                    text=text,
-                )
-            source_id = make_source_id(
-                event_id=f"{turn_id}:assistant",
+            reply = self.recorder.record_reply(
+                run_id=self.run_tracer.run_id(event),
                 session_id=umo,
-                speaker_id=str(event.get_self_id()),
-                role="assistant",
                 text=text,
-            )
-            now = datetime.datetime.now().isoformat(timespec="seconds")
-            source = Source(
-                source_id,
-                turn_id,
-                umo,
-                str(event.get_self_id()),
-                "assistant",
-                text,
-                now,
+                speaker_id=str(event.get_self_id()),
+                turn_id=str(event.get_extra("_seekmemory_turn_id", "") or ""),
                 reply_to=str(event.get_extra("_seekmemory_source_id", "") or ""),
+                at=datetime.datetime.now().isoformat(timespec="seconds"),
+                recall_ids=event.get_extra("_seekmemory_recall_ids", ()) or (),
             )
-            self.db.append_sources([source])
-            if self.buffer is not None:
-                self.buffer.add(
-                    umo,
-                    text,
-                    str(event.get_self_id()),
-                    source_id,
-                    now,
-                    source=source,
-                    turn_id=turn_id,
-                    role="assistant",
-                )
-            if self.checkpoint is not None:
-                recall_ids = event.get_extra("_seekmemory_recall_ids", ()) or ()
-                for art_id in recall_ids:
-                    art = self.cache.get(str(art_id)) if self.cache is not None else None
-                    if art is not None and art.header.family == "memory":
-                        self.checkpoint.record(art)
-                event.set_extra("_seekmemory_recall_ids", ())
-            event.set_extra("_seekmemory_assistant_source_id", source_id)
-            event.set_extra("_seekmemory_reply_chars", len(text))
+            event.set_extra("_seekmemory_turn_id", reply.turn_id)
+            event.set_extra(
+                "_seekmemory_assistant_source_id", reply.assistant_source_id
+            )
+            event.set_extra("_seekmemory_reply_chars", reply.response_chars)
+            event.set_extra("_seekmemory_recall_ids", ())
         except Exception:
             pass
 
@@ -546,20 +522,15 @@ class Main(star.Star):
             return
         umo = str(getattr(event, "unified_msg_origin", "") or "")
         self.runtime.mark_delivered(umo)
-        self.episode_recorder.record(
-            RuntimeEpisode(
-                session_id=umo,
-                at=datetime.datetime.now().isoformat(timespec="seconds"),
-                decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
-                reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
-                action="reply",
-                delivered=True,
-                response_chars=int(event.get_extra("_seekmemory_reply_chars", 0) or 0),
-                tool_calls=tuple(event.get_extra("_seekmemory_tool_calls", ()) or ()),
-                outcome="ok",
-                user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
-                assistant_source_id=assistant_source_id,
-            )
+        self.recorder.record_delivery(
+            run_id=self.run_tracer.run_id(event),
+            session_id=umo,
+            decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
+            reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+            response_chars=int(event.get_extra("_seekmemory_reply_chars", 0) or 0),
+            tool_calls=event.get_extra("_seekmemory_tool_calls", ()) or (),
+            user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
+            assistant_source_id=assistant_source_id,
         )
         event.set_extra("_seekmemory_episode_recorded", True)
         self._maybe_prune_runtime_episodes()
@@ -585,18 +556,13 @@ class Main(star.Star):
         self.trace.record("runtime", "agent_done", {"role": role})
         if role != "err":
             return
-        self.episode_recorder.record(
-            RuntimeEpisode(
-                session_id=str(getattr(event, "unified_msg_origin", "") or ""),
-                at=datetime.datetime.now().isoformat(timespec="seconds"),
-                decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
-                reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
-                action="reply",
-                delivered=False,
-                outcome="error",
-                error="agent_error",
-                user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
-            )
+        self.recorder.record_error(
+            run_id=self.run_tracer.run_id(event),
+            session_id=str(getattr(event, "unified_msg_origin", "") or ""),
+            decision=str(event.get_extra("_seekmemory_runtime_action", "") or "observe"),
+            reason=str(event.get_extra("_seekmemory_runtime_reason", "") or ""),
+            error="agent_error",
+            user_source_id=str(event.get_extra("_seekmemory_source_id", "") or ""),
         )
         self._maybe_prune_runtime_episodes()
 
@@ -1011,29 +977,6 @@ class Main(star.Star):
                 except Exception:
                     continue
 
-    def _record_deferred_assistant_source(self, session_id: str, text: str,
-                                          reply_to: str, at: str) -> str:
-        bot_id = str(getattr(self, "_self_id", "") or "bot")
-        turn_id = str(reply_to or make_source_id(
-            session_id=session_id, speaker_id=bot_id, role="assistant",
-            text=text, at=at,
-        ))
-        source_id = make_source_id(
-            event_id=f"{turn_id}:deferred",
-            session_id=session_id,
-            speaker_id=bot_id,
-            role="assistant",
-            text=text,
-        )
-        source = Source(source_id, turn_id, session_id, bot_id, "assistant",
-                        text, at, reply_to=reply_to)
-        if self.db is not None:
-            self.db.append_sources([source])
-        if self.buffer is not None:
-            self.buffer.add(session_id, text, bot_id, source_id, at,
-                            source=source, turn_id=turn_id, role="assistant")
-        return source_id
-
     async def _dispatch_deferred(self, session_id: str, now: float) -> None:
         """Generate one deferred group reply after the ambient wait expires."""
         if not bool(self._c("runtime_gate_enabled", False)):
@@ -1055,6 +998,7 @@ class Main(star.Star):
             return
         source_id = str(source.get("id") or "")
         attempts = self.runtime.claim_dispatch(session_id, source_id, now)
+        run_id = self.recorder.new_run_id()
         runtime_input = RuntimeInput(
             session_id=session_id,
             text=text,
@@ -1082,18 +1026,12 @@ class Main(star.Star):
                 max_attempts=int(self._c("runtime_dispatch_max_attempts", 3)),
                 base_seconds=float(self._c("runtime_dispatch_backoff_seconds", 2)),
             )
-            self.episode_recorder.record(
-                RuntimeEpisode(
-                    session_id=session_id,
-                    at=datetime.datetime.now().isoformat(timespec="seconds"),
-                    decision="wait",
-                    reason="deferred_wait",
-                    action="reply",
-                    delivered=False,
-                    outcome="error",
-                    error=type(exc).__name__,
-                    user_source_id=source_id,
-                )
+            self.recorder.record_deferred_error(
+                run_id=run_id,
+                session_id=session_id,
+                user_source_id=source_id,
+                error=exc,
+                at=datetime.datetime.now().isoformat(timespec="seconds"),
             )
             self.trace.record(
                 "runtime", "deferred_failed",
@@ -1101,26 +1039,19 @@ class Main(star.Star):
             )
             return
         at = datetime.datetime.now().isoformat(timespec="seconds")
-        assistant_source_id = self._record_deferred_assistant_source(
-            session_id, reply, source_id, at
+        recorded = self.recorder.record_deferred_reply(
+            run_id=run_id,
+            session_id=session_id,
+            text=reply,
+            speaker_id=str(getattr(self, "_self_id", "") or "bot"),
+            user_source_id=source_id,
+            at=at,
         )
         self.runtime.mark_delivered(session_id, now)
-        self.episode_recorder.record(
-            RuntimeEpisode(
-                session_id=session_id,
-                at=at,
-                decision="wait",
-                reason="deferred_wait",
-                action="reply",
-                delivered=True,
-                response_chars=len(reply),
-                outcome="ok",
-                user_source_id=source_id,
-                assistant_source_id=assistant_source_id,
-            )
+        self.trace.record(
+            "runtime", "deferred_delivered",
+            {"chars": recorded.response_chars, "attempt": attempts},
         )
-        self.trace.record("runtime", "deferred_delivered",
-                          {"chars": len(reply), "attempt": attempts})
 
     async def _runtime_loop(self) -> None:
         while True:

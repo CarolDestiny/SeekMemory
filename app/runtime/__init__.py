@@ -23,6 +23,7 @@ from .episode import (
     normalize_tool_calls,
     safe_error_code,
 )
+from .recorder import RecordedReply, RunRecorder
 from .runtime import AgentRuntime
 from .scheduler import DueRun, Scheduler, TimingPolicy
 from .state import DBStateStore, InMemoryStateStore, JsonStateStore
@@ -45,6 +46,8 @@ __all__ = [
     "RuntimeEpisode",
     "InMemoryStateStore",
     "MemoryContext",
+    "RecordedReply",
+    "RunRecorder",
     "JsonStateStore",
     "MemoryContextPort",
     "RuntimeInput",

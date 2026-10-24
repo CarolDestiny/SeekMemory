@@ -148,6 +148,9 @@ class DB:
         version_cols = {
             r[1] for r in self.conn.execute("PRAGMA table_info(versions)")
         }
+        episode_cols = {
+            r[1] for r in self.conn.execute("PRAGMA table_info(runtime_episodes)")
+        }
         with self.conn:
             additions = (
                 ("subject_id", "TEXT NOT NULL DEFAULT ''"),
@@ -172,8 +175,17 @@ class DB:
                     "SELECT entity, revision, 'migrate', blob, "
                     f"{header}, at FROM versions"
                 )
+            if episode_cols and "run_id" not in episode_cols:
+                self.conn.execute(
+                    "ALTER TABLE runtime_episodes "
+                    "ADD COLUMN run_id TEXT NOT NULL DEFAULT ''"
+                )
             self.conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_nodes_subject ON nodes(subject_id)"
+            )
+            self.conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_runtime_episodes_run "
+                "ON runtime_episodes(run_id) WHERE run_id <> ''"
             )
 
     def upsert(self, art: Artifact) -> None:
@@ -1042,10 +1054,11 @@ class DB:
         tool_calls = json.dumps(list(episode.get("tool_calls") or ()), ensure_ascii=False)
         with self.conn:
             self.conn.execute(
-                "INSERT INTO runtime_episodes("
+                "INSERT OR IGNORE INTO runtime_episodes("
                 "id, at, session_id, decision, reason, action, delivered, "
                 "response_chars, tool_calls, outcome, error, user_source_id, "
-                "assistant_source_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "assistant_source_id, run_id) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     episode_id,
                     str(episode.get("at") or _now()),
@@ -1060,6 +1073,7 @@ class DB:
                     str(episode.get("error") or ""),
                     str(episode.get("user_source_id") or ""),
                     str(episode.get("assistant_source_id") or ""),
+                    str(episode.get("run_id") or ""),
                 ),
             )
         return episode_id

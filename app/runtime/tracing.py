@@ -44,6 +44,12 @@ class RunTracer:
             "at": datetime.fromtimestamp(self.clock(), timezone.utc).isoformat(),
             "event": name, "status": status, **values})
 
+    def run_id(self, event) -> str:
+        try:
+            return self._state(event).id
+        except Exception:
+            return ""
+
     def begin(self, event) -> None:
         try:
             state = self._state(event)

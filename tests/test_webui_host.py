@@ -496,6 +496,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         rows = self.plugin.db.list_runtime_episodes(session_id)
         self.assertEqual(rows[0]["reason"], "deferred_wait")
         self.assertTrue(rows[0]["assistant_source_id"])
+        self.assertTrue(rows[0]["run_id"])
         self.assertEqual(self.plugin.runtime.store.get(session_id).wait_until, 0.0)
         source_row = self.plugin.db.conn.execute(
             "SELECT role FROM sources WHERE id = ?", (rows[0]["assistant_source_id"],)
@@ -813,6 +814,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         episodes = self.plugin.db.list_runtime_episodes("bot:GroupMessage:g1")
         self.assertEqual(len(episodes), 1)
         self.assertEqual(episodes[0]["delivered"], 1)
+        self.assertEqual(episodes[0]["run_id"], trace["runs"][0]["id"])
         self.assertNotIn("text", episodes[0])
 
         failure_event = Event()
