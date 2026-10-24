@@ -25,11 +25,10 @@ class TimingPolicy:
     def evaluate(self, state: SocialState, now: float) -> DueRun | None:
         wait_until = float(state.wait_until or 0.0)
         retry_at = float(state.next_retry_at or 0.0)
-        if wait_until > 0 and wait_until <= now:
-            reason = "retry" if retry_at > 0 and retry_at <= now else "wait"
-            return DueRun(state.session_id, reason, wait_until)
         if retry_at > 0 and retry_at <= now:
             return DueRun(state.session_id, "retry", retry_at)
+        if wait_until > 0 and wait_until <= now:
+            return DueRun(state.session_id, "wait", wait_until)
         return None
 
 

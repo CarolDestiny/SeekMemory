@@ -1039,9 +1039,11 @@ class Main(star.Star):
         if not bool(self._c("runtime_gate_enabled", False)):
             return
         state = self.runtime.store.get(session_id)
-        if state.wait_until <= 0 or state.wait_until > now:
+        wait_due = state.wait_until > 0 and state.wait_until <= now
+        retry_due = state.next_retry_at > 0 and state.next_retry_at <= now
+        if not (wait_due or retry_due):
             return
-        if state.next_retry_at and state.next_retry_at > now:
+        if state.wait_until > now or (state.next_retry_at and state.next_retry_at > now):
             return
         source = self.db.latest_user_source(session_id) if self.db is not None else None
         if not source:

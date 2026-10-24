@@ -42,8 +42,15 @@ class TimingPolicyTest(unittest.TestCase):
             DueRun("s1", "retry", 100),
         )
 
+    def test_retry_only_due(self):
+        state = SocialState("s1", next_retry_at=80)
+        self.assertEqual(
+            self.policy.evaluate(state, 100),
+            DueRun("s1", "retry", 80),
+        )
+
     def test_not_due(self):
-        state = SocialState("s1", wait_until=200)
+        state = SocialState("s1", wait_until=200, next_retry_at=300)
         self.assertIsNone(self.policy.evaluate(state, 100))
 
     def test_scheduler_isolates_broken_sessions(self):
