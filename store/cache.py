@@ -7,18 +7,11 @@ try:  # 作为 astrbot 插件包的一部分导入
 except ImportError:  # 作为顶层 store 包导入（脚本 / 测试）
     from core.artifact import Artifact
 
-try:
-    from .db import DB
-except ImportError:  # pragma: no cover - 兼容直接导入 store 目录
-    from db import DB
-
-
 class Cache:
     """进程内热数据；检索路径只读它，不查库。"""
 
-    def __init__(self, db: DB) -> None:
-        """绑定数据库，索引初始为空，调用 load() 后才可用。"""
-        self.db = db
+    def __init__(self, artifacts) -> None:
+        self.artifacts = artifacts
         self._items: dict[str, Artifact] = {}
         self._by_family: dict[str, set[str]] = {}
         self._by_level: dict[str, set[str]] = {}
@@ -37,7 +30,7 @@ class Cache:
         self._by_level.clear()
         self._by_subject.clear()
         self._version += 1
-        for art in self.db.list(state="active"):
+        for art in self.artifacts.list(state="active"):
             self.put(art)
 
     def put(self, art: Artifact) -> None:

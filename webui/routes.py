@@ -59,7 +59,7 @@ class WebRoutes:
             checks.append(
                 {
                     "name": "ledger",
-                    "ok": Ledger(plugin.db).verify(),
+                    "ok": Ledger(plugin.db.ledger).verify(),
                     "detail": "账本哈希链",
                 }
             )

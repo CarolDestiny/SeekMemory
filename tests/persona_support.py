@@ -17,11 +17,11 @@ class PersonaCase(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.db = DB(str(Path(self.temp.name) / "memory.db"))
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.seq = 0
 
     def seed(self, art):
-        self.db.commit(art, expected_revision=0, op="create",
+        self.db.artifacts.commit(art, expected_revision=0, op="create",
                        source_ids=art.header.lineage.sources)
         self.cache.put(art)
         return art
@@ -33,7 +33,7 @@ class PersonaCase(unittest.TestCase):
                       "虚构隐私：许澄，栖云城，橙色纸鹤", "2026-10-23T10:00:00")
         reply = Source(f"a{n}", f"t{n}", user.session_id, "bot", "assistant",
                        "先休息一下，我陪你梳理", user.at, reply_to=user.id)
-        self.db.append_sources([user, reply])
+        self.db.sources.append_sources([user, reply])
         return self.seed(make("memory", {
             "text": f"original scene {n}", "level": "scene", "bot_behavior": kind,
             "bot_action": "许澄在栖云城说橙色纸鹤", **payload},

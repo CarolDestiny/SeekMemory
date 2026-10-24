@@ -27,7 +27,7 @@ class ManagementTests(unittest.TestCase):
     def setUp(self) -> None:
         self.db = DB(":memory:")
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.service = ManagementService(
             self.db, self.cache, Graph(self.db, self.cache), {}.get
         )
@@ -39,7 +39,7 @@ class ManagementTests(unittest.TestCase):
                 "owner_umo": "bot:FriendMessage:alice",
             },
         )
-        self.db.upsert(self.art)
+        self.db.artifacts.upsert(self.art)
         self.cache.put(self.art)
         self.command = {
             "id": self.art.header.id,
@@ -57,34 +57,34 @@ class ManagementTests(unittest.TestCase):
             self.cache.get(self.art.header.id).payload["text"], "Corrected fact"
         )
         self.assertEqual(
-            [item["payload"]["text"] for item in self.db.history(self.art.header.id)],
+            [item["payload"]["text"] for item in self.db.artifacts.history(self.art.header.id)],
             ["Old fact", "Corrected fact"],
         )
-        self.assertTrue(Ledger(self.db).verify())
+        self.assertTrue(Ledger(self.db.ledger).verify())
         with self.assertRaisesRegex(ValueError, "revision_conflict"):
             self.service.update(self.command)
-        self.assertEqual(len(self.db.ledger_entries()), 1)
+        self.assertEqual(len(self.db.ledger.entries()), 1)
 
     def test_ledger_failure_rolls_back_revision_and_cache(self) -> None:
-        with patch.object(
-            self.db, "_ledger_append_conn", side_effect=RuntimeError("disk failure")
+        with patch(
+            "store.artifacts.append_ledger_conn", side_effect=RuntimeError("disk failure")
         ):
             with self.assertRaises(RuntimeError):
                 self.service.update(self.command)
-        self.assertEqual(self.db.get(self.art.header.id), self.art)
-        self.assertEqual(len(self.db.history(self.art.header.id)), 1)
+        self.assertEqual(self.db.artifacts.get(self.art.header.id), self.art)
+        self.assertEqual(len(self.db.artifacts.history(self.art.header.id)), 1)
         self.assertEqual(self.cache.get(self.art.header.id), self.art)
 
     def test_kernel_revision_preserves_subject_and_version_evidence(self) -> None:
         source = Source("source-1", "turn-1", "session-1", "alice", "user", "原始事实")
-        self.db.append_sources([source])
+        self.db.sources.append_sources([source])
         art = make(
             "memory",
             {"text": "原始事实", "level": "fact"},
             subject_id="alice",
             lineage=Lineage(sources=(source.id,)),
         )
-        self.db.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
+        self.db.artifacts.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
         self.cache.put(art)
         self.service.update({**self.command, "id": art.header.id})
         detail = self.service.detail(art.header.id)
@@ -114,18 +114,18 @@ class ManagementTests(unittest.TestCase):
         self.service.update({**self.command, "expectedRevision": 2, "state": "active"})
         self.assertIsNotNone(self.cache.get(self.art.header.id))
         self.assertEqual(
-            [row["op"] for row in self.db.ledger_entries()], ["forget", "revise"]
+            [row["op"] for row in self.db.ledger.entries()], ["forget", "revise"]
         )
         with self.assertRaises(ValueError):
             self.service.update(
                 {**self.command, "expectedRevision": 3, "payload": {"text": "invalid"}}
             )
-        self.assertEqual(self.db.get(self.art.header.id).header.revision, 3)
+        self.assertEqual(self.db.artifacts.get(self.art.header.id).header.revision, 3)
 
     def test_merged_record_cannot_be_resurrected(self) -> None:
         with self.assertRaisesRegex(ValueError, "维护任务"):
             self.service.update({**self.command, "state": "merged"})
-        self.db.upsert(revise(self.art, state="merged"))
+        self.db.artifacts.upsert(revise(self.art, state="merged"))
         with self.assertRaisesRegex(ValueError, "已合并"):
             self.service.update({**self.command, "expectedRevision": 2})
 
@@ -138,7 +138,7 @@ class ManagementTests(unittest.TestCase):
             "designated": {"text": "A reminder", "trigger": "reminder"},
         }
         for family, payload in payloads.items():
-            self.db.upsert(
+            self.db.artifacts.upsert(
                 make(
                     family, payload, scope="shadow" if family == "secret" else "shared"
                 )
@@ -162,7 +162,7 @@ class ManagementTests(unittest.TestCase):
                 "owner_umo": "bot:FriendMessage:alice",
             },
         )
-        self.db.upsert(art)
+        self.db.artifacts.upsert(art)
         self.cache.put(art)
         before = self.db.conn.total_changes
         result = self.service.diagnose(
@@ -170,7 +170,7 @@ class ManagementTests(unittest.TestCase):
         )
         self.assertIn("return this plan", result["block"])
         self.assertEqual(self.db.conn.total_changes, before)
-        self.assertNotIn("given", self.db.get(art.header.id).payload)
+        self.assertNotIn("given", self.db.artifacts.get(art.header.id).payload)
         other = self.service.diagnose(
             {"query": "plan", "umo": "bot:FriendMessage:bob", "speaker": "bob"}
         )

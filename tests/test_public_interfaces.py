@@ -35,20 +35,20 @@ class ProtocolSurfaceTest(unittest.TestCase):
     def setUp(self):
         self.db = DB(":memory:")
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
 
     def test_builtin_stores_satisfy_public_protocols(self):
-        self.assertIsInstance(self.db, SourceStore)
-        self.assertIsInstance(self.db, ArtifactStore)
-        self.assertIsInstance(self.db, StateStore)
-        self.assertIsInstance(self.db, ExtractionStore)
+        self.assertIsInstance(self.db.sources, SourceStore)
+        self.assertIsInstance(self.db.artifacts, ArtifactStore)
+        self.assertIsInstance(self.db.artifacts, StateStore)
+        self.assertIsInstance(self.db.extraction, ExtractionStore)
 
     def test_builtin_retriever_and_chat_model_satisfy_public_protocols(self):
         self.assertIsInstance(HybridRetriever(self.cache, self.cache), Retriever)
         self.assertIsInstance(ProviderChatModel(object()), ChatModel)
 
     def test_commit_surface_keeps_cas_and_state_events(self):
-        names = inspect.signature(self.db.commit).parameters
+        names = inspect.signature(self.db.artifacts.commit).parameters
         self.assertIn("expected_revision", names)
         self.assertIn("source_ids", names)
         self.assertIn("state_events", names)

@@ -130,7 +130,7 @@ class CacheVersionTest(unittest.TestCase):
     def test_cache_version_changes_when_active_documents_change(self):
         db = DB(":memory:")
         self.addCleanup(db.close)
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         art = memory("量化交易项目")
         initial = cache.version
 
@@ -144,7 +144,7 @@ class CacheVersionTest(unittest.TestCase):
     def test_reloading_empty_cache_advances_version(self):
         db = DB(":memory:")
         self.addCleanup(db.close)
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         initial = cache.version
         cache.load()
         self.assertGreater(cache.version, initial)
@@ -154,7 +154,7 @@ class RetrieverTest(unittest.TestCase):
     def setUp(self):
         self.db = DB(":memory:")
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
 
     def test_hybrid_retriever_adds_lexical_signal_once_per_artifact(self):

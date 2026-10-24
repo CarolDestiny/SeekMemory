@@ -56,14 +56,14 @@ class ActionTest(unittest.TestCase):
         from unittest.mock import patch
         db = DB(os.path.join(tempfile.mkdtemp(), "clock.db"))
         self.addCleanup(db.close)
-        sink = DBEpisodeStore(db)
+        sink = DBEpisodeStore(db.runtime_episodes)
         episode = EpisodeRecord("s", "2026-10-23T10:00:00", "observe", "ambient",
                                  "reply", True)
         with patch("time.time_ns", return_value=123):
             for _ in range(4):
                 sink.append(episode)
         self.assertEqual(sink.last_error, "")
-        self.assertEqual(len(db.list_runtime_episodes("s")), 4)
+        self.assertEqual(len(db.runtime_episodes.list("s")), 4)
 
     def test_send(self) -> None:
         context = Context()
@@ -107,53 +107,53 @@ class ActionTest(unittest.TestCase):
 
     def test_db_state_and_episode_stores(self) -> None:
         db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_db_"), "memory.db"))
-        state_store = DBStateStore(db)
+        state_store = DBStateStore(db.runtime_state)
         state = state_store.get("s1")
         state.quiet_until = 321
         state_store.put(state)
-        self.assertEqual(DBStateStore(db).get("s1").quiet_until, 321)
-        self.assertEqual(db.list_runtime_state_sessions(), ["s1"])
+        self.assertEqual(DBStateStore(db.runtime_state).get("s1").quiet_until, 321)
+        self.assertEqual(db.runtime_state.sessions(), ["s1"])
 
-        recorder = EpisodeRecorder(DBEpisodeStore(db))
+        recorder = EpisodeRecorder(DBEpisodeStore(db.runtime_episodes))
         recorder.record(EpisodeRecord(
             session_id="s1", at="2026-01-01T00:00:00", decision="reply",
             reason="mention", action="reply", delivered=True,
             response_chars=4, tool_calls=("memory_search",), outcome="ok",
             user_source_id="u1", assistant_source_id="a1",
         ))
-        rows = db.list_runtime_episodes("s1")
+        rows = db.runtime_episodes.list("s1")
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["decision"], "reply")
         self.assertIn("memory_search", rows[0]["tool_calls"])
 
     def test_db_episode_pruning_and_fail_open(self) -> None:
         db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_prune_"), "memory.db"))
-        recorder = EpisodeRecorder(DBEpisodeStore(db))
+        recorder = EpisodeRecorder(DBEpisodeStore(db.runtime_episodes))
         for i in range(3):
             recorder.record(EpisodeRecord(
                 session_id="s1", at=f"2026-01-0{i + 1}T00:00:00",
                 decision="observe", reason="ambient", action="reply",
                 delivered=True, outcome="ok",
             ))
-        self.assertGreaterEqual(db.prune_runtime_episodes(retention_days=0, max_rows=2), 1)
-        self.assertEqual(len(db.list_runtime_episodes("s1")), 2)
+        self.assertGreaterEqual(db.runtime_episodes.prune(retention_days=0, max_rows=2), 1)
+        self.assertEqual(len(db.runtime_episodes.list("s1")), 2)
 
-        class BrokenDB:
-            def get_runtime_state(self, session_id):
+        class BrokenState:
+            def get(self, session_id):
                 raise RuntimeError("busy")
 
-            def put_runtime_state(self, session_id, payload):
+            def put(self, session_id, payload):
                 raise RuntimeError("busy")
 
-            def append_runtime_episode(self, payload):
+        class BrokenEpisodes:
+            def append(self, payload):
                 raise RuntimeError("busy")
 
-        broken = BrokenDB()
-        state_store = DBStateStore(broken)
+        state_store = DBStateStore(BrokenState())
         self.assertEqual(state_store.get("s1").session_id, "s1")
         state_store.put(state_store.get("s1"))
         self.assertEqual(state_store.last_error, "RuntimeError")
-        episode_store = DBEpisodeStore(broken)
+        episode_store = DBEpisodeStore(BrokenEpisodes())
         episode_store.append(EpisodeRecord(session_id="s1", at="t", decision="x",
                                            reason="y", action="z", delivered=False))
         self.assertEqual(episode_store.last_error, "RuntimeError")

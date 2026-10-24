@@ -40,10 +40,10 @@ def _mk(level: str, text: str, parent: str | None = None, weight: float = 1.0) -
 def main() -> None:
     tmpdir = tempfile.mkdtemp()
     db = DB(os.path.join(tmpdir, "t.db"))
-    cache = Cache(db)
+    cache = Cache(db.artifacts)
     tree = Tree(db, cache)
     graph = Graph(db, cache)
-    ledger = Ledger(db)
+    ledger = Ledger(db.ledger)
 
     impression = _mk("impression", "他有点倔，嘴上不饶人但真有事会帮")
     scene = _mk("scene", "他加班到两点，我说陪他躺会儿")
@@ -54,7 +54,7 @@ def main() -> None:
     )
 
     for art in (impression, scene, detail, media):
-        db.upsert(art)
+        db.artifacts.upsert(art)
         cache.put(art)
 
     tree.add_under(scene, impression.header.id)
@@ -63,8 +63,8 @@ def main() -> None:
     ledger.append("create", impression.header.id, None, "h1", "初版")
 
     assert cache.size() == 4, cache.size()
-    assert db.get(impression.header.id) is not None
-    assert db.count() >= 4
+    assert db.artifacts.get(impression.header.id) is not None
+    assert db.artifacts.count() >= 4
 
     pool = cache.active()
     seed_ids = seeds("我今天加班到很晚，好累", pool)

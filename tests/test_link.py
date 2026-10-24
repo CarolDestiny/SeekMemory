@@ -82,7 +82,7 @@ class _LinkCase(unittest.TestCase):
         """创建临时库与依赖对象。"""
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_link_")
         self.db = DB(os.path.join(self.tmpdir, "memory.db"))
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
 
     def tearDown(self) -> None:
@@ -97,7 +97,7 @@ class _LinkCase(unittest.TestCase):
 
     def _edges(self, art: Artifact) -> list[tuple[str, str, float]]:
         """该节点的全部边（出边与入边都算）。"""
-        return self.db.edges_of(art.header.id)
+        return self.db.artifacts.edges_of(art.header.id)
 
 
 class SimilarEdgeTest(_LinkCase):
@@ -219,7 +219,7 @@ class FailOpenTest(_LinkCase):
         self.assertEqual(link_new(second, self.graph, None), 0)
         self.assertEqual(link_new(second, Graph(None, self.cache), self.cache), 0)
         self.assertEqual(persist(second, self.db, None, None), 0)
-        self.assertIsNotNone(self.db.get(second.header.id))
+        self.assertIsNotNone(self.db.artifacts.get(second.header.id))
         self.assertEqual(self._edges(first), [])
         self.assertEqual(self._edges(second), [])
 
@@ -233,7 +233,7 @@ class FailOpenTest(_LinkCase):
 
         persist(second, self.db, boom, self.graph)  # type: ignore[arg-type]
 
-        self.assertIsNotNone(self.db.get(second.header.id))
+        self.assertIsNotNone(self.db.artifacts.get(second.header.id))
         self.assertIsNotNone(self.cache.get(second.header.id))
         self.assertEqual(self._edges(first), [])
         self.assertEqual(self._edges(second), [])
@@ -248,7 +248,7 @@ class FailOpenTest(_LinkCase):
         persist(second, self.db, self.cache,  # type: ignore[arg-type]
                 _BoomGraph(self.db))
 
-        self.assertIsNotNone(self.db.get(second.header.id))
+        self.assertIsNotNone(self.db.artifacts.get(second.header.id))
         self.assertIsNotNone(self.cache.get(second.header.id))
         self.assertEqual(self._edges(second), [])
 

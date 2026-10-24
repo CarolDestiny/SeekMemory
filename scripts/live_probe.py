@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from store.db import chain_hash, chain_payload  # noqa: E402
+from store.ledger import chain_hash, chain_payload  # noqa: E402
 
 
 def _count(conn, table, where="", args=()):

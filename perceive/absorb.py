@@ -231,7 +231,7 @@ def _recover_parents(items: list[DialogueTurn], db: DB | None) -> list[DialogueT
             wanted.append(parent_id)
     if not wanted:
         return rows
-    sources = db.sources_by_ids(wanted)
+    sources = db.sources.sources_by_ids(wanted)
     out: list[DialogueTurn] = []
     added: set[str] = set()
     for turn in items:
@@ -319,7 +319,7 @@ def _supersede(db: DB, cache: Cache, new_art) -> int:
         if not key or not body or (key not in body and body not in key):
             continue
         updated = revise(old, time=replace(old.header.time, valid_to=cutoff))
-        db.commit(updated, expected_revision=old.header.revision, op="revise",
+        db.artifacts.commit(updated, expected_revision=old.header.revision, op="revise",
                   reason="superseded by extraction",
                   source_ids=tuple(old.header.lineage.sources))
         cache.put(updated)
@@ -497,7 +497,7 @@ async def absorb(
             continue
         try:
             with stage("artifact.persist"):
-                db.commit(
+                db.artifacts.commit(
                     art,
                     expected_revision=0,
                     op="create",

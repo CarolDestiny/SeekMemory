@@ -61,7 +61,7 @@ class CapacityService:
         self.context_chars = max(0, int(value))
 
     def snapshot(self) -> CapacitySnapshot:
-        usage = self.db.capacity_usage() if self.db is not None else {}
+        usage = self.db.metrics.capacity_usage() if self.db is not None else {}
         return CapacitySnapshot(
             source_rows=int(usage.get("source_rows", 0)),
             source_bytes=int(usage.get("source_bytes", 0)),
@@ -135,7 +135,7 @@ class CapacityService:
             and self.deferred_rows
             and self.db is not None
         ):
-            released = self.db.release_deferred(self.thresholds.release_batch)
+            released = self.db.extraction.release_deferred(self.thresholds.release_batch)
             if released:
                 self.deferred_rows = max(0, self.deferred_rows - released)
                 if self.on_release is not None:
@@ -168,7 +168,7 @@ class CapacityService:
 
             with self.journal.span("capacity", "compact_artifacts") as metrics:
                 metrics["merged"] = merge_similar(
-                    self.db,
+                    self.db.artifacts,
                     self.cache,
                     threshold=0.6,
                     limit=50,
@@ -180,7 +180,7 @@ class CapacityService:
                 from maintain.lifecycle import forget_expired
 
             with self.journal.span("capacity", "forget_expired") as metrics:
-                metrics["forgotten"] = forget_expired(self.db, self.cache)
+                metrics["forgotten"] = forget_expired(self.db.artifacts, self.cache)
         if "trim_trace" in actions:
             with self.journal.span("capacity", "trim_trace") as metrics:
                 metrics["removed"] = self.trace.trim(
@@ -203,7 +203,7 @@ class CapacityService:
     def status(self) -> dict:
         snapshot = self.snapshot()
         decision = self.governor.evaluate(snapshot)
-        queue = self.db.queue_counts() if self.db is not None else {}
+        queue = self.db.extraction.queue_counts() if self.db is not None else {}
         return {
             "state": decision.state,
             "actions": list(decision.actions),

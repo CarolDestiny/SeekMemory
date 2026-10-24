@@ -20,23 +20,23 @@ class FakeStore:
     def __init__(self) -> None:
         self.runs: dict[str, dict] = {}
 
-    def dream_get(self, date):
+    def get(self, date):
         return self.runs.get(date)
 
-    def dream_begin(self, date, now=""):
+    def begin(self, date, now=""):
         run = self.runs.get(date)
         if run and run.get("status") == "done":
             return False
         self.runs[date] = {"date": date, "status": "running", "started_at": now}
         return True
 
-    def dream_finish(self, date, *, status="done", batches=0, written=0,
+    def finish(self, date, *, status="done", batches=0, written=0,
                      errors=None, summary=None, now=""):
         self.runs[date] = {"date": date, "status": status, "batches": batches,
                            "written": written, "errors": errors or [],
                            "summary": summary or {}, "finished_at": now}
 
-    def dream_recent(self, limit=7):
+    def recent(self, limit=7):
         return list(self.runs.values())[:limit]
 
 

@@ -107,8 +107,8 @@ class AstrBotPlugin(AstrBotHooks):
             log=lambda msg: logger.info(f"[seekmemory] {msg}"),
         )
         if self.db is not None:
-            state_store = DBStateStore(self.db)
-            self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db))
+            state_store = DBStateStore(self.db.runtime_state)
+            self.episode_recorder = EpisodeRecorder(DBEpisodeStore(self.db.runtime_episodes))
         else:
             state_store = JsonStateStore(
                 str(self.data_path.parent / "runtime_state.json")
@@ -117,7 +117,7 @@ class AstrBotPlugin(AstrBotHooks):
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
             )
         self.recorder = RunRecorder(
-            db=self.db,
+            sources=self.db.sources if self.db is not None else None,
             buffer=self.buffer,
             checkpoint=self.checkpoint,
             episodes=self.episode_recorder,
@@ -138,7 +138,7 @@ class AstrBotPlugin(AstrBotHooks):
         )
         if self.db is not None:
             try:
-                self.db.prune_runtime_episodes(
+                self.db.runtime_episodes.prune(
                     retention_days=int(self._c("runtime_episode_retention_days", 30)),
                     max_rows=int(self._c("runtime_episode_max_rows", 5000)),
                 )
@@ -146,7 +146,7 @@ class AstrBotPlugin(AstrBotHooks):
                 pass
             self._last_runtime_prune_at = time.time()
             self.dream = DreamCycle(
-                self.db, self._c,
+                self.db.dreams, self._c,
                 log=lambda msg: logger.info(f"[seekmemory] {msg}"),
             )
         self.scheduler = Scheduler(self.runtime.store)
@@ -180,13 +180,15 @@ class AstrBotPlugin(AstrBotHooks):
             task_id=lambda: self.jobs.task_id,
             logger=logger,
         )
-        self.status = StatusService(db=self.db)
+        self.status = StatusService(
+            artifacts=self.db.artifacts if self.db is not None else None
+        )
         self.runtime_worker = RuntimeWorker(
             runtime=self.runtime,
             scheduler=self.scheduler,
             enabled=lambda: bool(self._c("runtime_gate_enabled", False)),
             session_ids=lambda limit: (
-                self.db.list_runtime_state_sessions(limit=limit)
+                self.db.runtime_state.sessions(limit=limit)
                 if self.db is not None else []
             ),
             run_context=self._make_run_context,
@@ -253,13 +255,13 @@ class AstrBotPlugin(AstrBotHooks):
         try:
             self.data_path.parent.mkdir(parents=True, exist_ok=True)
             self.db = DB(str(self.data_path))
-            self.cache = Cache(self.db)
+            self.cache = Cache(self.db.artifacts)
             self.cache.load()
             self.tree = Tree(self.db, self.cache)
             self.graph = Graph(self.db, self.cache)
             self.hybrid_retriever = HybridRetriever(self.graph, self.cache)
             self.buffer = Buffer(
-                str(self.data_path.parent / "pending.json"), db=self.db
+                str(self.data_path.parent / "pending.json"), extraction=self.db.extraction
             )
             migrated = self.buffer.migrate_legacy()
             if self.buffer.load_error:
@@ -271,7 +273,7 @@ class AstrBotPlugin(AstrBotHooks):
                 )
             self.ready = True
             self.checkpoint = CheckpointManager(
-                self.db, self.cache, int(self._c("checkpoint_seconds", 1800))
+                self.db.artifacts, self.cache, int(self._c("checkpoint_seconds", 1800))
             )
             self.journal.record(
                 "plugin", "ready", f"已加载 {self.cache.size()} 条有效记忆"
@@ -334,7 +336,7 @@ class AstrBotPlugin(AstrBotHooks):
             self.buffer.reload()
 
     def _make_run_context(self, session_id: str, now: float) -> RunContext:
-        source = self.db.latest_user_source(session_id) if self.db is not None else None
+        source = self.db.sources.latest_user_source(session_id) if self.db is not None else None
         source = source or {}
         return RunContext(
             session_id=session_id,

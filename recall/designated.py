@@ -77,7 +77,7 @@ def mark_given(db: Any, cache: Any, arts: list[Artifact], block: str,
             continue
         try:
             updated = revise(art, payload={**art.payload, "given": stamp})
-            db.commit(updated, expected_revision=art.header.revision, op="deliver",
+            db.artifacts.commit(updated, expected_revision=art.header.revision, op="deliver",
                       reason="designated delivered",
                       source_ids=tuple(art.header.lineage.sources))
             cache.put(updated)

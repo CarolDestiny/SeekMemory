@@ -109,7 +109,7 @@ class IngestService:
                 list(self.buffer.items),
                 cap=limit or batch_cap,
             )
-            ready_ids = self.db.ready_extraction_ids()
+            ready_ids = self.db.extraction.ready_extraction_ids()
             ready = []
             failure: Exception | None = None
             for session_id, topic_id, part in topics:

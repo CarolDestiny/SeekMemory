@@ -1,52 +1,39 @@
-# store/ —— 持久化
+# store/ - persistence
 
-## 管什么
+SQLite, the in-memory cache, the artifact ledger and bounded run traces live here.
+**Only this package writes SQL.**
 
-SQLite + 内存热数据。**整个项目只有这个目录写 SQL**，换存储只动这里。
+## One database, several repositories
 
-- `blobs`：按内容寻址的不可变内容（节点 payload 的 JSON、Source 原文）。
-- `nodes`：统一头 + 类型化 payload 的记忆节点，抽象树的父子关系存在 `parent`。
-- `edges`：`similar` / `causal` / `temporal` 关系边。
-- `sources` / `evidence`：原始对话只追加、不可改；`evidence` 记录结论出自哪条原话。
-- `ledger`：append-only 哈希链，每次写入留痕，可重算校验。
-- 内存 `Cache`：只装 `state='active'` 的节点，检索路径只读它、不查库。
+`store/db.py` is a thin composition root. It owns one `SqliteDatabase` connection and
+exposes domain repositories; it contains no SQL.
 
-写入一律走事务（`with conn:`）；坏行/坏 JSON 在读取时返回 `None` 或空 dict（fail-open）。
-不 import `astrbot`，也不 import `recall` / `maintain` / `perceive` / `main`。
+| file | responsibility |
+|---|---|
+| `sqlite.py` | connection, PRAGMA, schema, migrations, shared serialization helpers |
+| `db.py` | composition only: `db.artifacts`, `db.sources`, `db.extraction`, `db.runtime_state`, `db.runtime_episodes`, `db.dreams`, `db.ledger`, `db.metrics` |
+| `artifacts.py` | nodes, blobs, versions, artifact_versions, edges, evidence, state_events, commit/read/history |
+| `sources.py` | immutable Source append/read and Source-only projections |
+| `extraction.py` | extraction queue admission, retry/dead state, counts |
+| `runtime_state.py` | mutable per-session scheduler/runtime state |
+| `runtime_episodes.py` | append-only runtime audit episodes |
+| `dreams.py` | daily dream-run ledger |
+| `metrics.py` | cross-domain read-only capacity counters |
+| `ledger.py` | hash-chain append/read/verify |
+| `cache.py` | active Artifact read model |
+| `run_trace.py` | bounded JSONL run traces |
+| `schema.sql` | schema definition |
 
-## 文件表
+## Transaction boundaries
 
-| 文件 | 行数 | 职责 |
-|---|---:|---|
-| `__init__.py` | 0 | 空文件，标记 store 包 |
-| `schema.sql` | 69 | v3 建表与索引；幂等，每次打开时 `executescript` |
-| `db.py` | 226 | `DB`：Artifact ↔ 行转换、节点/边/来源/证据、ledger 底层 SQL、`source_umo` 归属反查 |
-| `cache.py` | 80 | `Cache`：active 热数据 + family / level 两套索引 |
-| `ledger.py` | 50 | `Ledger`：追加日志编排、哈希链重算校验 |
-| `README.md` | 52 | 本说明 |
+- Artifact commit: `blobs + nodes + versions + artifact_versions + evidence + state_events + ledger` in one transaction.
+- Source admission: `blobs + sources + extraction_state` in one transaction.
+- Runtime state and runtime episodes are separate from Source/Artifact memory.
+- Repositories share one connection; they never open their own database file.
 
-约定与两处必要的补充：
+## Boundaries
 
-- **`nodes` 多两列**：`revision`、`lineage`。CONTRACT 的 `Header` 含这两个字段，v3 表清单
-  没列，不加列 `get()` 就无法无损还原 Artifact。
-- **`blob` 内容**：节点存 `payload` 的稳定 JSON（`sort_keys`），sha256 全 64 位 hex 寻址；
-  Source 存原文。`content_of()` 的可读文本不进 DB。
-- **`edges_of(id)`** 返回 `[(另一端 id, kind, weight)]`，双向命中都返回并去重，
-  供 `core/graph.neighbours` 按 kind 过滤。
-- **父节点**：`upsert` 识别 `payload["parent"]`；也可调用 `DB.set_parent(id, parent_id)`
-  （CONTRACT 未列，供 `core/tree` 使用）。更新时不会把已有 parent 清空。
-- **哈希链**：`payload = json.dumps([at, op, entity, before, after, reason], separators=(",", ":"))`，
-  `self_hash = sha256(prev_hash + payload)[:16]`。`db.py` 导出 `chain_payload` / `chain_hash`
-  供 `ledger.py` 复用。
-
-## 依赖方向
-
-```
-main.py / recall/ / perceive/ / maintain/
-                  ↓
-               store/  ──→  core/artifact.py
-```
-
-- `store/` 只依赖 `core/artifact.py`；`core/` 从不反向 import `store/`。
-- 目录内部：`db.py` 是最底层，`cache.py`、`ledger.py` 单向依赖 `db.py`，`db.py` 不 import 它们。
-- `schema.sql` 只被 `db.py` 读取；其他目录不许出现 SQL。
+- `store/` does not import AstrBot or adapters.
+- No SQL outside `store/`.
+- `core/` never imports `store/`.
+- Read rows fail open: malformed legacy rows are skipped or returned as empty values.

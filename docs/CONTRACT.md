@@ -88,30 +88,33 @@ class Graph:
     def neighbours(self, node_id: str, kinds: tuple[str, ...] = ("similar","causal","temporal")) -> list[tuple[str, float]]: ...
 ```
 
-## store/db.py
+## store/db.py and repositories
+
+`DB` is composition only. It owns one SQLite connection and exposes domain repositories:
 
 ```python
 class DB:
-    def __init__(self, path: str): ...
-    def upsert(self, art: Artifact) -> None: ...
-    def get(self, node_id: str) -> Artifact | None: ...
-    def list(self, family: str | None = None, state: str | None = None) -> list[Artifact]: ...
-    def source_umo(self, source_id: str) -> str: ...
-    def add_edge(self, src: str, dst: str, kind: str, weight: float) -> None: ...
-    def edges_of(self, node_id: str) -> list[tuple[str, str, float]]: ...
-    def add_source(self, sid: str, umo: str, at: str, role: str, text: str, flags: dict) -> None: ...
-    def link_evidence(self, node_id: str, source_id: str) -> None: ...
-    def ledger_last_hash(self) -> str: ...
-    def ledger_append(self, op: str, entity: str, before: str|None, after: str|None, reason: str) -> None: ...
-    def count(self, family: str | None = None) -> int: ...
+    artifacts: ArtifactRepository
+    sources: SourceRepository
+    extraction: ExtractionRepository
+    runtime_state: RuntimeStateRepository
+    runtime_episodes: RuntimeEpisodeRepository
+    dreams: DreamRepository
+    ledger: LedgerRepository
+    metrics: StoreMetricsRepository
+    conn: sqlite3.Connection
     def close(self) -> None: ...
 ```
+
+Repositories live in `store/artifacts.py`, `store/sources.py`, `store/extraction.py`,
+`store/runtime_state.py`, `store/runtime_episodes.py`, `store/dreams.py` and
+`store/metrics.py`. SQL and migrations stay inside `store/`.
 
 ## store/cache.py
 
 ```python
 class Cache:
-    def __init__(self, db: DB): ...
+    def __init__(self, artifacts: ArtifactRepository): ...
     @property
     def version(self) -> int: ...        # 单调递增的派生索引失效标识
     def load(self) -> None: ...          # 全量载入 active
@@ -255,7 +258,7 @@ def signals(prev_user: str, cur_user: str) -> dict: ...
 | POST cancel | id，confirmed=true | `{id}`；仅取消当前匹配的活动任务 |
 
 update 拒绝多余字段，reason 为 1–300 字符，payload 为对象且序列化长度不超过 50,000，
-使用原有 family 校验器，统一调用上游 `DB.commit()`，通过 expected_revision 检测版本冲突。
+使用原有 family 校验器，统一调用上游 `db.artifacts.commit()`，通过 expected_revision 检测版本冲突。
 版本、版本级证据和账本在同一事务内提交，失败整体回滚；成功后更新 Cache。
 遗忘使用 `forget`，其他人工修订（含恢复）使用 `revise`；账本 before_hash/after_hash
 沿用上游语义，记录修订号字符串。内容哈希从版本的 blob 字段查看。
@@ -304,7 +307,7 @@ Mock 返回值也对照 YAML 校验。契约未同步生成类型、实现输出
 
 1. 单文件 ≤ 300 行，尽量 150
 2. `core/` `store/` `recall/` 不 import `astrbot`
-3. 只有 `store/db.py` 写 SQL
+3. 只有 `store/` 写 SQL；`store/db.py` 只负责组合
 4. 所有函数带类型标注
 5. 每个文件头部有 docstring：职责一句话
 
@@ -372,18 +375,22 @@ class RetrievalCandidate:
 `lexical` is reserved for normalized BM25 or another pluggable lexical retriever.
 语义相似度不得填入 lexical。本次不实现本地向量检索，不新增占位字段。
 
-## store/db.py
+## store repositories
 
 ```python
-def append_sources(self, sources: list[Source]) -> int: ...
-def source_umos(self, source_ids: list[str]) -> dict[str, str]: ...
-def commit(self, art: Artifact, *, expected_revision: int, op: str,
-           reason: str = "", source_ids: tuple[str, ...] = (),
-           state_events: tuple[StateEvent, ...] = ()) -> None: ...
-def history(self, node_id: str) -> list[dict]: ...
+class ArtifactRepository:
+    def commit(self, art: Artifact, *, expected_revision: int, op: str,
+               reason: str = "", source_ids: tuple[str, ...] = (),
+               state_events: tuple[StateEvent, ...] = ()) -> None: ...
+    def history(self, node_id: str) -> list[dict]: ...
+
+class SourceRepository:
+    def append_sources(self, sources: list[Source]) -> int: ...
+    def source_umos(self, source_ids: list[str]) -> dict[str, str]: ...
 ```
 
-commit is atomic across node head, append-only version, evidence, state events and ledger.
+Artifact commit is atomic across node head, append-only version, evidence, state events and
+ledger. Source admission is atomic across blobs, sources and extraction_state.
 
 ## app/checkpoint.py
 
@@ -554,7 +561,7 @@ No additional per-chat model or network call is introduced.
 
 ## Atomic batch writes
 
-`DB.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.
+`db.artifacts.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.
 
 
 Lifecycle expiry and retention decay also use one `commit_many()` transaction: either all selected Artifacts become `forgotten`, or none do and the cache remains intact.

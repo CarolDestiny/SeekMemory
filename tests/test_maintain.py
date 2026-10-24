@@ -57,8 +57,8 @@ class _MaintainCase(unittest.TestCase):
         """创建临时数据库与缓存。"""
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_maintain_")
         self.db = DB(os.path.join(self.tmpdir, "memory.db"))
-        self.cache = Cache(self.db)
-        self.ledger = Ledger(self.db)
+        self.cache = Cache(self.db.artifacts)
+        self.ledger = Ledger(self.db.ledger)
 
     def tearDown(self) -> None:
         """关闭数据库并删除临时目录。"""
@@ -67,7 +67,7 @@ class _MaintainCase(unittest.TestCase):
 
     def _seed(self, art: Artifact) -> None:
         """同时写入数据库和缓存，模拟一条正在使用的记忆。"""
-        self.db.upsert(art)
+        self.db.artifacts.upsert(art)
         self.cache.put(art)
 
 
@@ -80,14 +80,14 @@ class DecayTest(_MaintainCase):
         self._seed(art)
 
         self.assertEqual(decay_all(self.db, self.cache, TODAY), 1)
-        stored = self.db.get(art.header.id)
+        stored = self.db.artifacts.get(art.header.id)
         self.assertIsNotNone(stored)
         self.assertEqual(stored.header.state, "forgotten")
         self.assertEqual(stored.header.revision, 2)
         self.assertIsNone(self.cache.get(art.header.id))
         self.assertEqual(self.cache.size(), 0)
 
-        entries = self.db.ledger_entries()
+        entries = self.db.ledger.entries()
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[-1]["op"], "forget")
         self.assertEqual(entries[-1]["entity"], art.header.id)
@@ -102,11 +102,11 @@ class DecayTest(_MaintainCase):
         self._seed(scene)
 
         self.assertEqual(decay_all(self.db, self.cache, TODAY), 1)
-        stored = self.db.get(fact.header.id)
+        stored = self.db.artifacts.get(fact.header.id)
         self.assertEqual(stored.header.state, "active")
         self.assertEqual(stored.header.revision, 1)
         self.assertIs(self.cache.get(fact.header.id), fact)
-        self.assertEqual(self.db.get(scene.header.id).header.state, "forgotten")
+        self.assertEqual(self.db.artifacts.get(scene.header.id).header.state, "forgotten")
 
     def test_recent_memory_survives(self) -> None:
         """最近更新过的记忆不会被误伤。"""
@@ -118,7 +118,7 @@ class DecayTest(_MaintainCase):
         )
         self._seed(fresh)
         self.assertEqual(decay_all(self.db, self.cache, TODAY), 0)
-        self.assertEqual(self.db.get(fresh.header.id).header.state, "active")
+        self.assertEqual(self.db.artifacts.get(fresh.header.id).header.state, "active")
         self.assertIsNotNone(self.cache.get(fresh.header.id))
 
     def test_invalid_today_returns_zero(self) -> None:
@@ -126,7 +126,7 @@ class DecayTest(_MaintainCase):
         art = _memory("很久以前的一件小事", weight=0.3)
         self._seed(art)
         self.assertEqual(decay_all(self.db, self.cache, "not-a-date"), 0)
-        self.assertEqual(self.db.get(art.header.id).header.state, "active")
+        self.assertEqual(self.db.artifacts.get(art.header.id).header.state, "active")
 
 
 class ReflectTest(_MaintainCase):
@@ -164,7 +164,7 @@ class MergeTest(_MaintainCase):
                                time={"created": "2024-01-01T00:00:00",
                                      "updated": "2024-01-01T00:00:00"}))
         before_size = self.cache.size()
-        original = self.db._commit_conn
+        original = self.db.artifacts._commit_conn
         calls = {"count": 0}
 
         def flaky(*args, **kwargs):
@@ -173,9 +173,9 @@ class MergeTest(_MaintainCase):
                 raise RuntimeError("member write failed")
             return original(*args, **kwargs)
 
-        self.db._commit_conn = flaky
+        self.db.artifacts._commit_conn = flaky
         with self.assertRaises(RuntimeError):
-            merge_similar(self.db, self.cache)
+            merge_similar(self.db.artifacts, self.cache)
         self.assertEqual(self.cache.size(), before_size)
         self.assertEqual(self.cache.by_level("impression"), [])
 
@@ -193,7 +193,7 @@ class MergeTest(_MaintainCase):
             )
         self.assertEqual(self.cache.size(), total)
 
-        made = merge_similar(self.db, self.cache)
+        made = merge_similar(self.db.artifacts, self.cache)
         self.assertGreaterEqual(made, 1)
 
         impressions = self.cache.by_level("impression")
@@ -207,14 +207,14 @@ class MergeTest(_MaintainCase):
         self.assertGreaterEqual(len(impression.header.lineage.derived_from), 3)
         self.assertGreater(impression.header.strength.weight, 1.0)
 
-        merged = self.db.list(state="merged")
+        merged = self.db.artifacts.list(state="merged")
         self.assertGreaterEqual(len(merged), 3)
         self.assertLessEqual(len(merged), 50)
         for member in merged:
             self.assertEqual(member.header.revision, 2)
             self.assertIsNone(self.cache.get(member.header.id))
         self.assertEqual(self.cache.size(), total - len(merged) + made)
-        self.assertEqual(self.db.count("memory"), total + made)
+        self.assertEqual(self.db.artifacts.count("memory"), total + made)
 
 
 if __name__ == "__main__":

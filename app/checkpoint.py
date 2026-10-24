@@ -14,9 +14,9 @@ MAX_WEIGHT = 3.0
 
 
 class CheckpointManager:
-    def __init__(self, store, cache, interval: int = 1800,
+    def __init__(self, artifacts, cache, interval: int = 1800,
                  cooldown_seconds: int | None = None) -> None:
-        self.store = store
+        self.artifacts = artifacts
         self.cache = cache
         self.interval = max(1, int(interval))
         self.cooldown_seconds = max(0, int(interval if cooldown_seconds is None else cooldown_seconds))
@@ -64,7 +64,7 @@ class CheckpointManager:
                                weight=min(MAX_WEIGHT, float(old.weight) + 0.1 * hits))
             new = revise(art, strength=strength)
             try:
-                self.store.commit(new, expected_revision=art.header.revision,
+                self.artifacts.commit(new, expected_revision=art.header.revision,
                                   op="reinforce", reason="checkpoint",
                                   source_ids=tuple(art.header.lineage.sources),
                                   state_events=(event,))

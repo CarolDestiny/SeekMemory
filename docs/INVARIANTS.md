@@ -18,7 +18,7 @@ a migration plan and a contract or scenario test.
 
 - Source is append-only. Capacity governance never deletes Source.
 - Artifact is a derived interpretation.
-- Production writes go through `DB.commit` with `expected_revision`.
+- Production writes go through `db.artifacts.commit` with `expected_revision`.
 - A committed Artifact is readable only after its version, evidence and ledger entry are written atomically.
 - Cache is a derived view; a cache failure must not make the database look like a different truth.
 - A batch operation must not report success when part of its input was not persisted.

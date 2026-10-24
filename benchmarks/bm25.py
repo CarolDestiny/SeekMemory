@@ -60,7 +60,7 @@ def evaluate(samples: list[Sample], calibration_c: float, weight: float,
     for sample in samples:
         db = DB(":memory:")
         try:
-            cache = Cache(db)
+            cache = Cache(db.artifacts)
             graph = Graph(db, cache)
             for art in sample.pool:
                 cache.put(art)

@@ -1,9 +1,9 @@
 """抽象树：impression / scene / detail 三级的父子关系与查询。
 
 节点内容由 DB/Cache 持有；Tree 负责两件事：
-1. 用 db.set_parent（若存在）记录父指针，供持久化层按 parent 列查询；
+1. 用 db.artifacts.set_parent（若存在）记录父指针，供持久化层按 parent 列查询；
 2. 用 kind="tree_child:<父 id>" 的边记录父子关系，使 children() 在
-   db.edges_of 双向返回时仍能分辨方向（只认后缀等于本节点的那条边）。
+   db.artifacts.edges_of 双向返回时仍能分辨方向（只认后缀等于本节点的那条边）。
 本模块不写 SQL。
 """
 
@@ -28,12 +28,12 @@ class Tree:
         art = self.cache.get(node_id) if self.cache is not None else None
         if art is not None:
             return art
-        return self.db.get(node_id) if self.db is not None else None
+        return self.db.artifacts.get(node_id) if self.db is not None else None
 
     def _persist(self, art: Artifact) -> None:
         if self.db is None:
             return
-        existing = self.db.get(art.header.id)
+        existing = self.db.artifacts.get(art.header.id)
         if existing is None:
             expected = 0
             op = "create"
@@ -52,7 +52,7 @@ class Tree:
                     shareable=art.header.shareable,
                     subject_id=art.header.subject_id,
                 )
-        self.db.commit(art, expected_revision=expected, op=op, reason="tree",
+        self.db.artifacts.commit(art, expected_revision=expected, op=op, reason="tree",
                        source_ids=tuple(art.header.lineage.sources))
         if self.cache is not None:
             self.cache.put(art)
@@ -64,7 +64,7 @@ class Tree:
         wanted = EDGE_PREFIX + node_id
         result: list[Artifact] = []
         seen: set[str] = set()
-        for edge in self.db.edges_of(node_id):
+        for edge in self.db.artifacts.edges_of(node_id):
             if len(edge) < 3:
                 continue
             other, kind = edge[0], edge[1]
@@ -82,7 +82,7 @@ class Tree:
         if self.cache is not None:
             arts = list(self.cache.by_level("impression"))
         if not arts and self.db is not None:
-            arts = list(self.db.list("memory", "active"))
+            arts = list(self.db.artifacts.list("memory", "active"))
         return [
             a
             for a in arts
@@ -98,10 +98,9 @@ class Tree:
 
         self._persist(child)
 
-        set_parent = getattr(self.db, "set_parent", None)
-        if callable(set_parent):
-            set_parent(child.header.id, parent_id)
+        if self.db is not None:
+            self.db.artifacts.set_parent(child.header.id, parent_id)
         if parent_id is not None:
             kind = EDGE_PREFIX + parent_id
-            self.db.add_edge(parent_id, child.header.id, kind, 1.0)
+            self.db.artifacts.add_edge(parent_id, child.header.id, kind, 1.0)
         return child

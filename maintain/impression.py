@@ -130,7 +130,7 @@ def _reinforce(db: DB, cache: Cache, art: Artifact, old: Artifact,
     lineage = replace(old.header.lineage, sources=sources)
     new = revise(old, strength=replace(old.header.strength, weight=weight, hits=hits),
                  lineage=lineage)
-    db.commit(new, expected_revision=old.header.revision, op="reinforce",
+    db.artifacts.commit(new, expected_revision=old.header.revision, op="reinforce",
               reason="impression reinforced", source_ids=sources)
     cache.put(new)
     _retire(db, cache, art)
@@ -155,7 +155,7 @@ def _reword(db: DB, cache: Cache, art: Artifact, old: Artifact,
         lineage=lineage,
         scope=art.header.scope,
     )
-    db.commit(new, expected_revision=old.header.revision, op="merge",
+    db.artifacts.commit(new, expected_revision=old.header.revision, op="merge",
               reason=f"impression revised: {score:.2f}",
               source_ids=sources)
     cache.put(new)
@@ -168,7 +168,7 @@ def _retire(db: DB, cache: Cache, art: Artifact) -> None:
         return
     try:
         updated = revise(art, state="merged")
-        db.commit(updated, expected_revision=art.header.revision, op="merge",
+        db.artifacts.commit(updated, expected_revision=art.header.revision, op="merge",
                   reason="impression merged",
                   source_ids=tuple(art.header.lineage.sources))
     except Exception:

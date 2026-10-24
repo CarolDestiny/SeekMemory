@@ -54,9 +54,9 @@ class MigrationTest(unittest.TestCase):
         ).fetchall()
         self.assertEqual([(str(row[0]), int(row[1]), str(row[2])) for row in rows],
                          [("n1", 1, "migrate")])
-        history = db.history("n1")
+        history = db.artifacts.history("n1")
         self.assertEqual(history[0]["payload"]["text"], "legacy fact")
-        art = db.get("n1")
+        art = db.artifacts.get("n1")
         self.assertIsNotNone(art)
         self.assertEqual(art.header.subject_id, "")
         self.assertEqual(art.header.revision, 1)

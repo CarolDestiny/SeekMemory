@@ -45,7 +45,7 @@ def make_db():
     """建一个临时库，返回 (db, cache, graph)。"""
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_abs_"), "t.db")
     db = DB(path)
-    return db, Cache(db), Graph(db, Cache(db))
+    return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
 
 
 GOOD = json.dumps([
@@ -236,7 +236,7 @@ def _sources(db, suffix: str = "1", user: str = "10001"):
     reply = Source(f"s_a{suffix}", f"t{suffix}", PAIR_SESSION, "bot", "assistant",
                    "先歇口气，崩在哪儿了？", REPLY_AT,
                    reply_to=f"s_u{suffix}")
-    db.append_sources([parent, reply])
+    db.sources.append_sources([parent, reply])
     return parent, reply
 
 
@@ -297,13 +297,13 @@ class ReplyPairBufferTest(unittest.TestCase):
     def test_pair_fields_survive_db_projection_reload(self):
         db, _cache, _graph = make_db()
         self.addCleanup(db.close)
-        buf = Buffer("", db=db)
+        buf = Buffer("", extraction=db.extraction)
         parent, reply = _sources(db)
         buf.add(parent.session_id, parent.text, parent.speaker_id, parent.id,
                 parent.at, source=parent, turn_id=parent.turn_id)
         buf.add(reply.session_id, reply.text, reply.speaker_id, reply.id,
                 reply.at, source=reply, turn_id=reply.turn_id, role="assistant")
-        reloaded = Buffer("", db=db)
+        reloaded = Buffer("", extraction=db.extraction)
         rows = {turn.source_id: turn for turn in reloaded.items}
         self.assertEqual(rows["s_a1"].turn_id, "t1")
         self.assertEqual(rows["s_a1"].reply_to, "s_u1")
@@ -316,7 +316,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         parent, reply = _sources(db)
         extra = Source("s_extra", "t9", PAIR_SESSION, "10002", "user",
                        "今天天气不错", "2026-10-22T12:00:05")
-        db.append_sources([extra])
+        db.sources.append_sources([extra])
         turns = _pair(parent, reply) + [
             DialogueTurn(PAIR_SESSION, "10002", "user", "今天天气不错",
                          "2026-10-22T12:00:05", "s_extra", "", "t9")
@@ -332,7 +332,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         self.assertEqual(art.payload["bot_behavior"], "respond_emotion")
         self.assertNotIn("evidence_source_ids", art.payload)
         self.assertEqual(art.header.subject_id, "self")
-        evidence = {row["id"] for row in db.inspect_record(art.header.id)["sources"]}
+        evidence = {row["id"] for row in db.artifacts.inspect_record(art.header.id)["sources"]}
         self.assertEqual(evidence, {"s_u1", "s_a1"})
 
     def test_invented_evidence_is_retryable_and_writes_nothing(self):
@@ -350,7 +350,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
     def test_cross_session_evidence_is_rejected(self):
         db, cache, graph = make_db()
         parent, reply = _sources(db)
-        db.append_sources([
+        db.sources.append_sources([
             Source("s_other_u", "t7", "umo:other", "20002", "user", "别人的话", PAIR_AT),
             Source("s_other_a", "t7", "umo:other", "bot", "assistant", "别人的回复",
                    REPLY_AT, reply_to="s_other_u"),
@@ -477,7 +477,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         self.assertEqual(art.header.subject_id, "10001")
         self.assertIn("user(10001)[s_u1]", provider.seen)
         self.assertIn("assistant(bot)[s_a1]", provider.seen)
-        self.assertEqual(db.pending_extractions(), [])
+        self.assertEqual(db.extraction.pending_extractions(), [])
 
 
 class DialogueWindowTest(unittest.TestCase):
@@ -508,14 +508,14 @@ class DialogueWindowTest(unittest.TestCase):
         for row in rows:
             self.assertIn(f"[{row.source_id}]", provider.seen)
         self.assertIn(f"[{parent.id}]", provider.seen)
-        self.assertEqual(db.pending_extractions(), [])
+        self.assertEqual(db.extraction.pending_extractions(), [])
 
     def test_parent_from_another_session_never_reaches_model(self):
         db, cache, graph = make_db()
         self.addCleanup(db.close)
         foreign = Source("foreign", "foreign", "other", "20002", "user",
                          "FOREIGN_PRIVATE_BODY", PAIR_AT)
-        db.append_sources([foreign])
+        db.sources.append_sources([foreign])
         reply = DialogueTurn(PAIR_SESSION, "bot", "assistant", "reply", REPLY_AT,
                              "reply", reply_to=foreign.id)
         provider = FakeProvider("[]")
@@ -528,7 +528,7 @@ class DialogueWindowTest(unittest.TestCase):
         self.addCleanup(db.close)
         parent, reply = _sources(db)
         provider = FakeProvider("[]")
-        with patch.object(db, "sources_by_ids", side_effect=RuntimeError("busy")):
+        with patch.object(db.sources, "sources_by_ids", side_effect=RuntimeError("busy")):
             result = asyncio.run(absorb(_pair(parent, reply)[1:], db, cache,
                                         graph, provider))
         self.assertTrue(result.retryable)

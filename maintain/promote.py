@@ -10,7 +10,8 @@ except ImportError:
 from .self_impression import promote_self_candidates
 
 
-def promote_candidates(cache: Cache, min_hits: int = 3, today: str | None = None,
+def promote_candidates(cache: Cache, sources, min_hits: int = 3,
+                       today: str | None = None,
                        only_umo: str = "") -> list[Artifact]:
-    return [a for a in promote_self_candidates(cache, today)
+    return [a for a in promote_self_candidates(cache, sources, today)
             if a.header.strength.hits >= max(3, min_hits)]

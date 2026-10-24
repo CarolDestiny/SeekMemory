@@ -138,7 +138,7 @@ class MarkGivenTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_scope_")
         self.db = DB(os.path.join(self.tmpdir, "scope.db"))
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
 
     def tearDown(self) -> None:
         self.db.close()
@@ -146,7 +146,7 @@ class MarkGivenTest(unittest.TestCase):
 
     def test_delivery_writes_given_and_stops_redelivery(self) -> None:
         art = make("designated", {"text": "密码是 123", "trigger": "那个东西"})
-        self.db.upsert(art)
+        self.db.artifacts.upsert(art)
         self.cache.put(art)
 
         block = build([art], budget=500, text="那个东西呢", is_private=True)

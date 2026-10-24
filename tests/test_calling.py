@@ -26,7 +26,7 @@ def temp_cache():
     """建临时库并返回 (db, cache)。"""
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_call_"), "t.db")
     db = DB(path)
-    return db, Cache(db)
+    return db, Cache(db.artifacts)
 
 
 def mem(text, level="scene", weight=1.5, scope="private", arousal=0.4):
@@ -86,7 +86,7 @@ class ImpressionTest(unittest.TestCase):
     def test_same_impression_reinforced(self):
         db, cache = temp_cache()
         old = mem("他有点倔，嘴上不饶人", level="impression", weight=1.5)
-        db.upsert(old)
+        db.artifacts.upsert(old)
         cache.put(old)
         new = mem("他有点倔，嘴上不饶人", level="impression", weight=1.6)
         got = revise_impression(db, cache, new)
@@ -99,7 +99,7 @@ class ImpressionTest(unittest.TestCase):
     def test_reworded_impression_new_revision(self):
         db, cache = temp_cache()
         old = mem("他有点倔，嘴上不饶人", level="impression", weight=1.5)
-        db.upsert(old)
+        db.artifacts.upsert(old)
         cache.put(old)
         new = mem("他有点倔，嘴上不饶人，但真有事会帮", level="impression", weight=1.6)
         got = revise_impression(db, cache, new)
@@ -112,7 +112,7 @@ class ImpressionTest(unittest.TestCase):
     def test_unrelated_impression_untouched(self):
         db, cache = temp_cache()
         old = mem("他有点倔，嘴上不饶人", level="impression")
-        db.upsert(old)
+        db.artifacts.upsert(old)
         cache.put(old)
         got = revise_impression(db, cache, mem("他很会做饭，做得不错", level="impression"))
         self.assertIsNone(got)
@@ -161,7 +161,7 @@ class PinnedSubjectTest(unittest.TestCase):
                          strength=Strength(weight=2.0), said_by="owner"),
                     make("memory", {"text": "12345 爱开玩笑", "level": "impression"},
                          strength=Strength(weight=2.0), said_by="12345")):
-            db.upsert(art)
+            db.artifacts.upsert(art)
             cache.put(art)
         return cache
 
@@ -182,7 +182,7 @@ class TrajectoryTest(unittest.TestCase):
     def _cache(self):
         db, cache = temp_cache()
         old = mem("他有点倔", level="impression", weight=1.6)
-        db.upsert(old)
+        db.artifacts.upsert(old)
         cache.put(old)
         self.assertEqual(trajectory(cache, old), "")  # 只有一版没有轨迹
         new = mem("他有点倔，但真有事会帮", level="impression", weight=1.8)
@@ -198,7 +198,7 @@ class TrajectoryTest(unittest.TestCase):
 
     def test_history_keeps_both_revisions(self):
         cache, art = self._cache()
-        rows = cache.db.history(art.header.id)
+        rows = cache.artifacts.history(art.header.id)
         self.assertEqual([r["revision"] for r in rows], [1, 2])
         self.assertIn("有点倔", rows[0]["payload"]["text"])
         self.assertIn("真有事", rows[1]["payload"]["text"])

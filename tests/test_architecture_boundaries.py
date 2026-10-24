@@ -44,7 +44,7 @@ class MainOwnershipTest(unittest.TestCase):
     def test_main_does_not_write_memory_or_episode_state_directly(self) -> None:
         forbidden = (
             "self.recorder.",
-            "db.append_sources(",
+            "db.sources.append_sources(",
             "buffer.add(",
             "make_source_id(",
         )
@@ -140,6 +140,27 @@ class LayerDependencyTest(unittest.TestCase):
     def test_runtime_does_not_import_astrbot(self) -> None:
         imports = self._imports(ROOT / "app" / "runtime")
         self.assertFalse([item for item in imports if item.startswith("astrbot")])
+
+    def test_store_db_is_composition_only(self) -> None:
+        source = (ROOT / "store" / "db.py").read_text(encoding="utf-8")
+        for keyword in ("SELECT ", "INSERT ", "UPDATE ", "DELETE "):
+            self.assertNotIn(keyword, source)
+        self.assertLessEqual(len(source.splitlines()), 100)
+
+    def test_store_db_exposes_repositories_not_domain_methods(self) -> None:
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from store.db import DB
+
+        db = DB(":memory:")
+        self.addCleanup(db.close)
+        for name in ("artifacts", "sources", "extraction", "runtime_state",
+                     "runtime_episodes", "dreams", "ledger", "metrics"):
+            self.assertTrue(hasattr(db, name), name)
+        for name in ("commit", "append_sources", "enqueue_extraction",
+                     "get_runtime_state", "append_runtime_episode"):
+            self.assertFalse(hasattr(db, name), name)
 
     def test_store_does_not_import_host_or_adapters(self) -> None:
         imports = self._imports(ROOT / "store")

@@ -38,7 +38,7 @@ class ContinuityTest(unittest.TestCase):
     def setUp(self) -> None:
         self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_continuity_"), "t.db"))
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
         self.retriever = HybridRetriever(self.graph, self.cache)
         self.session = "bot:FriendMessage:p1"
@@ -47,7 +47,7 @@ class ContinuityTest(unittest.TestCase):
     def extract(self, text: str, model_text: str):
         source = Source("s1", "turn1", self.session, "u1", "user",
                         text, "2026-10-22T12:00:00")
-        self.db.append_sources([source])
+        self.db.sources.append_sources([source])
         outcome = asyncio.run(absorb(
             [DialogueTurn(self.session, "u1", "user", text,
                           "2026-10-22T12:00:00", "s1")],
@@ -69,7 +69,7 @@ class ContinuityTest(unittest.TestCase):
             scope="private", subject_id="u1", strength=Strength(weight=1.0),
             lineage=Lineage(sources=("s1",)),
         )
-        self.db.commit(old, expected_revision=0, op="create")
+        self.db.artifacts.commit(old, expected_revision=0, op="create")
         self.cache.put(old)
         outcome = asyncio.run(absorb(
             [DialogueTurn(self.session, "u1", "user", "I moved to Shanghai",
@@ -105,7 +105,7 @@ class ContinuityTest(unittest.TestCase):
             time=TimeSpan(created=original.header.time.created,
                           updated=original.header.time.updated),
         )
-        self.db.commit(corrected, expected_revision=1, op="revise")
+        self.db.artifacts.commit(corrected, expected_revision=1, op="revise")
         self.cache.put(corrected)
         block, info = self.recall("Where does the owner live?")
         self.assertIn(corrected.header.id, info["picked_ids"])

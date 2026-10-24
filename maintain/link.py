@@ -64,7 +64,7 @@ def _day(value: Any) -> str:
 def _edges(db: DB, node_id: str) -> list[tuple[str, str, float]]:
     """读取节点的全部边；存储异常时按无边处理，保证 fail-open。"""
     try:
-        return list(db.edges_of(node_id))
+        return list(db.artifacts.edges_of(node_id))
     except Exception:  # noqa: BLE001
         return []
 
@@ -167,7 +167,7 @@ def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
 
 def persist(art: Artifact, db: DB, cache: Cache | None, graph: Graph | None) -> int:
     # Compatibility writer: route every write through the CAS commit path.
-    existing = db.get(art.header.id)
+    existing = db.artifacts.get(art.header.id)
     if existing is None:
         op = "create"
         expected = 0
@@ -186,7 +186,7 @@ def persist(art: Artifact, db: DB, cache: Cache | None, graph: Graph | None) -> 
                 shareable=art.header.shareable,
                 subject_id=art.header.subject_id,
             )
-    db.commit(art, expected_revision=expected, op=op, reason="persist",
+    db.artifacts.commit(art, expected_revision=expected, op=op, reason="persist",
               source_ids=tuple(art.header.lineage.sources))
     if cache is not None:
         cache.put(art)

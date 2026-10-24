@@ -76,16 +76,16 @@ class RecallFallbackTest(unittest.TestCase):
     def setUp(self):
         self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_feel_"), "t.db"))
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
 
     def save(self, text, level, subject="u1", umo="g1"):
         source = Source("s1", "turn1", umo, subject, "user", text, "2026-10-22T12:00:00")
-        self.db.append_sources([source])
+        self.db.sources.append_sources([source])
         art = make("memory", {"text": text, "level": level}, scope="shared",
                    subject_id=subject, said_by=subject,
                    lineage={"sources": (source.id,)})
-        self.db.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
+        self.db.artifacts.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
         self.cache.put(art)
         return art
 

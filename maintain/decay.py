@@ -60,7 +60,7 @@ def decay_all(db: DB, cache: Cache, today: str) -> int:
          tuple(art.header.lineage.sources))
         for art in expired
     ]
-    db.commit_many(writes, op="forget", reason="retention decay")
+    db.artifacts.commit_many(writes, op="forget", reason="retention decay")
     for art in expired:
         cache.remove(art.header.id)
     return len(expired)

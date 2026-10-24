@@ -41,7 +41,7 @@ def _turn(text: str, session: str = "umo:a", speaker: str = "10001") -> Dialogue
 def _db():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_identity_"), "t.db")
     db = DB(path)
-    return db, Cache(db), Graph(db, Cache(db))
+    return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
 
 
 class SourceIdentityTest(unittest.TestCase):
@@ -119,7 +119,7 @@ class AbsorbIsolationTest(unittest.TestCase):
             "memory", {"text": "same", "level": "fact"},
             scope="private", subject_id="10001",
         )
-        db.commit(art, expected_revision=0, op="create")
+        db.artifacts.commit(art, expected_revision=0, op="create")
         cache.put(art)
         grouped = existing_texts_by_subject(cache)
         self.assertIn("private\x1f10001", grouped)
@@ -134,7 +134,7 @@ class ImpressionIsolationTest(unittest.TestCase):
                        "level": "impression"},
             strength=Strength(weight=1.5), scope="private", subject_id="10001",
         )
-        db.commit(old, expected_revision=0, op="create")
+        db.artifacts.commit(old, expected_revision=0, op="create")
         cache.put(old)
         new = make(
             "memory", {"text": "he is stubborn but helps when it really matters",
@@ -160,9 +160,9 @@ class MergeIsolationTest(unittest.TestCase):
                     time={"created": "2024-01-01T00:00:00",
                           "updated": "2024-01-01T00:00:00"},
                 )
-                db.upsert(art)
+                db.artifacts.upsert(art)
                 cache.put(art)
-        made = merge_similar(db, cache, limit=50)
+        made = merge_similar(db.artifacts, cache, limit=50)
         self.assertGreaterEqual(made, 2)
         impressions = cache.by_level("impression")
         self.assertEqual(len(impressions), 2)

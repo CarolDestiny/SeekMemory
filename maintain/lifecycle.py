@@ -28,7 +28,7 @@ def _expired(art: Artifact, today: datetime.date) -> bool:
     return deadline is not None and deadline < today
 
 
-def forget_expired(db: DB, cache: Cache, today: str = "") -> int:
+def forget_expired(artifacts, cache: Cache, today: str = "") -> int:
     """Move expired active Artifacts to forgotten and retain their audit history."""
     try:
         base = datetime.date.fromisoformat(today[:10]) if today else datetime.date.today()
@@ -42,7 +42,7 @@ def forget_expired(db: DB, cache: Cache, today: str = "") -> int:
          tuple(art.header.lineage.sources))
         for art in expired
     ]
-    db.commit_many(writes, op="forget", reason="lifecycle expiration")
+    artifacts.commit_many(writes, op="forget", reason="lifecycle expiration")
     for art in expired:
         cache.remove(art.header.id)
     return len(expired)

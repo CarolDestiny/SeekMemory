@@ -21,7 +21,7 @@ class PrivacyOutputTest(unittest.TestCase):
     def setUp(self) -> None:
         self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_privacy_"), "t.db"))
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
         self.config = {"bm25_enabled": False, "explore_rate": 0.0,
                        "budget_chars": 600}
@@ -31,7 +31,7 @@ class PrivacyOutputTest(unittest.TestCase):
              source_umo: str = "g1") -> object:
         source = Source("s1", "turn1", source_umo, subject, "user",
                         "source text", "2026-10-22T12:00:00")
-        self.db.append_sources([source])
+        self.db.sources.append_sources([source])
         art = make(
             family,
             payload,
@@ -40,7 +40,7 @@ class PrivacyOutputTest(unittest.TestCase):
             said_by=said_by,
             lineage=Lineage(sources=(source.id,)),
         )
-        self.db.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
+        self.db.artifacts.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
         self.cache.put(art)
         return art
 
@@ -80,7 +80,7 @@ class PrivacyOutputTest(unittest.TestCase):
         )
         block, _ = self.recall("g2", "secret", "u2", private=True)
         self.assertNotIn("designated secret", block)
-        self.assertIsNotNone(self.db.get(art.header.id))
+        self.assertIsNotNone(self.db.artifacts.get(art.header.id))
 
     def test_same_session_designated_is_delivered(self):
         self.save(

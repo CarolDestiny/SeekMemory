@@ -231,7 +231,7 @@ def ingest(key, messages):
     """把消息写成 Artifact：私聊按归属可见、别人私聊不可见、shadow 只留影子。"""
     tmp = tempfile.mkdtemp(prefix="seekmem_large_")
     db = DB(os.path.join(tmp, "large.db"))
-    cache = Cache(db)
+    cache = Cache(db.artifacts)
     graph, ids = Graph(db, cache), {}
     meta = personas.meta_of(key)
     for day, uid, channel, text in messages:
@@ -257,7 +257,7 @@ def ingest(key, messages):
                              "confidence": 1.0, "arousal": item["ar"] if item else 0.3,
                              "valence": item["va"] if item else 0.0, "funny": 0.0},
                    time={"created": personas.date_of(day), "updated": personas.date_of(day)})
-        db.upsert(art)
+        db.artifacts.upsert(art)
         cache.put(art)
         if item:
             ids[text] = art.header.id

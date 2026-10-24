@@ -22,13 +22,13 @@ from webui.service import ManagementService
 class PipelineDisclosureTest(unittest.TestCase):
     def test_cross_session_shared_memory_is_paraphrased(self):
         db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         graph = Graph(db, cache)
         src = Source("s1", "turn1", "s1", "u1", "user", "source text", "t")
-        db.append_sources([src])
+        db.sources.append_sources([src])
         art = make("memory", {"text": "top secret phrase", "level": "scene",
                               "tags": "project"}, subject_id="u1", scope="shared")
-        db.commit(art, expected_revision=0, op="create", source_ids=("s1",))
+        db.artifacts.commit(art, expected_revision=0, op="create", source_ids=("s1",))
         cache.put(art)
         config = {"bm25_enabled": True}
         block, info = build_block(
@@ -43,15 +43,15 @@ class PipelineDisclosureTest(unittest.TestCase):
 
     def test_bm25_makes_private_memory_globally_retrievable_but_not_raw(self):
         db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         graph = Graph(db, cache)
         source = Source("s1", "turn1", "s1", "u1", "user", "private source", "t")
-        db.append_sources([source])
+        db.sources.append_sources([source])
         art = make(
             "memory", {"text": "唯一的量化交易私密短语", "level": "scene"},
             scope="private", subject_id="u1",
         )
-        db.commit(art, expected_revision=0, op="create", source_ids=("s1",))
+        db.artifacts.commit(art, expected_revision=0, op="create", source_ids=("s1",))
         cache.put(art)
         config = {"bm25_enabled": True}
 
@@ -71,7 +71,7 @@ class OptionalBM25PipelineTest(unittest.TestCase):
     def setUp(self):
         self.db = DB(":memory:")
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
         self.session = "bot:FriendMessage:u1"
         self.conf = {"bm25_enabled": True, "owner_umo": self.session,
@@ -82,10 +82,10 @@ class OptionalBM25PipelineTest(unittest.TestCase):
         number = self.cache.size()
         source = Source(f"s{number}", f"turn{number}", self.session, "u1", "user",
                         "synthetic fixture", "2026-10-22T12:00:00")
-        self.db.append_sources([source])
+        self.db.sources.append_sources([source])
         art = make(family, {**payload, "owner_umo": self.session}, scope=scope,
                    subject_id="u1", lineage=Lineage(sources=(source.id,)))
-        self.db.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
+        self.db.artifacts.commit(art, expected_revision=0, op="create", source_ids=(source.id,))
         self.cache.put(art)
         return art
 
@@ -152,7 +152,7 @@ class OptionalBM25PipelineTest(unittest.TestCase):
         result = service.diagnose({"query": "还记得书籍吗", "umo": self.session,
                                    "speaker": "u1"})
         self.assertIn("归还书籍清单", result["block"])
-        self.assertEqual(self.db.get(designated.header.id), designated)
+        self.assertEqual(self.db.artifacts.get(designated.header.id), designated)
 
     def test_clock_question_does_not_retrieve_bm25_matches(self):
         self.save("memory", {"text": "今天几号的问题", "level": "fact"})

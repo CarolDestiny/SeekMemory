@@ -7,13 +7,13 @@ try:
     from ..core.source import Source
     from ..core.versioning import StateEvent
     from ..core.retrieval import RetrievalCandidate
-    from .contracts import ChatRequest, ChatResponse, ExtractionState
+    from .contracts import ChatRequest, ChatResponse
 except ImportError:
     from core.artifact import Artifact
     from core.source import Source
     from core.versioning import StateEvent
     from core.retrieval import RetrievalCandidate
-    from app.contracts import ChatRequest, ChatResponse, ExtractionState
+    from app.contracts import ChatRequest, ChatResponse
 
 
 @runtime_checkable
@@ -41,7 +41,6 @@ class ArtifactStore(Protocol):
 
 @runtime_checkable
 class StateStore(Protocol):
-    def append_state_event(self, event: StateEvent) -> None: ...
     def history(self, node_id: str) -> list[dict]: ...
 
 
@@ -55,7 +54,6 @@ class ExtractionStore(Protocol):
         *,
         deferred: bool = False,
     ) -> bool: ...
-    def put_extraction_state(self, state: ExtractionState) -> bool: ...
     def pending_extractions(self, now: str = "") -> list[dict]: ...
     def queue_counts(self) -> dict[str, int]: ...
     def release_deferred(self, limit: int = 50) -> int: ...

@@ -54,9 +54,9 @@ class Buffer:
     supplied, queued turns are rebuilt from Source plus extraction_state.
     """
 
-    def __init__(self, path: str = "", db: DB | None = None) -> None:
+    def __init__(self, path: str = "", extraction=None) -> None:
         self.path = str(path or "")
-        self._db = db
+        self._extraction = extraction
         self.items: list[DialogueTurn] = []
         self.last_ts = 0.0
         self.load_error = ""
@@ -115,11 +115,11 @@ class Buffer:
         previous = self._last_for_session(turn.session_id)
         parent = self._paired_parent(turn)
         turn = replace(turn, topic_id=self._topic_for(turn, previous, parent))
-        if self._db is not None:
+        if self._extraction is not None:
             turn = self._enqueue(turn, source=source, turn_id=turn_id, deferred=deferred)
         if not deferred:
             self.items.append(turn)
-            if self._db is not None:
+            if self._extraction is not None:
                 self.items = self._unique_by_source(self.items)
         self.last_ts = time.time()
         self.save()
@@ -127,7 +127,7 @@ class Buffer:
 
     def reload(self) -> int:
         """Rebuild the in-memory queue from Source after admission release."""
-        if self._db is None:
+        if self._extraction is None:
             return len(self.items)
         self._load_projection()
         return len(self.items)
@@ -167,7 +167,7 @@ class Buffer:
             at,
             turn.reply_to,
         )
-        self._db.enqueue_extraction(queued, turn.topic_id, at, deferred=deferred)
+        self._extraction.enqueue_extraction(queued, turn.topic_id, at, deferred=deferred)
         return replace(turn, turn_id=queued.turn_id, reply_to=queued.reply_to)
 
     @staticmethod
@@ -240,7 +240,7 @@ class Buffer:
         self.save()
 
     def save(self) -> bool:
-        if not self.path or (self._db is not None and all(t.source_id for t in self.items)):
+        if not self.path or (self._extraction is not None and all(t.source_id for t in self.items)):
             self.save_error = ""
             return True
         try:
@@ -255,7 +255,7 @@ class Buffer:
             return False
 
     def load(self) -> None:
-        if self._db is not None:
+        if self._extraction is not None:
             self._load_projection()
             return
         if not self.path:
@@ -274,7 +274,7 @@ class Buffer:
 
     def _load_projection(self) -> None:
         self.items = []
-        for row in self._db.pending_extractions():
+        for row in self._extraction.pending_extractions():
             self.items.append(
                 DialogueTurn(
                     str(row["session_id"]),
@@ -327,8 +327,8 @@ class Buffer:
         """Mark rows extracted and refresh the projection without deleting Source."""
         source_ids = [turn.source_id for turn in rows if turn.source_id]
         changed = (
-            self._db.mark_extraction_succeeded(source_ids)
-            if self._db is not None
+            self._extraction.mark_extraction_succeeded(source_ids)
+            if self._extraction is not None
             else 0
         )
         wanted = set(source_ids)
@@ -341,15 +341,15 @@ class Buffer:
     ) -> int:
         """Retain failed rows and record only a bounded exception type."""
         source_ids = [turn.source_id for turn in rows if turn.source_id]
-        if self._db is None:
+        if self._extraction is None:
             return 0
-        return self._db.mark_extraction_failed(
+        return self._extraction.mark_extraction_failed(
             source_ids, error_type, max_attempts=max_attempts
         )
 
     def migrate_legacy(self) -> int:
         """Move pending.json into Source + extraction_state without content loss."""
-        if self._db is None or not self.path or not os.path.exists(self.path):
+        if self._extraction is None or not self.path or not os.path.exists(self.path):
             return 0
         data = self._read_file()
         migrated = 0
@@ -375,7 +375,7 @@ class Buffer:
                 turn.at,
                 turn.reply_to,
             )
-            self._db.enqueue_extraction(source, turn.topic_id, turn.at)
+            self._extraction.enqueue_extraction(source, turn.topic_id, turn.at)
             migrated += 1
         if migrated and migrated == len(rows):
             target = Path(self.path + ".migrated")

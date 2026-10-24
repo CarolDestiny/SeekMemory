@@ -56,13 +56,13 @@ class TemporalRecallTest(unittest.TestCase):
     def setUp(self) -> None:
         self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_time_"), "t.db"))
         self.addCleanup(self.db.close)
-        self.cache = Cache(self.db)
+        self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
         self.config = {"bm25_enabled": False, "explore_rate": 0.0,
                        "budget_chars": 600}
 
     def save(self, text: str, **time_kw) -> object:
-        self.db.append_sources([
+        self.db.sources.append_sources([
             Source("s1", "t1", "g1", "u1", "user", text, "2026-01-01T00:00:00")
         ])
         art = make(
@@ -71,7 +71,7 @@ class TemporalRecallTest(unittest.TestCase):
             lineage=Lineage(sources=("s1",)),
             time=TimeSpan(**time_kw),
         )
-        self.db.commit(art, expected_revision=0, op="create", source_ids=("s1",))
+        self.db.artifacts.commit(art, expected_revision=0, op="create", source_ids=("s1",))
         self.cache.put(art)
         return art
 

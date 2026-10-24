@@ -60,14 +60,14 @@ class RunRecorder:
     def __init__(
         self,
         *,
-        db: SourceSink | None,
+        sources: SourceSink | None,
         buffer: PendingSink | None,
         checkpoint: CheckpointSink | None,
         episodes: EpisodeWriter | None,
         cache: Any | None = None,
         clock=None,
     ) -> None:
-        self.db = db
+        self.sources = sources
         self.buffer = buffer
         self.checkpoint = checkpoint
         self.episodes = episodes
@@ -121,8 +121,8 @@ class RunRecorder:
             clean,
             moment,
         )
-        if self.db is not None:
-            self.db.append_sources([source])
+        if self.sources is not None:
+            self.sources.append_sources([source])
         topic_id = ""
         if self.buffer is not None:
             turn = self.buffer.add(
@@ -191,8 +191,8 @@ class RunRecorder:
             moment,
             reply_to=str(reply_to or "") or None,
         )
-        if self.db is not None:
-            self.db.append_sources([source])
+        if self.sources is not None:
+            self.sources.append_sources([source])
         if self.buffer is not None:
             self.buffer.add(
                 session,

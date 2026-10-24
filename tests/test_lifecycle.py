@@ -22,22 +22,22 @@ class LifecycleTest(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         db = DB(os.path.join(temp.name, "memory.db"))
         self.addCleanup(db.close)
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         art = make(
             "memory",
             {"text": "old address", "level": "fact"},
             time={"expires": "2026-01-01"},
             lineage={"sources": ("s1",)},
         )
-        db.append_sources(
+        db.sources.append_sources(
             [Source("s1", "t1", "umo:a", "u1", "user", "old address", "2025-12-01")]
         )
-        db.upsert(art)
+        db.artifacts.upsert(art)
         cache.put(art)
-        self.assertEqual(forget_expired(db, cache, "2026-10-22"), 1)
-        self.assertEqual(db.get(art.header.id).header.state, "forgotten")
+        self.assertEqual(forget_expired(db.artifacts, cache, "2026-10-22"), 1)
+        self.assertEqual(db.artifacts.get(art.header.id).header.state, "forgotten")
         self.assertIsNone(cache.get(art.header.id))
-        self.assertEqual(db.source_umo("s1"), "umo:a")
+        self.assertEqual(db.sources.source_umo("s1"), "umo:a")
 
 
     def test_forget_expired_rolls_back_on_write_failure(self) -> None:
@@ -45,23 +45,23 @@ class LifecycleTest(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         db = DB(os.path.join(temp.name, "memory.db"))
         self.addCleanup(db.close)
-        cache = Cache(db)
+        cache = Cache(db.artifacts)
         art = make(
             "memory", {"text": "old address", "level": "fact"},
             time={"expires": "2026-01-01"},
         )
-        db.upsert(art)
+        db.artifacts.upsert(art)
         cache.put(art)
-        original = db._commit_conn
+        original = db.artifacts._commit_conn
 
         def fail(*args, **kwargs):
             raise RuntimeError("write failed")
 
-        db._commit_conn = fail
+        db.artifacts._commit_conn = fail
         with self.assertRaises(RuntimeError):
-            forget_expired(db, cache, "2026-10-22")
+            forget_expired(db.artifacts, cache, "2026-10-22")
         self.assertIs(cache.get(art.header.id), art)
-        self.assertEqual(db.get(art.header.id).header.state, "active")
+        self.assertEqual(db.artifacts.get(art.header.id).header.state, "active")
 
 
 if __name__ == "__main__":
