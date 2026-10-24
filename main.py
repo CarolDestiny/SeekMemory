@@ -455,17 +455,20 @@ class Main(star.Star):
                 return
             umo = str(getattr(event, "unified_msg_origin", "") or "")
             sender = str(event.get_sender_id())
+            deferred = self._admit_deferred()
             runtime_input = AstrBotRuntimeAdapter.from_event(
                 event,
                 text,
                 umo,
                 sender,
-                unread_count=len(self.buffer.items),
+                # Match the old post-buffer-add observation: a non-deferred
+                # turn is already present in the projection when observe runs.
+                unread_count=len(self.buffer.items) + (0 if deferred else 1),
             )
             receipt = self.runtime.accept_user(
                 runtime_input,
                 event_id=AstrBotRuntimeAdapter.event_id(event),
-                deferred=self._admit_deferred(),
+                deferred=deferred,
             )
             if self.buffer.save_error:
                 self.journal.record(
