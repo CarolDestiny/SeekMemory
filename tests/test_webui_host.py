@@ -491,6 +491,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         actions = Actions()
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
+        self.plugin.runtime.message_sender = actions
         await self.plugin._dispatch_deferred(session_id, now)
         self.assertEqual(provider.calls[0][0], "ambient deferred message")
         await self.plugin._dispatch_deferred(session_id, now)
@@ -546,11 +547,24 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
+        self.plugin.runtime.message_sender = actions
         await self.plugin._runtime_scheduler_tick()
         await self.plugin._dispatch_deferred(session_id, now)
         self.assertEqual(provider.calls, 0)
         self.assertEqual(actions.sent, [])
         self.assertGreater(self.plugin.runtime.store.get(session_id).wait_until, now)
+
+    async def test_missing_source_keeps_future_deferred_wait(self) -> None:
+        session_id = "bot:GroupMessage:g-missing-source"
+        now = time.time()
+        self.plugin.cfg["runtime_gate_enabled"] = True
+        state = self.plugin.runtime.store.get(session_id)
+        state.wait_until = now + 120
+        self.plugin.runtime.store.put(state)
+        await self.plugin._dispatch_deferred(session_id, now)
+        self.assertEqual(
+            self.plugin.runtime.store.get(session_id).wait_until, now + 120
+        )
 
     async def test_runtime_retry_only_state_dispatches(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
@@ -584,6 +598,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         actions = Actions()
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
+        self.plugin.runtime.message_sender = actions
         await self.plugin._runtime_scheduler_tick()
         self.assertEqual(actions.sent, [(session_id, "retry-only reply")])
 
@@ -618,6 +633,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         actions = Actions()
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = actions
+        self.plugin.runtime.message_sender = actions
         await self.plugin._runtime_scheduler_tick()
         await self.plugin._runtime_scheduler_tick()
         self.assertEqual(actions.sent, [(session_id, "tick reply")])
@@ -676,6 +692,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
         self.plugin.context.get_using_provider_async = provider_for
         self.plugin.actions = Actions()
+        self.plugin.runtime.message_sender = self.plugin.actions
         await self.plugin._dispatch_deferred(session_id, now)
         state = self.plugin.runtime.store.get(session_id)
         self.assertGreater(state.wait_until, now)

@@ -36,6 +36,30 @@ class RuntimeInput:
     at: float = 0.0
 
 
+@dataclass(frozen=True)
+class RunContext:
+    """One inbound runtime unit before it becomes a durable result."""
+
+    session_id: str
+    text: str
+    source_id: str = ""
+    bot_id: str = ""
+    at: float = 0.0
+    run_id: str = ""
+
+
+@dataclass(frozen=True)
+class RunResult:
+    """Observed outcome of one deferred runtime run."""
+
+    run_id: str
+    session_id: str
+    delivered: bool
+    assistant_source_id: str = ""
+    response_chars: int = 0
+    error: str = ""
+
+
 @dataclass
 class SessionState:
     """Per-session timing and attention state. This is not memory."""
@@ -83,3 +107,13 @@ class MemoryContext:
 
 class MemoryContextPort(Protocol):
     def build_context(self, event: RuntimeInput) -> MemoryContext: ...
+
+
+class ModelGateway(Protocol):
+    async def complete(
+        self, session_id: str, prompt: str, system_prompt: str | None = None
+    ) -> str: ...
+
+
+class MessageSender(Protocol):
+    async def send(self, session_id: str, text: str) -> bool: ...
