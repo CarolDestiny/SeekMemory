@@ -63,7 +63,12 @@ class JsonStateStore:
             raw = self._load().get(key)
             if not isinstance(raw, dict):
                 return SessionState(session_id=key)
-            data = {key: raw.get(key) for key in SessionState.__dataclass_fields__}
+            data = {
+                name: raw[name]
+                for name in SessionState.__dataclass_fields__
+                if name in raw and raw[name] is not None
+            }
+            data["session_id"] = key
             try:
                 return SessionState(**data)
             except TypeError:

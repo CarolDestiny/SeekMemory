@@ -282,6 +282,32 @@ class WakePolicyTest(unittest.TestCase):
             {"ignore", "observe", "wait", "reply"},
         )
 
+    def test_json_state_store_defaults_legacy_removed_fields(self) -> None:
+        import json
+
+        path = os.path.join(
+            tempfile.mkdtemp(prefix="seekmem_legacy_state_"), "state.json"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({
+                "s1": {
+                    "session_id": "s1",
+                    "quiet_until": 123,
+                    "last_wake_at": 9,
+                    "reply_count": 4,
+                }
+            }, handle)
+        store = JsonStateStore(path)
+        state = store.get("s1")
+        self.assertEqual(state.session_id, "s1")
+        self.assertEqual(state.quiet_until, 123)
+        self.assertEqual(state.wait_until, 0.0)
+        self.assertEqual(state.next_retry_at, 0.0)
+        self.assertEqual(state.reply_cooldown_seconds, 30.0)
+        runtime = AgentRuntime(store, clock=lambda: 200)
+        runtime.observe(RuntimeInput("s1", "ambient", at=200))
+        runtime.mark_delivered("s1", now=200)
+
     def test_runtime_package_does_not_import_astrbot(self) -> None:
         root = Path(__file__).resolve().parents[1] / "app" / "runtime"
         for path in root.glob("*.py"):
