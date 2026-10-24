@@ -173,7 +173,7 @@ runtime state with wait deadline
 ### Explicit boundaries
 
 - `proactive` scheduling is trace-only until a real generation/send path exists.
-- `PolicyToolGuard` filters `req.func_tool` before the model sees tools; the advisory
+- `ToolPolicy.filter_tool_set()` filters `req.func_tool` before the model sees tools; the advisory
   `on_using_llm_tool` trace is not a veto.
 - `RunTrace` is an admin observability stream, separate from the append-only runtime
   episode audit. It is not an Artifact or Source.
@@ -181,3 +181,10 @@ runtime state with wait deadline
 
 Cleanup rule: a runtime module or protocol without a production caller is either removed or
 explicitly marked as a documented seam. Tests alone are not a reason to keep a production abstraction.
+
+## Policy ownership
+
+- `WakePolicy` owns inbound-event attention only. It no longer duplicates proactive sampling.
+- `SchedulerPolicy` owns due wait/quiet/proactive timing and proactive sampling.
+- `ToolPolicy` owns both the enforced `req.func_tool` filter and the advisory tool-call trace.
+  There is no second guard object for the same decision.
