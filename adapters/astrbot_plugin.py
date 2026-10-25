@@ -94,6 +94,9 @@ class AstrBotPlugin(AstrBotHooks):
     async def start(self) -> None:
         if self._started:
             return
+        self.ready = False
+        self.services = None
+        self.dream = None
         self.data_path = (
             Path(str(self._c("db_path", ""))).expanduser()
             if self._c("db_path", "")
