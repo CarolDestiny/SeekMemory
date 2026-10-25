@@ -580,7 +580,7 @@ missing links are explicitly shown, and late asynchronous replies cannot replace
 
 ## Superseding extraction
 
-An extraction item may include an optional `supersedes` exact-text hint. After the new Artifact commits, `absorb()` finds an active memory with the same subject and scope whose text matches that hint and sets its `valid_to` to yesterday, so recall excludes the old fact while the Source and version history remain intact.
+An extraction item may include an optional `supersedes` exact-text hint. After the new Artifact commits, `IngestService.extract()` finds an active memory with the same subject and scope whose text matches that hint and sets its `valid_to` to yesterday, so recall excludes the old fact while the Source and version history remain intact.
 
 
 ## Evaluation and live probe

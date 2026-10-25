@@ -16,7 +16,8 @@ from core.artifact import Strength, make  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from maintain.persona import distill_persona  # noqa: E402
 from maintain.promote import promote_candidates  # noqa: E402
-from perceive.absorb import absorb, owner_of  # noqa: E402
+from tests.absorb_support import absorb  # noqa: E402
+from perceive.absorb import owner_of  # noqa: E402
 from recall.scope import visible  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store import open_store  # noqa: E402

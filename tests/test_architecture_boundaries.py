@@ -247,15 +247,37 @@ class LayerDependencyTest(unittest.TestCase):
         self.assertNotIn("build_block", source)
         self.assertIn("self.recall_service.preview(", source)
 
-    def test_ingest_service_is_the_only_production_absorb_caller(self) -> None:
+    def test_ingest_service_is_the_only_production_plan_consumer(self) -> None:
+        from perceive import absorb
+
+        self.assertFalse(hasattr(absorb, "absorb"))
         callers = []
         for folder in ("app", "adapters", "services", "core", "recall",
                        "perceive", "maintain", "webui"):
             for path in (ROOT / folder).rglob("*.py"):
                 source = path.read_text(encoding="utf-8")
-                if "perceive.absorb import absorb" in source or "from .absorb import absorb" in source:
+                if "perceive.absorb import" in source or "from .absorb import" in source:
                     callers.append(path)
         self.assertEqual(callers, [ROOT / "services" / "ingest_service.py"])
+
+    def test_conversion_module_has_no_persistence(self) -> None:
+        source = (ROOT / "perceive" / "absorb.py").read_text(encoding="utf-8")
+        self.assertNotIn("async def absorb(", source)
+        for fragment in (
+            ".commit(", "cache.put(", "link_new(", "revise_impression(",
+            "_supersede(", "ChatRequest(",
+        ):
+            self.assertNotIn(fragment, source)
+
+    def test_ingest_extract_owns_write_side_effects(self) -> None:
+        source = (ROOT / "services" / "ingest_service.py").read_text(
+            encoding="utf-8"
+        )
+        for fragment in (
+            "async def extract(", "build_plan(", ".commit(",
+            "cache.put(", "link_new(", "revise_impression(", "self._supersede(",
+        ):
+            self.assertIn(fragment, source)
 
     def test_engine_and_service_functions_do_not_take_aggregate_db(self) -> None:
         for folder in ("core", "services", "recall", "perceive", "maintain"):

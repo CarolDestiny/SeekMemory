@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.contracts import DialogueTurn  # noqa: E402
 from core.graph import Graph  # noqa: E402
-from perceive.absorb import absorb  # noqa: E402
+from tests.absorb_support import absorb  # noqa: E402
 from app.flush_policy import chunk_turns  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import ExtractionParseError, parse_response, parse_response_checked  # noqa: E402

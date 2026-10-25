@@ -3,21 +3,34 @@
 from __future__ import annotations
 
 import datetime
+import re
+from dataclasses import replace
 from functools import partial
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Awaitable, Callable
 
 try:
+    from ..app.contracts import ChatRequest, WriteOutcome
     from ..app.flush_policy import chunk_turns, decide_flush, select_topic_batches
-    from ..core.capacity import PROTECTIVE, SATURATED
-    from ..perceive.absorb import absorb, worth_now
-    from ..perceive.model import ProviderChatModel
     from ..app.ports import ArtifactStore, ExtractionStore, SourceStore
+    from ..core.artifact import content_of, revise
+    from ..core.capacity import PROTECTIVE, SATURATED
+    from ..maintain.impression import revise_impression
+    from ..maintain.link import link_new
+    from ..perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
+    from ..perceive.extract import build_prompt
+    from ..perceive.model import ProviderChatModel
 except ImportError:
+    from app.contracts import ChatRequest, WriteOutcome
     from app.flush_policy import chunk_turns, decide_flush, select_topic_batches
-    from core.capacity import PROTECTIVE, SATURATED
-    from perceive.absorb import absorb, worth_now
-    from perceive.model import ProviderChatModel
     from app.ports import ArtifactStore, ExtractionStore, SourceStore
+    from core.artifact import content_of, revise
+    from core.capacity import PROTECTIVE, SATURATED
+    from maintain.impression import revise_impression
+    from maintain.link import link_new
+    from perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
+    from perceive.extract import build_prompt
+    from perceive.model import ProviderChatModel
 
 
 class IngestService:
@@ -165,15 +178,10 @@ class IngestService:
                             topic=topic_id,
                             messages=len(chunk),
                         ) as metrics:
-                            outcome = await absorb(
+                            outcome = await self.extract(
                                 chunk,
-                                self.artifacts,
-                                self.sources,
-                                self.cache,
-                                self.graph,
                                 ProviderChatModel(provider),
                                 log=partial(self.journal.record, "extract", "warning"),
-                                owner_id=self.owner_id(),
                                 strict=True,
                                 stage=partial(self.journal.span, "extract"),
                             )
@@ -210,3 +218,148 @@ class IngestService:
             return written, len(ready)
         finally:
             self.flushing = False
+
+    async def extract(
+        self,
+        items,
+        model,
+        *,
+        owner_id: str | None = None,
+        log: Callable[[str], None] = lambda _msg: None,
+        strict: bool = False,
+        stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
+            nullcontext()
+        ),
+    ) -> WriteOutcome:
+        """Call the model, build a pure plan, then persist through this service."""
+        if (
+            not items
+            or self.artifacts is None
+            or self.sources is None
+            or model is None
+        ):
+            return WriteOutcome(errors=("invalid extraction input",))
+        items = list(items)
+        owner = self.owner_id() if owner_id is None else owner_id
+        try:
+            context = recover_parents(items, self.sources)
+        except Exception as exc:
+            if strict:
+                raise
+            log(f"parent recovery failed: {type(exc).__name__}")
+            return WriteOutcome(errors=(f"parent: {exc}",), retryable=True)
+
+        try:
+            with stage("provider.call"):
+                if hasattr(model, "complete"):
+                    response = await model.complete(
+                        ChatRequest(
+                            session_id=str(items[0].session_id or ""),
+                            system_prompt=build_prompt([]),
+                            prompt=dialogue_of(context),
+                        )
+                    )
+                    raw = getattr(response, "text", "") or ""
+                else:
+                    response = await model.text_chat(
+                        system_prompt=build_prompt([]),
+                        prompt=dialogue_of(context),
+                    )
+                    raw = getattr(response, "completion_text", "") or ""
+        except Exception as exc:
+            if strict:
+                raise
+            log(f"model call failed: {type(exc).__name__}")
+            return WriteOutcome(
+                errors=(f"model: {exc}",), model_failed=True, retryable=True
+            )
+
+        plan = build_plan(
+            items, context, raw, self.cache, owner, log, strict=strict, stage=stage
+        )
+        if plan.outcome is not None:
+            return plan.outcome
+        return self._persist_plan(plan, stage, log)
+
+    def _persist_plan(
+        self,
+        plan: ExtractionPlan,
+        stage: Callable[[str], AbstractContextManager[object]],
+        log: Callable[[str], None],
+    ) -> WriteOutcome:
+        written_ids: list[str] = []
+        skipped = plan.skipped
+        errors = list(plan.errors)
+        retryable = plan.retryable
+        for art in plan.artifacts:
+            try:
+                with stage("artifact.persist"):
+                    self.artifacts.commit(
+                        art,
+                        expected_revision=0,
+                        op="create",
+                        reason="extract",
+                        source_ids=tuple(art.header.lineage.sources),
+                    )
+                    if self.cache is not None:
+                        self.cache.put(art)
+                    link_new(art, self.graph, self.cache)
+                    written_ids.append(art.header.id)
+                    try:
+                        self._supersede(art)
+                    except Exception as exc:
+                        errors.append(f"supersede: {exc}")
+            except Exception as exc:
+                skipped += 1
+                errors.append(f"commit: {exc}")
+                retryable = True
+                log(f"memory write failed: {type(exc).__name__}")
+                continue
+            try:
+                if (
+                    self.cache is not None
+                    and str(art.payload.get("level") or "") == "impression"
+                ):
+                    with stage("impression.revise"):
+                        revise_impression(self.artifacts, self.cache, art)
+            except Exception as exc:
+                errors.append(f"impression: {exc}")
+                log(f"impression revision failed: {type(exc).__name__}")
+        return WriteOutcome(
+            written=len(written_ids),
+            skipped=skipped,
+            ids=tuple(written_ids),
+            errors=tuple(errors),
+            retryable=retryable,
+        )
+
+    def _supersede(self, new_art) -> int:
+        """Expire an explicitly superseded old memory without deleting its Source."""
+        payload = new_art.payload if isinstance(new_art.payload, dict) else {}
+        old_text = str(payload.get("supersedes") or "").strip()
+        if not old_text or self.cache is None:
+            return 0
+        key = re.sub(r"\s+", "", old_text).lower()
+        cutoff = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        changed = 0
+        for old in list(self.cache.active("memory")):
+            if old.header.id == new_art.header.id:
+                continue
+            if old.header.subject_id != new_art.header.subject_id:
+                continue
+            if old.header.scope != new_art.header.scope:
+                continue
+            body = re.sub(r"\s+", "", content_of(old) or "").lower()
+            if not key or not body or (key not in body and body not in key):
+                continue
+            updated = revise(old, time=replace(old.header.time, valid_to=cutoff))
+            self.artifacts.commit(
+                updated,
+                expected_revision=old.header.revision,
+                op="revise",
+                reason="superseded by extraction",
+                source_ids=tuple(old.header.lineage.sources),
+            )
+            self.cache.put(updated)
+            changed += 1
+        return changed
