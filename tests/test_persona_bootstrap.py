@@ -21,6 +21,10 @@ def seed_file(text: str = "你是大肥鱼，说话温柔但有点嘴硬。") ->
         "persona": text,
         "style": {"tone": "温柔嘴硬"},
         "boundaries": ["不伪造用户经历"],
+        "corpus": [
+            {"user": "今天好累。", "assistant": "先歇一下嘛，我陪你。"},
+            {"user": "你会不会走？", "assistant": "才不走呢，别乱想。"},
+        ],
         "license": "CC0-1.0",
         "source": "original",
         "content_rating": "general",
@@ -59,10 +63,14 @@ class PersonaBootstrapTest(PersonaCase):
         self.assertEqual(persona.header.lineage.sources, ())
         self.assertEqual(persona.payload["origin"], "seed")
         self.assertEqual(persona.payload["seed_id"], "big_fish")
+        self.assertEqual(persona.payload["corpus_count"], 2)
+        self.assertEqual(len(persona.payload["corpus"]), 2)
+        self.assertEqual(len(persona.payload["corpus_hash"]), 64)
         self.assertTrue(trusted_self_persona(persona))
 
         block, info = self.recall()
         self.assertIn("大肥鱼", block)
+        self.assertNotIn("先歇一下嘛", block)
         self.assertIn(persona.header.id, info["final_ids"])
 
     def test_bootstrap_revises_the_same_chain_and_retires_duplicates(self) -> None:
@@ -99,6 +107,8 @@ class PersonaBootstrapTest(PersonaCase):
         self.assertEqual(evolved.header.revision, 2)
         self.assertEqual(evolved.payload["origin"], "dream")
         self.assertEqual(evolved.payload["seed_id"], "big_fish")
+        self.assertEqual(evolved.payload["corpus_count"], 2)
+        self.assertEqual(evolved.payload["corpus"], initial.payload["corpus"])
         self.assertTrue(evolved.payload["text"].startswith("你是大肥鱼，温柔但嘴硬。"))
         self.assertIn(compose_behavior_text(evolved.payload["behaviors"]), evolved.payload["text"])
         self.assertTrue(evolved.header.lineage.sources)
@@ -125,6 +135,10 @@ class PersonaBootstrapTest(PersonaCase):
     def test_bad_persona_file_does_not_write(self) -> None:
         bad = seed_file()
         bad.pop("persona")
+        with self.assertRaises(ValueError):
+            self.service().bootstrap_persona(bad)
+        bad = seed_file()
+        bad.pop("corpus")
         with self.assertRaises(ValueError):
             self.service().bootstrap_persona(bad)
         bad = seed_file()

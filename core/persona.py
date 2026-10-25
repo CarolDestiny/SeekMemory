@@ -7,6 +7,7 @@ trust decisions stay in their existing owners.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -19,7 +20,9 @@ _MAX_TEXT = 20000
 _MAX_STYLE = 20000
 _MAX_BOUNDARIES = 32
 _MAX_BOUNDARY = 300
-_MAX_EXAMPLES = 32
+_MAX_CORPUS = 64
+_MAX_CORPUS_ITEM = 2000
+_MAX_CORPUS_JSON = 50000
 
 
 def _text(value: object, field: str, *, maximum: int, required: bool = False) -> str:
@@ -47,6 +50,39 @@ def _json_object(value: object, field: str, *, maximum: int) -> dict[str, Any]:
     if len(encoded) > maximum:
         raise ValueError(f"persona 文件字段过长：{field}")
     return dict(value)
+
+
+def _corpus(value: object) -> list[dict[str, str]]:
+    """Validate the authored style corpus.
+
+    Corpus entries are dialogue style samples.  They are configuration, not
+    chat evidence, and are never turned into Source rows.
+    """
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ValueError("persona 文件必须包含非空 corpus 数组")
+    if len(value) > _MAX_CORPUS:
+        raise ValueError("persona 文件 corpus 条目过多")
+    out: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) - {"user", "assistant"}:
+            raise ValueError("persona 文件 corpus 条目只允许 user/assistant")
+        user = _text(item.get("user"), "corpus.user", maximum=_MAX_CORPUS_ITEM, required=True)
+        assistant = _text(
+            item.get("assistant"), "corpus.assistant", maximum=_MAX_CORPUS_ITEM, required=True
+        )
+        out.append({"user": user, "assistant": assistant})
+    try:
+        encoded = json.dumps(out, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("persona 文件 corpus 无法序列化") from exc
+    if len(encoded) > _MAX_CORPUS_JSON:
+        raise ValueError("persona 文件 corpus 过大")
+    return out
+
+
+def _corpus_hash(corpus: list[dict[str, str]]) -> str:
+    encoded = json.dumps(corpus, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _strings(value: object, field: str, *, maximum: int, item_maximum: int) -> list[str]:
@@ -77,7 +113,7 @@ def normalize_persona_file(raw: object) -> dict[str, Any]:
         raise ValueError("persona 文件必须是 JSON 对象")
     allowed = {
         "id", "version", "name", "persona", "persona_text", "style",
-        "boundaries", "example_dialogues", "license", "source",
+        "boundaries", "corpus", "license", "source",
         "content_rating", "locale",
     }
     unknown = set(raw) - allowed
@@ -97,17 +133,7 @@ def normalize_persona_file(raw: object) -> dict[str, Any]:
         raw.get("boundaries"), "boundaries", maximum=_MAX_BOUNDARIES,
         item_maximum=_MAX_BOUNDARY,
     )
-    examples = raw.get("example_dialogues")
-    if examples is not None:
-        if not isinstance(examples, (list, tuple)) or len(examples) > _MAX_EXAMPLES:
-            raise ValueError("persona 文件 example_dialogues 必须是有限数组")
-        for item in examples:
-            if not isinstance(item, dict):
-                raise ValueError("persona 文件 example_dialogues 条目必须是对象")
-            if set(item) - {"user", "assistant"}:
-                raise ValueError("persona 文件 example_dialogues 只允许 user/assistant")
-            _text(item.get("user"), "example_dialogues.user", maximum=2000)
-            _text(item.get("assistant"), "example_dialogues.assistant", maximum=2000)
+    corpus = _corpus(raw.get("corpus"))
     return {
         "id": seed_id,
         "version": version,
@@ -115,7 +141,7 @@ def normalize_persona_file(raw: object) -> dict[str, Any]:
         "persona": text,
         "style": style,
         "boundaries": boundaries,
-        "example_dialogues": list(examples or []),
+        "corpus": corpus,
         "license": _text(raw.get("license"), "license", maximum=200),
         "source": _text(raw.get("source"), "source", maximum=200),
         "content_rating": _text(raw.get("content_rating"), "content_rating", maximum=32)
@@ -141,6 +167,9 @@ def persona_payload_from_file(raw: object) -> dict[str, Any]:
         "persona_name": seed["name"],
         "style": seed["style"],
         "boundaries": seed["boundaries"],
+        "corpus": seed["corpus"],
+        "corpus_count": len(seed["corpus"]),
+        "corpus_hash": _corpus_hash(seed["corpus"]),
         "content_rating": seed["content_rating"],
         "locale": seed["locale"],
     }

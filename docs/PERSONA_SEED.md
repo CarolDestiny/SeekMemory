@@ -26,8 +26,9 @@ A persona file is a UTF-8 JSON object.
     "不伪造用户经历",
     "不透露私人 Source 原文"
   ],
-  "example_dialogues": [
-    {"user": "今天好累。", "assistant": "先歇一下嘛，我陪你。"}
+  "corpus": [
+    {"user": "今天好累。", "assistant": "先歇一下嘛，我陪你。"},
+    {"user": "你会不会走？", "assistant": "才不走呢，别乱想。"}
   ],
   "license": "CC0-1.0",
   "source": "original",
@@ -44,6 +45,7 @@ A persona file is a UTF-8 JSON object.
 | `version` | Non-empty string, max 32 chars |
 | `name` | Non-empty display name, max 80 chars |
 | `persona` | Non-empty persona text, max 20,000 chars |
+| `corpus` | Non-empty authored dialogue corpus, max 64 entries |
 
 `persona_text` is accepted as a compatibility alias for `persona` in the early
 draft, but new files should use `persona`.
@@ -52,8 +54,10 @@ draft, but new files should use `persona`.
 
 - `style`: bounded JSON object; used by future composition, not evidence.
 - `boundaries`: bounded string array.
-- `example_dialogues`: display/preview examples only; not stored as chat
-  evidence and not used by the bootstrap payload.
+- `corpus`: authored style dialogues. This is required because a persona prompt
+  alone cannot reproduce a distinctive voice. Corpus is stored with the persona
+  provenance but is **not** chat evidence and is **not** injected into recall.
+  It is the reference material for persona synthesis (see below).
 - `license`, `source`, `content_rating`, `locale`.
 
 Unknown fields are rejected so the file format cannot silently absorb unsafe
@@ -67,7 +71,8 @@ metadata.
 2. finds the current active persona;
 3. creates or revises the same persona Artifact id;
 4. writes payload provenance (`origin=seed`, `seed_id`, `seed_version`,
-   `seed_license`, `seed_source`, style, boundaries);
+   `seed_license`, `seed_source`, style, boundaries, corpus, corpus_count,
+   corpus_hash);
 5. sets the persona header to `bot:self`, `shared`, `public`, `said_by=seed`;
 6. commits atomically and updates cache;
 7. retires duplicate active persona rows if legacy data contains them;
@@ -82,14 +87,20 @@ It must not:
 
 ## After bootstrap
 
-The initial seed persona is trusted for recall. Dream may later append
-deterministic behavior traits:
+The initial seed persona is trusted for recall. Dream may later revise the same
+persona Artifact lineage from memory/impressions:
 
 ```text
-seed text
-  + Dream self-impression traits
+seed persona + corpus
+  + Dream memory/impressions
   = new persona Artifact revision on the same id
 ```
+
+The current bootstrap foundation preserves `corpus`, `corpus_count` and
+`corpus_hash` across revisions. It does not inject the corpus into every recall
+prompt and does not pretend the deterministic behavior composer is a full style
+synthesis. A follow-up persona-synthesis step should consume the corpus plus
+approved impressions and produce a reviewed/rollbackable persona revision.
 
 The previous revision remains in history. Rollback and manual edits must use the
 same persona Artifact lineage. A future implementation may add a one-click
