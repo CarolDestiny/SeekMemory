@@ -89,6 +89,23 @@ class LedgerRepository(SqliteRepository):
             "self_hash FROM ledger ORDER BY seq"
         ).fetchall()
 
+    def verify(self) -> bool:
+        previous = ""
+        for row in self.entries():
+            payload = chain_payload(
+                str(row["at"]),
+                str(row["op"]),
+                str(row["entity"]),
+                row["before_hash"],
+                row["after_hash"],
+                str(row["reason"]),
+            )
+            expected = chain_hash(previous, payload)
+            if str(row["prev_hash"]) != previous or str(row["self_hash"]) != expected:
+                return False
+            previous = expected
+        return True
+
 
 class Ledger:
     """Validate the repository's hash chain."""
@@ -111,18 +128,4 @@ class Ledger:
         return self.repository.last_hash()
 
     def verify(self) -> bool:
-        previous = ""
-        for row in self.repository.entries():
-            payload = chain_payload(
-                str(row["at"]),
-                str(row["op"]),
-                str(row["entity"]),
-                row["before_hash"],
-                row["after_hash"],
-                str(row["reason"]),
-            )
-            expected = chain_hash(previous, payload)
-            if str(row["prev_hash"]) != previous or str(row["self_hash"]) != expected:
-                return False
-            previous = expected
-        return True
+        return self.repository.verify()

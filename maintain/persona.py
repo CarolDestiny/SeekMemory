@@ -4,14 +4,12 @@ from __future__ import annotations
 try:
     from ..core.artifact import Artifact, Lineage, Strength, make, revise
     from ..core.bot_behavior import SELF_SUBJECT, compose_behaviors, trusted_self_impression
-    from ..store.cache import Cache
-    from ..app.ports import ArtifactStore, SourceStore
+    from ..app.ports import ArtifactCache, ArtifactStore, SourceStore
     from .self_impression import promote_self_candidates
 except ImportError:
     from core.artifact import Artifact, Lineage, Strength, make, revise
     from core.bot_behavior import SELF_SUBJECT, compose_behaviors, trusted_self_impression
-    from store.cache import Cache
-    from app.ports import ArtifactStore, SourceStore
+    from app.ports import ArtifactCache, ArtifactStore, SourceStore
     from maintain.self_impression import promote_self_candidates
 
 TOP_N = 3
@@ -23,7 +21,7 @@ def compose(impressions: list[Artifact]) -> str:
     return compose_behaviors(kinds)
 
 
-def distill_self_persona(artifacts: ArtifactStore, sources: SourceStore, cache: Cache,
+def distill_self_persona(artifacts: ArtifactStore, sources: SourceStore, cache: ArtifactCache,
                         today: str | None = None) -> Artifact | None:
     candidates = promote_self_candidates(cache, sources, today)
     chosen = []
@@ -67,7 +65,7 @@ def distill_self_persona(artifacts: ArtifactStore, sources: SourceStore, cache: 
     return persona
 
 
-def distill_persona(artifacts: ArtifactStore, sources: SourceStore, cache: Cache,
+def distill_persona(artifacts: ArtifactStore, sources: SourceStore, cache: ArtifactCache,
                     today: str | None = None,
                     only_umo: str = "") -> Artifact | None:
     """保留旧签名，但用户印象不再是人格来源。"""

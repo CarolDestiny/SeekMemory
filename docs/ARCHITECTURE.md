@@ -164,8 +164,9 @@ pending buffer and runtime episode records.
 `services/` contains one service per application capability and a typed
 `ServiceCollection`; it contains no DI container or registry:
 `AccessPolicy` for permissions, `RecallService` for read assembly, `IngestService` for
-pending-buffer extraction, `CapacityService` for admission/maintenance, `MaintenanceService`
-for decay/merge/persona work, `RuntimeWorker` for due dispatch, and `BackgroundService` for
+pending-buffer extraction, `CapacityService` for admission and maintenance triggers, `MaintenanceService`
+for decay/merge/persona work, `ManagementService` for admin queries,
+`StatusService` for read-only status, `RuntimeWorker` for due dispatch, and `BackgroundService` for
 periodic cadence. `main.py` is the entrypoint only. `adapters/astrbot_plugin.py` is the
 AstrBot composition root and lifecycle owner; `adapters/astrbot_hooks.py` owns event
 mapping and registers handlers against the real plugin module path. Neither layer may

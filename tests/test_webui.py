@@ -22,7 +22,7 @@ from store import open_store  # noqa: E402
 from store.ledger import Ledger  # noqa: E402
 from webui.jobs import Jobs  # noqa: E402
 from webui.journal import Journal  # noqa: E402
-from webui.service import ManagementService  # noqa: E402
+from services.management_service import ManagementService  # noqa: E402
 
 
 class ManagementTests(unittest.TestCase):

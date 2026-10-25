@@ -13,13 +13,11 @@ from typing import Any
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of, revise
     from ..core.graph import Graph
-    from ..store.cache import Cache
-    from ..app.ports import ArtifactStore
+    from ..app.ports import ArtifactCache, ArtifactStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of, revise
     from core.graph import Graph
-    from store.cache import Cache
-    from app.ports import ArtifactStore
+    from app.ports import ArtifactCache, ArtifactStore
 
 SIMILAR_BAR = 0.45
 MAX_SIMILAR = 3
@@ -79,7 +77,7 @@ def _has_edge(artifacts: ArtifactStore, src: str, dst: str, kind: str | None = N
     return False
 
 
-def _candidate_pool(art: Artifact, cache: Cache) -> list[Artifact]:
+def _candidate_pool(art: Artifact, cache: ArtifactCache) -> list[Artifact]:
     """同 scope 的 active memory；不跨 scope 连边，避免私聊关系进群聊。"""
     scope = str(art.header.scope or "private")
     return [
@@ -91,7 +89,7 @@ def _candidate_pool(art: Artifact, cache: Cache) -> list[Artifact]:
     ]
 
 
-def _link(art: Artifact, graph: Graph, cache: Cache,
+def _link(art: Artifact, graph: Graph, cache: ArtifactCache,
           created: str | None = None) -> int:
     """在出度预算内建 similar / temporal 边，返回实际新增的边数。"""
     artifacts = getattr(graph, "artifacts", None)
@@ -154,7 +152,7 @@ def _link(art: Artifact, graph: Graph, cache: Cache,
     return added
 
 
-def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
+def link_new(art: Artifact, graph: Graph | None, cache: ArtifactCache | None,
              created: str | None = None) -> int:
     """为新写入的记忆建边；任何失败都返回 0，调用方可以安全忽略。"""
     if graph is None or cache is None:
@@ -166,7 +164,7 @@ def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
 
 
 def persist(art: Artifact, artifacts: ArtifactStore,
-            cache: Cache | None, graph: Graph | None) -> int:
+            cache: ArtifactCache | None, graph: Graph | None) -> int:
     # Compatibility writer: route every write through the CAS commit path.
     existing = artifacts.get(art.header.id)
     if existing is None:

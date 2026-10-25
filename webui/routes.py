@@ -6,8 +6,6 @@ from collections import Counter
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from .service import ManagementService
-
 if TYPE_CHECKING:
     from ..main import Main
 
@@ -43,8 +41,6 @@ class WebRoutes:
         Returns:
             状态接口的数据；模型查询失败仅影响对应检查项。
         """
-        from ..store.ledger import Ledger
-
         plugin = self.plugin
 
         checks = [
@@ -59,7 +55,7 @@ class WebRoutes:
             checks.append(
                 {
                     "name": "ledger",
-                    "ok": Ledger(plugin.store.ledger).verify(),
+                    "ok": plugin.services.status_service.ledger_valid(),
                     "detail": "账本哈希链",
                 }
             )
@@ -201,13 +197,7 @@ class WebRoutes:
                 return error_response(
                     "记忆引擎不可用，请检查运行检测与日志", status_code=503
                 )
-            service = ManagementService(
-                artifacts=plugin.store.artifacts,
-                sources=plugin.store.sources,
-                ledger=plugin.store.ledger,
-                cache=plugin.cache,
-                recall_service=plugin.services.recall_service,
-            )
+            service = plugin.services.management_service
             if action == "records":
                 return json_response({"records": service.catalog()})
             if action == "detail":

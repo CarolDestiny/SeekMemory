@@ -33,13 +33,11 @@ try:  # 作为 astrbot 插件包的一部分导入
         filter_duplicates,
         parse_response_checked,
     )
-    from ..store.cache import Cache
-    from ..app.ports import SourceStore
+    from ..app.ports import ArtifactCache, SourceStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from app.contracts import DialogueTurn, WriteOutcome
     from core.artifact import Artifact, Lineage, Strength, TimeSpan, content_of, make, validate
-    from store.cache import Cache
-    from app.ports import SourceStore
+    from app.ports import ArtifactCache, SourceStore
 
     from perceive.behavior import (
         DEFAULT_BEHAVIOR_CONFIDENCE,
@@ -250,7 +248,7 @@ def recover_parents(items: list[DialogueTurn], sources: SourceStore | None) -> l
     return out
 
 
-def existing_texts(cache: Cache | None) -> list[str]:
+def existing_texts(cache: ArtifactCache | None) -> list[str]:
     """已有记忆正文，供抽取去重。"""
     if cache is None:
         return []
@@ -264,7 +262,7 @@ def _boundary(scope: str, subject_id: str) -> str:
     return f"{scope}\x1f{subject_id}"
 
 
-def existing_texts_by_subject(cache: Cache | None) -> dict[str, list[str]]:
+def existing_texts_by_subject(cache: ArtifactCache | None) -> dict[str, list[str]]:
     """Existing memory text grouped by subject, scope and behavior evidence.
 
     Ordinary memories keep the plain subject boundary. Behavior memories are
@@ -309,7 +307,7 @@ def build_plan(
     items: list[DialogueTurn],
     context: list[DialogueTurn],
     raw: str,
-    cache: Cache | None,
+    cache: ArtifactCache | None,
     owner_id: str = "",
     log: Log = lambda _msg: None,
     *,

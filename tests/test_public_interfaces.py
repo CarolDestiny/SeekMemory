@@ -18,6 +18,7 @@ from app.contracts import (
     WriteOutcome,
 )
 from app.ports import (
+    ArtifactCache,
     ArtifactStore,
     ChatModel,
     ExtractionStore,
@@ -39,6 +40,7 @@ class ProtocolSurfaceTest(unittest.TestCase):
         self.cache = Cache(self.db.artifacts)
 
     def test_builtin_stores_satisfy_public_protocols(self):
+        self.assertIsInstance(self.cache, ArtifactCache)
         self.assertIsInstance(self.db.sources, SourceStore)
         self.assertIsInstance(self.db.artifacts, ArtifactStore)
         self.assertIsInstance(self.db.extraction, ExtractionStore)

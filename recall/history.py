@@ -7,16 +7,16 @@
 from __future__ import annotations
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..app.ports import ArtifactCache
     from ..core.artifact import Artifact
-    from ..store.cache import Cache
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
+    from app.ports import ArtifactCache
     from core.artifact import Artifact
-    from store.cache import Cache
 
 MAX_SIDE = 22   # 旧说法最长字数，超了就截断
 
 
-def _texts(cache: Cache, art: Artifact) -> list[str]:
+def _texts(cache: ArtifactCache, art: Artifact) -> list[str]:
     """取这条记忆的正文版本链（旧→新），去掉连续重复。"""
     artifacts = getattr(cache, "artifacts", None)
     if artifacts is None:
@@ -62,7 +62,7 @@ def _when(iso: str) -> str:
     return "以前"
 
 
-def _first_at(cache: Cache, art: Artifact) -> str:
+def _first_at(cache: ArtifactCache, art: Artifact) -> str:
     """最早一版的时间，用来把「以前」说具体。"""
     artifacts = getattr(cache, "artifacts", None)
     if artifacts is None:
@@ -74,7 +74,7 @@ def _first_at(cache: Cache, art: Artifact) -> str:
     return str(rows[0].get("at") or "") if rows else ""
 
 
-def trajectory(cache: Cache, art: Artifact) -> str:
+def trajectory(cache: ArtifactCache, art: Artifact) -> str:
     """返回「（三周前觉得…）」；只有一版、没变、太长，都返回空串。"""
     texts = _texts(cache, art)
     if len(texts) < 2:

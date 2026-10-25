@@ -7,19 +7,17 @@ import datetime
 import json
 
 try:
-    from ..app.ports import ArtifactStore, LedgerStore, SourceStore
+    from ..app.ports import ArtifactCache, ArtifactStore, LedgerStore, SourceStore
     from ..core.artifact import Artifact, content_of, revise, validate
     from ..core.versioning import VersionError
     from ..recall.scope import owner_of
-    from ..services.recall_service import RecallService
-    from ..store.cache import Cache
+    from .recall_service import RecallService
 except ImportError:
-    from app.ports import ArtifactStore, LedgerStore, SourceStore
+    from app.ports import ArtifactCache, ArtifactStore, LedgerStore, SourceStore
     from core.artifact import Artifact, content_of, revise, validate
     from core.versioning import VersionError
     from recall.scope import owner_of
     from services.recall_service import RecallService
-    from store.cache import Cache
 
 
 def timestamp(value: str) -> str:
@@ -41,7 +39,7 @@ class ManagementService:
     """管理操作复用既有存储、缓存和 scope 规则。"""
 
     def __init__(self, artifacts: ArtifactStore, sources: SourceStore,
-                 ledger: LedgerStore, cache: Cache,
+                 ledger: LedgerStore, cache: ArtifactCache,
                  recall_service: RecallService) -> None:
         self.artifacts = artifacts
         self.sources = sources

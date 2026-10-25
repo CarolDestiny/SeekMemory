@@ -15,11 +15,11 @@ import math
 import random
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..app.ports import ArtifactCache
     from ..core.artifact import Artifact
-    from ..store.cache import Cache
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
+    from app.ports import ArtifactCache
     from core.artifact import Artifact
-    from store.cache import Cache
 
 LEVELS = ("fact", "scene", "detail")
 FAMILY = "memory"
@@ -75,7 +75,7 @@ def eligible(art: Artifact) -> bool:
         return False
 
 
-def candidate(cache: Cache, now_days: float | None = None) -> list[Artifact]:
+def candidate(cache: ArtifactCache, now_days: float | None = None) -> list[Artifact]:
     """挑出可以主动浮现的记忆：有正文、非影子、非敏感、没在冷却。"""
     now = _today_ordinal() if now_days is None else float(now_days)
     out: list[Artifact] = []
@@ -110,7 +110,7 @@ def best_of(pool: list[Artifact], seed: int | str | None = None,
     return max(usable, key=lambda art: _score(art, now, rng))
 
 
-def pick(cache: Cache, seed: int | str | None = None,
+def pick(cache: ArtifactCache, seed: int | str | None = None,
          now_days: float | None = None) -> Artifact | None:
     """按权重抽一条最容易浮现的记忆；没有候选返回 None。"""
     return best_of(candidate(cache, now_days), seed, now_days)

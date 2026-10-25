@@ -38,6 +38,7 @@ from ..services import (
     CapacityService,
     IngestService,
     MaintenanceService,
+    ManagementService,
     RecallService,
     ServiceCollection,
     StatusService,
@@ -135,6 +136,13 @@ class AstrBotPlugin(AstrBotHooks):
             hybrid_retriever=self.hybrid_retriever,
             log=lambda msg: logger.info(f"[seekmemory] {msg}"),
         )
+        management = ManagementService(
+            artifacts=self.store.artifacts if self.store is not None else None,
+            sources=self.store.sources if self.store is not None else None,
+            ledger=self.store.ledger if self.store is not None else None,
+            cache=self.cache,
+            recall_service=recall,
+        )
         if self.store is not None:
             state_store = RepoStateStore(self.store.runtime_state)
             self.episode_recorder = EpisodeRecorder(RepoEpisodeStore(self.store.runtime_episodes))
@@ -214,7 +222,8 @@ class AstrBotPlugin(AstrBotHooks):
             logger=logger,
         )
         status = StatusService(
-            artifacts=self.store.artifacts if self.store is not None else None
+            artifacts=self.store.artifacts if self.store is not None else None,
+            ledger=self.store.ledger if self.store is not None else None,
         )
         runtime_worker = RuntimeWorker(
             runtime=runtime,
@@ -255,6 +264,7 @@ class AstrBotPlugin(AstrBotHooks):
             ingest_service=ingest,
             capacity_service=capacity,
             maintenance_service=maintenance,
+            management_service=management,
             status_service=status,
             background_service=background,
             runtime=runtime,

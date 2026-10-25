@@ -18,7 +18,7 @@ from recall.retriever import HybridRetriever
 from services.recall_service import RecallService
 from store.cache import Cache
 from store import open_store
-from webui.service import ManagementService
+from services.management_service import ManagementService
 
 
 class PipelineDisclosureTest(unittest.TestCase):

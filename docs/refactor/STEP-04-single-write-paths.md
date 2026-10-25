@@ -27,7 +27,7 @@ IngestService is the single owner of extraction orchestration.
 - capacity_service.py contains no maintain imports.
 - capacity_service.py calls maintenance.compact_artifacts() and
   maintenance.forget_expired().
-- webui/service.py contains no build_block or recall.pipeline imports.
+- services/management_service.py contains no build_block or recall.pipeline imports.
 - diagnose() returns RecallService.preview() unchanged shape.
 - IngestService is the only production module importing absorb.
 - Architecture guards cover all three invariants.

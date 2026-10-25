@@ -271,7 +271,7 @@ detail 不补造旧数据缺失的证据或账本；catalog 当前加载完整�
 引擎不可用 503，未预期异常 500。诊断调用 `build_block(..., dry_run=True)`，跳过 designated 的 mark_given。
 模型检测失败仍返回其他检测结果；错误只记录类型，不把异常内容泄漏到生命周期日志。
 
-`webui/service.py` 无宿主依赖；`routes.py` 负责宿主适配；`jobs.py` 管理单一活动任务；
+`services/management_service.py` 无宿主依赖；`routes.py` 负责宿主适配；`jobs.py` 管理单一活动任务；
 `journal.py` 管理有界持久化日志。每条新事件包含 `level`、`stage`、
 `source:{module,file,function,line}`、`context`、`durationMs` 和可空的 `error:{type,frames}`。
 `file` 为插件相对路径，外部依赖仅显示文件名；异常帧不含源码正文、局部变量或异常消息。

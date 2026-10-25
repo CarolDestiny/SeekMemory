@@ -30,12 +30,12 @@
 scope       → core.artifact (Artifact)
 designated  → core.artifact (Artifact, revise)
 seed        → core.artifact (Artifact, content_of)
-spread      → core.graph (Graph), store.cache (Cache)
+spread      → core.graph (Graph), app.ports (ArtifactCache)
 score       → core.artifact, recall.seed (overlap, tags_of)
 assemble    → core.artifact, recall.designated (deliverable, triggers_of)
 bm25        → core.artifact, recall.seed (tags_of), recall.tokenizer
-retriever   → core.graph, core.retrieval, store.cache, recall.bm25
-pipeline    → app.ports (Retriever), core/store/recall
+retriever   → core.graph, core.retrieval, app.ports, recall.bm25
+pipeline    → app.ports (Retriever), app.ports/core/recall
 ```
 
 检索器复用 `app.ports.Retriever` 协议，不 import `astrbot`、不碰 SQL。

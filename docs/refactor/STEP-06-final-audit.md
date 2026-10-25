@@ -31,9 +31,9 @@ Status: implementation complete, pending review/merge.
 
 ## Verification
 
-- Local fake-host suite: 495 tests passed (all except environment-bound
+- Local fake-host suite: 496 tests passed (all except environment-bound
   test_api_contract.py and test_webui_host.py).
-- Package + architecture tests: 31 passed.
+- Package + architecture tests: 32 passed.
 - compileall and git diff --check clean.
 - Full five-step acceptance records live under docs/refactor/.
 
@@ -44,3 +44,12 @@ Status: implementation complete, pending review/merge.
   runtime boundary test, but it remains the narrow host-facing part of run
   tracing.
 - Database schema and transaction semantics were not changed during Steps 1-5.
+
+## Additional protocol cleanup
+
+- Added ArtifactCache protocol to app/ports.py.
+- Engine modules now depend on ArtifactCache instead of concrete store.cache.Cache.
+- ManagementService moved from webui/service.py to services/management_service.py and
+  is exposed through ServiceCollection.
+- WebUI routes now call plugin.services.management_service and no longer construct
+  application services or import store modules.

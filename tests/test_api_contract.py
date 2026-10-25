@@ -30,6 +30,7 @@ Cache = importlib.import_module("_seekmemory_contract.store.cache").Cache
 Graph = importlib.import_module("_seekmemory_contract.core.graph").Graph
 HybridRetriever = importlib.import_module("_seekmemory_contract.recall.retriever").HybridRetriever
 RecallService = importlib.import_module("_seekmemory_contract.services.recall_service").RecallService
+ManagementService = importlib.import_module("_seekmemory_contract.services.management_service").ManagementService
 Journal = importlib.import_module("_seekmemory_contract.webui.journal").Journal
 Jobs = importlib.import_module("_seekmemory_contract.webui.jobs").Jobs
 Buffer = importlib.import_module("_seekmemory_contract.perceive.buffer").Buffer
@@ -115,7 +116,9 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
                     },
                     "queue": {},
                 }),
-                status_service=SimpleNamespace(persona=lambda: None),
+                status_service=SimpleNamespace(
+                    persona=lambda: None, ledger_valid=lambda: True
+                ),
             ),
         )
         self.plugin.hybrid_retriever = HybridRetriever(self.plugin.graph, cache)
@@ -128,6 +131,13 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             config={}.get,
             owner_umo=lambda: "",
             hybrid_retriever=self.plugin.hybrid_retriever,
+        )
+        self.plugin.services.management_service = ManagementService(
+            artifacts=db.artifacts,
+            sources=db.sources,
+            ledger=db.ledger,
+            cache=cache,
+            recall_service=self.plugin.services.recall_service,
         )
         self.plugin.run_traces = TraceStore(Path(self.temp.name) / "runs.jsonl")
         self.plugin.buffer.add(
