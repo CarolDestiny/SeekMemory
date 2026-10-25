@@ -10,8 +10,14 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Awaitable, Callable
 
 try:
+    from ..app.budget import estimate_tokens
     from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
-    from ..app.flush_policy import chunk_turns, decide_flush, select_topic_batches
+    from ..app.flush_policy import (
+        chunk_turns,
+        decide_flush,
+        pack_same_session_batches,
+        select_topic_batches,
+    )
     from ..app.ports import ArtifactStore, ExtractionStore, SourceStore
     from ..core.artifact import content_of, revise
     from ..core.capacity import PROTECTIVE, SATURATED
@@ -28,8 +34,14 @@ try:
     )
     from ..perceive.model import ProviderChatModel
 except ImportError:
+    from app.budget import estimate_tokens
     from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
-    from app.flush_policy import chunk_turns, decide_flush, select_topic_batches
+    from app.flush_policy import (
+        chunk_turns,
+        decide_flush,
+        pack_same_session_batches,
+        select_topic_batches,
+    )
     from app.ports import ArtifactStore, ExtractionStore, SourceStore
     from core.artifact import content_of, revise
     from core.capacity import PROTECTIVE, SATURATED
@@ -282,6 +294,97 @@ class IngestService:
                 )
                 return used >= max_tokens
 
+            if triage:
+                units = []
+                providers = {}
+                for session_id, topic_id, part, provider in ready:
+                    providers[session_id] = provider
+                    for chunk in chunk_turns(part):
+                        units.append((session_id, topic_id, chunk))
+                fixed_tokens = estimate_tokens(len(build_prompt([])))
+                batch_limit = max(
+                    1, int(self.config("dream_batch_tokens", 6000))
+                )
+                batches = pack_same_session_batches(
+                    units,
+                    token_limit=batch_limit,
+                    fixed_tokens=fixed_tokens,
+                )
+                attempted_topics: set[tuple[str, str]] = set()
+                batch_count = 0
+                for batch in batches:
+                    if (
+                        (max_calls > 0 and calls >= max_calls)
+                        or token_budget_exhausted()
+                    ):
+                        stopped_for_budget = True
+                        break
+                    keys = {
+                        (batch.session_id, topic_id)
+                        for topic_id in batch.topics
+                    }
+                    attempted_topics.update(keys)
+                    calls += 1
+                    batch_count += 1
+                    try:
+                        with self.journal.span(
+                            "extract",
+                            "topic.extract",
+                            session=batch.session_id,
+                            topics=len(keys),
+                            messages=len(batch.rows),
+                        ) as metrics:
+                            outcome = await self.extract(
+                                batch.rows,
+                                ProviderChatModel(providers[batch.session_id]),
+                                log=partial(
+                                    self.journal.record, "extract", "warning"
+                                ),
+                                strict=True,
+                                stage=partial(self.journal.span, "extract"),
+                                include_topic=len(batch.topics) > 1,
+                            )
+                            metrics["written"] = outcome.written
+                            metrics["skipped"] = outcome.skipped
+                            metrics["usage_in"] = outcome.usage_in
+                            metrics["usage_cached"] = outcome.usage_cached
+                            metrics["usage_out"] = outcome.usage_out
+                            if outcome.model_failed or outcome.retryable:
+                                raise RuntimeError(
+                                    "extraction failed; keep pending input"
+                                )
+                    except Exception as exc:
+                        self.buffer.mark_failed(
+                            batch.rows,
+                            type(exc).__name__,
+                            max_attempts=max_attempts,
+                        )
+                        failure = failure or exc
+                        break
+                    self.buffer.mark_succeeded(batch.rows)
+                    written += outcome.written
+                    self.logger.info(
+                        f"[seekmemory] {reason} extract "
+                        f"{batch.session_id or 'unknown'}: "
+                        f"{len(batch.topics)} topics in {len(batch.rows)} turns, "
+                        f"{outcome.written} written"
+                    )
+                processed_topics = len(attempted_topics)
+                triage_metrics["batches"] = batch_count
+                triage_metrics["calls"] = calls
+                context = {"topics": processed_topics, "written": written}
+                context.update(triage_metrics)
+                self.journal.record(
+                    "extract",
+                    "info",
+                    f"tried {processed_topics} topics, wrote {written} memories",
+                    context=context,
+                    stage="batch.complete",
+                )
+                if failure is not None:
+                    raise failure
+                return written, processed_topics
+
             for session_id, topic_id, part, provider in ready:
                 topic_started = False
                 for chunk in chunk_turns(part):
@@ -359,6 +462,7 @@ class IngestService:
         owner_id: str | None = None,
         log: Callable[[str], None] = lambda _msg: None,
         strict: bool = False,
+        include_topic: bool = False,
         stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
             nullcontext()
         ),
@@ -388,14 +492,18 @@ class IngestService:
                         ChatRequest(
                             session_id=str(items[0].session_id or ""),
                             system_prompt=build_prompt([]),
-                            prompt=dialogue_of(context),
+                            prompt=dialogue_of(
+                                context, include_topic=include_topic
+                            ),
                         )
                     )
                     raw = getattr(response, "text", "") or ""
                 else:
                     response = await model.text_chat(
                         system_prompt=build_prompt([]),
-                        prompt=dialogue_of(context),
+                        prompt=dialogue_of(
+                            context, include_topic=include_topic
+                        ),
                     )
                     raw = getattr(response, "completion_text", "") or ""
             usage = self._response_usage(response)

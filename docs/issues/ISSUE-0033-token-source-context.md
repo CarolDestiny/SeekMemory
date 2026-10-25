@@ -122,11 +122,17 @@ strong personal-memory signal (explicit remember, privacy, or first-person ident
 preference/relationship/plan). Bare single-character family/pet terms do not score.
 
 Selected high-value topics proceed through the existing extraction path and budgets.
+Dream-only same-session batching packs already-chunked topic units into one call within
+the `dream_batch_tokens` budget (default 6000) plus a reserved prompt estimate. One batch
+is one real extraction call; a single topic chunk is never split further. Cross-session
+batching is out of scope because extraction/evidence validation assumes one session.
+Multi-topic batches add topic labels; single-topic batches retain the default rendering.
 Low-value topics remain pending unchanged; there is no skipped state and no Source
 deletion. Only `DreamCycle` passes `triage=True`; nightly/idle extraction keeps FIFO
 selection. Journal metadata is category/count only (`candidates`, `eligible`,
-`selected`, `skipped_low_value`), never topic text. The pipeline ranks pending topics
-once per flush and derives selection/counters from that same ranked list.
+`selected`, `skipped_low_value`, `batches`, `calls`), never topic text. The pipeline
+ranks pending topics once per flush and derives selection/counters from that same ranked
+list.
 
 Known tradeoff: selecting by user-memory value can narrow self-impression coverage
 because assistant-only or otherwise low-value interaction topics may not be selected.

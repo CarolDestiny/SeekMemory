@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .budget import estimate_messages
 from .contracts import DialogueTurn
 
 BACKLOG_QUIET_SECONDS = 30.0
@@ -12,6 +13,14 @@ MAX_TOPIC_TURNS = 120
 class FlushDecision:
     should: bool
     reason: str
+
+
+@dataclass(frozen=True)
+class ExtractionBatch:
+    session_id: str
+    rows: list[DialogueTurn]
+    topics: tuple[str, ...]
+    estimated_tokens: int
 
 
 def _is_pair(parent: DialogueTurn, reply: DialogueTurn) -> bool:
@@ -41,6 +50,59 @@ def chunk_turns(items: list[DialogueTurn], limit: int = MAX_TOPIC_TURNS) -> list
         chunks.append(items[index:end])
         index = end
     return chunks
+
+
+def pack_same_session_batches(
+    units: list[tuple[str, str, list[DialogueTurn]]],
+    *,
+    token_limit: int,
+    fixed_tokens: int = 0,
+) -> list[ExtractionBatch]:
+    """Pack already-chunked topic units into same-session pure batches.
+
+    Units are indivisible and input order is preserved. A unit may exceed the
+    token limit; it is then emitted as its own batch and never split again.
+    """
+    limit = max(1, int(token_limit))
+    batches: list[ExtractionBatch] = []
+    current_session = ""
+    current_rows: list[DialogueTurn] = []
+    current_topics: list[str] = []
+    current_text_tokens = 0
+    reserved = max(0, int(fixed_tokens))
+
+    def flush() -> None:
+        nonlocal current_rows, current_topics, current_text_tokens
+        if not current_rows:
+            return
+        batches.append(
+            ExtractionBatch(
+                current_session,
+                current_rows,
+                tuple(current_topics),
+                reserved + current_text_tokens,
+            )
+        )
+        current_rows = []
+        current_topics = []
+        current_text_tokens = 0
+
+    for session_id, topic_id, rows in units:
+        unit_tokens = estimate_messages([turn.text for turn in rows])
+        if current_rows and (
+            session_id != current_session
+            or reserved + current_text_tokens + unit_tokens > limit
+        ):
+            flush()
+        current_session = session_id
+        current_rows.extend(rows)
+        if topic_id not in current_topics:
+            current_topics.append(topic_id)
+        current_text_tokens += unit_tokens
+        if reserved + current_text_tokens > limit:
+            flush()
+    flush()
+    return batches
 
 
 def select_topic_batches(

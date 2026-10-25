@@ -123,6 +123,14 @@ unstarted pending rows recoverable. `DreamCycle` passes both remaining budgets a
 records budget/usage/stopped in the dream summary. `dream_token_budget` is a secondary
 guard with at most one-call slack. Maintenance still runs for committed work.
 
+Dream triage batches prepared topic chunks only within one session, using
+`dream_batch_tokens` (default 6000) plus a reserved prompt estimate. The same-session
+batching is a packing optimization: one batch is one real extraction call, a single
+topic chunk is never split further, and cross-session batching is intentionally out of
+scope because extraction evidence validation assumes one session. Multi-topic batches
+add topic labels to the dialogue rendering; single-topic batches keep the original
+prompt format.
+
 Dream extraction also runs deterministic, purely local importance triage before provider
 resolution and model calls. Topics are grouped by session/topic, scored from user turns
 only using distinct category labels, and selected high-to-low at or above a fixed
@@ -163,7 +171,7 @@ The extractor returns `subject_kind`, `subject_id`, `event_at` and validity date
   but their extraction state is parked as `deferred`, and `release_deferred()`
   promotes them back once the governor returns to `normal`. Failed extractions
   back off and end in the terminal `dead` state instead of retrying forever.
-- Extraction batches rotate one topic per session. The scheduler keeps its own
+- Non-Dream extraction batches rotate one topic per session. The scheduler keeps its own
   bounded `webui/trace.py` ring for capacity samples, separate from the
   business Journal event log.
 - Not implemented yet: local vector retrieval, general reflection signals and full RBAC.

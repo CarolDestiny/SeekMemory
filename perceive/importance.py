@@ -81,11 +81,9 @@ def score_topic(rows: Iterable[DialogueTurn]) -> tuple[float, tuple[str, ...]]:
     )
     if not user_text:
         return 0.0, ()
-    score = 0.0
     reasons: list[str] = []
-    for label, weight, pattern in _SIGNALS:
+    for label, _weight, pattern in _SIGNALS:
         if pattern.search(user_text):
-            score += weight
             reasons.append(label)
     return _refine(user_text, tuple(reasons))
 
@@ -149,16 +147,7 @@ def select_important_topics(
     """Return high-value topic batches in score/recency order."""
     return select_ranked_topics(rank_topics(items), cap, min_score)
 
-_WEIGHTS = {
-    "explicit_remember": 4.0,
-    "identity_profile": 3.0,
-    "preference_boundary": 3.0,
-    "relationship_family": 3.0,
-    "plan_commitment": 3.0,
-    "privacy_boundary": 4.0,
-    "significant_event": 2.0,
-    "strong_emotion": 1.0,
-}
+_WEIGHTS = {label: weight for label, weight, _pattern in _SIGNALS}
 _ASSISTANCE = re.compile(
     r"(?:\u5e2e\u6211|\u7ed9\u6211|\u7ffb\u8bd1|\u67e5\u4e00\u4e0b|\u5199\u4e2a|\u4ee3\u7801|\u51fd\u6570|\u62a5\u9519|\u600e\u4e48\u7528|\u600e\u4e48\u914d\u7f6e)"
 )

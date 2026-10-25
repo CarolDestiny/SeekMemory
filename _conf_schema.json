@@ -162,6 +162,11 @@
     "type": "int",
     "default": 12
   },
+  "dream_batch_tokens": {
+    "description": "Estimated token cap for packing same-session Dream topics into one extraction call; a single topic chunk is never split further.",
+    "type": "int",
+    "default": 6000
+  },
   "dream_token_budget": {
     "description": "Total dream extraction input+output token budget; 0 disables the hard stop.",
     "type": "int",

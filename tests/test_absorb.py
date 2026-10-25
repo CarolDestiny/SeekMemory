@@ -574,7 +574,7 @@ class ExtractionUsageTest(unittest.TestCase):
             cache=cache,
             graph=graph,
             journal=None,
-            config=lambda _key, default: default,
+            config=lambda key, default: (overrides or {}).get(key, default),
             provider_for=provider_for,
             owner_id=lambda: "10001",
             logger=Logger(),
@@ -636,9 +636,13 @@ class IngestCallBudgetTest(unittest.TestCase):
         class Provider:
             def __init__(self):
                 self.calls = 0
+                self.prompts = []
 
             async def text_chat(self, system_prompt="", prompt=""):
                 self.calls += 1
+                self.prompts.append(prompt)
+                if getattr(self, "fail", False):
+                    raise RuntimeError("provider down")
                 return SimpleNamespace(
                     completion_text=json.dumps([
                         {"level": "fact", "text": f"memory {self.calls}"}
@@ -667,7 +671,7 @@ class IngestCallBudgetTest(unittest.TestCase):
             cache=cache,
             graph=graph,
             journal=Journal(),
-            config=lambda _key, default: default,
+            config=lambda key, default: (overrides or {}).get(key, default),
             provider_for=provider_for,
             owner_id=lambda: "u1",
             logger=Logger(),
@@ -722,9 +726,13 @@ class IngestTokenBudgetTest(unittest.TestCase):
         class Provider:
             def __init__(self):
                 self.calls = 0
+                self.prompts = []
 
             async def text_chat(self, system_prompt="", prompt=""):
                 self.calls += 1
+                self.prompts.append(prompt)
+                if getattr(self, "fail", False):
+                    raise RuntimeError("provider down")
                 return SimpleNamespace(
                     completion_text=json.dumps([
                         {"level": "fact", "text": f"memory {self.calls}"}
@@ -753,7 +761,7 @@ class IngestTokenBudgetTest(unittest.TestCase):
             cache=cache,
             graph=graph,
             journal=Journal(),
-            config=lambda _key, default: default,
+            config=lambda key, default: (overrides or {}).get(key, default),
             provider_for=provider_for,
             owner_id=lambda: "u1",
             logger=Logger(),
@@ -769,7 +777,16 @@ class IngestTokenBudgetTest(unittest.TestCase):
 
 
 class IngestTriageTest(unittest.TestCase):
-    def _run(self, texts, triage=True):
+    def _run(
+        self,
+        texts,
+        triage=True,
+        *,
+        max_calls=0,
+        max_tokens=0,
+        overrides=None,
+        fail=False,
+    ):
         from contextlib import contextmanager
         from types import SimpleNamespace
 
@@ -811,9 +828,13 @@ class IngestTriageTest(unittest.TestCase):
         class Provider:
             def __init__(self):
                 self.calls = 0
+                self.prompts = []
 
             async def text_chat(self, system_prompt="", prompt=""):
                 self.calls += 1
+                self.prompts.append(prompt)
+                if getattr(self, "fail", False):
+                    raise RuntimeError("provider down")
                 return SimpleNamespace(
                     completion_text=json.dumps([
                         {"level": "fact", "text": f"memory {self.calls}"}
@@ -830,6 +851,7 @@ class IngestTriageTest(unittest.TestCase):
 
         journal = Journal()
         provider = Provider()
+        provider.fail = fail
 
         async def provider_for(_session):
             return provider
@@ -843,13 +865,19 @@ class IngestTriageTest(unittest.TestCase):
             cache=cache,
             graph=graph,
             journal=journal,
-            config=lambda _key, default: default,
+            config=lambda key, default: (overrides or {}).get(key, default),
             provider_for=provider_for,
             owner_id=lambda: "u1",
             logger=Logger(),
         )
         result = asyncio.run(
-            service.flush("test", triage=triage, batch_cap=10)
+            service.flush(
+                "test",
+                triage=triage,
+                batch_cap=10,
+                max_calls=max_calls,
+                max_tokens=max_tokens,
+            )
         )
         return result, buffer, provider, journal
 
@@ -868,6 +896,57 @@ class IngestTriageTest(unittest.TestCase):
         self.assertEqual(context["selected"], 1)
         self.assertEqual(context["skipped_low_value"], 2)
         self.assertNotIn("\u8bb0\u4f4f", str(context))
+
+    def test_same_session_high_value_topics_share_one_call(self):
+        result, buffer, provider, journal = self._run([
+            "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+            "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+        ])
+        self.assertEqual(result, (1, 2))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 0)
+        self.assertIn("topic=t0", provider.prompts[0])
+        self.assertIn("topic=t1", provider.prompts[0])
+        context = journal.events[-1][1]["context"]
+        self.assertEqual(context["topics"], 2)
+        self.assertEqual(context["batches"], 1)
+        self.assertEqual(context["calls"], 1)
+
+    def test_forced_batch_split_respects_max_calls_and_keeps_pending(self):
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            max_calls=1,
+            overrides={"dream_batch_tokens": 1},
+        )
+        self.assertEqual(result, (1, 1))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 1)
+
+    def test_batched_calls_still_respect_token_budget(self):
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            max_tokens=1,
+            overrides={"dream_batch_tokens": 1},
+        )
+        self.assertEqual(result, (1, 1))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 1)
+
+    def test_batch_failure_leaves_all_rows_pending(self):
+        with self.assertRaises(RuntimeError):
+            self._run(
+                [
+                    "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                    "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+                ],
+                fail=True,
+            )
 
     def test_low_value_only_triage_starts_no_model_call(self):
         result, buffer, provider, _journal = self._run([
@@ -908,3 +987,15 @@ class IngestTriageTest(unittest.TestCase):
         expected = select_topic_batches(items, 10)
         self.assertEqual([(s, t) for s, t, _ in got],
                          [(s, t) for s, t, _ in expected])
+
+
+class DialogueTopicLabelTest(unittest.TestCase):
+    def test_topic_labels_are_opt_in(self):
+        rows = [
+            DialogueTurn("s", "u1", "user", "alpha", "", "s1", "t1"),
+            DialogueTurn("s", "u1", "user", "beta", "", "s2", "t2"),
+        ]
+        self.assertNotIn("topic=", dialogue_of(rows))
+        labelled = dialogue_of(rows, include_topic=True)
+        self.assertIn("topic=t1", labelled)
+        self.assertIn("topic=t2", labelled)

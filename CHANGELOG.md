@@ -26,6 +26,8 @@
 - Added deterministic Dream-only importance triage before provider resolution. High-value topics
   are selected locally; low-value topics remain pending and unmarked. Normal nightly/idle FIFO
   selection is unchanged. The known tradeoff is narrower self-impression coverage.
+- Dream triage now packs same-session prepared topic chunks into one extraction call within
+  `dream_batch_tokens` (default 6000); cross-session batching remains out of scope.
 
 - Invariant hardening: scoped identity dedupe, source identity, failure recovery, oversized topics,
   privacy output, reinforcement truth, lineage/cache consistency, temporal validity, migration and continuity.
