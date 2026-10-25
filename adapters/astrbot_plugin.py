@@ -94,6 +94,13 @@ class AstrBotPlugin(AstrBotHooks):
             return
         self.ready = False
         self.services = None
+        self.store = None
+        self.cache = None
+        self.tree = None
+        self.graph = None
+        self.hybrid_retriever = None
+        self.buffer = None
+        self.checkpoint = None
         self.dream = None
         self.data_path = (
             Path(str(self._c("db_path", ""))).expanduser()
