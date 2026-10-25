@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.contracts import DialogueTurn  # noqa: E402
+from app.contracts import ChatResponse, DialogueTurn  # noqa: E402
 from core.artifact import content_of  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
@@ -19,6 +19,7 @@ from tests.absorb_support import absorb  # noqa: E402
 from perceive.absorb import dialogue_of, owner_of, worth_now  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import build_prompt, parse_response  # noqa: E402
+from services.ingest_service import IngestService  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store import open_store  # noqa: E402
 
@@ -534,6 +535,61 @@ class DialogueWindowTest(unittest.TestCase):
                                         graph, provider))
         self.assertTrue(result.retryable)
         self.assertEqual(provider.seen, "")
+
+
+class UsageModel:
+    def __init__(self, text: str, usage=(11, 2, 7)) -> None:
+        self.text = text
+        self.usage = usage
+
+    async def complete(self, _request):
+        return ChatResponse(
+            text=self.text,
+            usage_in=self.usage[0],
+            usage_cached=self.usage[1],
+            usage_out=self.usage[2],
+        )
+
+
+class ExtractionUsageTest(unittest.TestCase):
+    def test_usage_is_returned_and_cumulative_across_parse_failure(self):
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+
+        async def provider_for(_session):
+            return None
+
+        class Logger:
+            def info(self, *_args, **_kwargs):
+                pass
+
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        service = IngestService(
+            buffer=None,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            extraction=None,
+            cache=cache,
+            graph=graph,
+            journal=None,
+            config=lambda _key, default: default,
+            provider_for=provider_for,
+            owner_id=lambda: "10001",
+            logger=Logger(),
+        )
+        ok = asyncio.run(service.extract([_turn("hello")], UsageModel(GOOD)))
+        self.assertEqual((ok.usage_in, ok.usage_cached, ok.usage_out), (11, 2, 7))
+        bad = asyncio.run(
+            service.extract([_turn("hello")], UsageModel("not json", (3, 4, 5)))
+        )
+        self.assertTrue(bad.model_failed)
+        self.assertEqual((bad.usage_in, bad.usage_cached, bad.usage_out), (3, 4, 5))
+        self.assertEqual(
+            service.usage_snapshot(),
+            {"calls": 2, "in": 14, "cached": 6, "out": 12},
+        )
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Awaitable, Callable
 
 try:
+    from ..app.budget import extraction_budget_from_config
     from ..app.contracts import ChatRequest, WriteOutcome
     from ..app.flush_policy import chunk_turns, decide_flush, select_topic_batches
     from ..app.ports import ArtifactStore, ExtractionStore, SourceStore
@@ -21,6 +22,7 @@ try:
     from ..perceive.extract import build_prompt
     from ..perceive.model import ProviderChatModel
 except ImportError:
+    from app.budget import extraction_budget_from_config
     from app.contracts import ChatRequest, WriteOutcome
     from app.flush_policy import chunk_turns, decide_flush, select_topic_batches
     from app.ports import ArtifactStore, ExtractionStore, SourceStore
@@ -65,6 +67,56 @@ class IngestService:
         self.flushing = False
         self.flush_day = ""
         self.flush_count = 0
+        self.extraction_budget = extraction_budget_from_config(config)
+        self._usage_calls = 0
+        self._usage_in = 0
+        self._usage_cached = 0
+        self._usage_out = 0
+
+    def usage_snapshot(self) -> dict[str, int]:
+        """Return cumulative content-free extraction usage counters."""
+        return {
+            "calls": int(self._usage_calls),
+            "in": int(self._usage_in),
+            "cached": int(self._usage_cached),
+            "out": int(self._usage_out),
+        }
+
+    @staticmethod
+    def _response_usage(response: Any) -> tuple[int, int, int]:
+        def number(value: Any) -> int:
+            try:
+                return max(0, int(value or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return (
+                number(getattr(response, "usage_in", 0)),
+                number(getattr(response, "usage_cached", 0)),
+                number(getattr(response, "usage_out", 0)),
+            )
+        return (
+            number(getattr(usage, "input", 0)),
+            number(getattr(usage, "input_cached", 0)),
+            number(getattr(usage, "output", 0)),
+        )
+
+    def _record_usage(self, usage: tuple[int, int, int]) -> None:
+        self._usage_calls += 1
+        self._usage_in += max(0, int(usage[0]))
+        self._usage_cached += max(0, int(usage[1]))
+        self._usage_out += max(0, int(usage[2]))
+
+    @staticmethod
+    def _with_usage(outcome: WriteOutcome, usage: tuple[int, int, int]) -> WriteOutcome:
+        return replace(
+            outcome,
+            usage_in=max(0, int(usage[0])),
+            usage_cached=max(0, int(usage[1])),
+            usage_out=max(0, int(usage[2])),
+        )
 
     def should_flush(
         self,
@@ -169,7 +221,9 @@ class IngestService:
             self.flush_count += 1
             written = 0
             for session_id, topic_id, part, provider in ready:
-                for chunk in chunk_turns(part):
+                for chunk in chunk_turns(
+                    part, max_tokens=self.extraction_budget.extraction_chunk_tokens
+                ):
                     try:
                         with self.journal.span(
                             "extract",
@@ -187,6 +241,9 @@ class IngestService:
                             )
                             metrics["written"] = outcome.written
                             metrics["skipped"] = outcome.skipped
+                            metrics["usage_in"] = outcome.usage_in
+                            metrics["usage_cached"] = outcome.usage_cached
+                            metrics["usage_out"] = outcome.usage_out
                             if outcome.model_failed or outcome.retryable:
                                 raise RuntimeError(
                                     "extraction failed; keep pending input"
@@ -266,6 +323,8 @@ class IngestService:
                         prompt=dialogue_of(context),
                     )
                     raw = getattr(response, "completion_text", "") or ""
+            usage = self._response_usage(response)
+            self._record_usage(usage)
         except Exception as exc:
             if strict:
                 raise
@@ -278,14 +337,16 @@ class IngestService:
             items, context, raw, self.cache, owner, log, strict=strict, stage=stage
         )
         if plan.outcome is not None:
-            return plan.outcome
-        return self._persist_plan(plan, stage, log)
+            return self._with_usage(plan.outcome, usage)
+        return self._persist_plan(plan, stage, log, usage=usage)
 
     def _persist_plan(
         self,
         plan: ExtractionPlan,
         stage: Callable[[str], AbstractContextManager[object]],
         log: Callable[[str], None],
+        *,
+        usage: tuple[int, int, int] = (0, 0, 0),
     ) -> WriteOutcome:
         written_ids: list[str] = []
         skipped = plan.skipped
@@ -325,12 +386,15 @@ class IngestService:
             except Exception as exc:
                 errors.append(f"impression: {exc}")
                 log(f"impression revision failed: {type(exc).__name__}")
-        return WriteOutcome(
-            written=len(written_ids),
-            skipped=skipped,
-            ids=tuple(written_ids),
-            errors=tuple(errors),
-            retryable=retryable,
+        return self._with_usage(
+            WriteOutcome(
+                written=len(written_ids),
+                skipped=skipped,
+                ids=tuple(written_ids),
+                errors=tuple(errors),
+                retryable=retryable,
+            ),
+            usage,
         )
 
     def _supersede(self, new_art) -> int:

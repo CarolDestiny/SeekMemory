@@ -186,3 +186,141 @@ class OptionalBM25PipelineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceFallbackPipelineTest(unittest.TestCase):
+    def setUp(self):
+        import datetime
+        from core.artifact import Lineage, make
+
+        self.now = datetime.datetime.now().isoformat(timespec="seconds")
+        self.db = open_store(":memory:")
+        self.addCleanup(self.db.close)
+        self.cache = Cache(self.db.artifacts)
+        self.graph = Graph(self.db.artifacts)
+        self.session = "bot:FriendMessage:u1"
+        self.conf = {
+            "bm25_enabled": False,
+            "budget_chars": 600,
+            "source_context_enabled": True,
+            "source_context_hours": 12,
+            "source_context_max_sources": 80,
+            "source_context_tokens": 150,
+            "source_context_min_free_tokens": 0,
+        }
+        self.make = make
+        self.Lineage = Lineage
+
+    def add_source(self, source_id, text, *, session=None, speaker="u1"):
+        from core.source import Source
+
+        self.db.sources.append_sources([
+            Source(source_id, "turn-" + source_id, session or self.session,
+                   speaker, "user", text, self.now)
+        ])
+
+    def recall(self, query, **changes):
+        conf = {**self.conf, **changes}
+        return build_block(
+            self.cache, self.graph, self.db.artifacts, self.db.sources,
+            self.session, query, True, conf.get, self.session, "u1",
+            dry_run=True,
+        )
+
+    def test_recent_source_can_surface_derived_artifact_without_cache(self):
+        self.add_source("s1", "quantum trading notes")
+        art = self.make(
+            "memory", {"text": "derived quantum memory", "level": "fact"},
+            scope="shared", subject_id="u1",
+            lineage=self.Lineage(sources=("s1",)),
+        )
+        self.db.artifacts.commit(
+            art, expected_revision=0, op="create", source_ids=("s1",)
+        )
+        block, info = self.recall("quantum trading")
+        self.assertIn("derived quantum memory", block)
+        self.assertEqual(info["source_context"]["fallback"], "artifact")
+        self.assertIn(art.header.id, info["final_ids"])
+
+    def test_same_session_raw_source_is_bounded_and_used_only_as_fallback(self):
+        self.add_source("s1", "quantum trading " * 30)
+        block, info = self.recall(
+            "quantum trading",
+            source_context_tokens=12,
+            source_context_min_free_tokens=0,
+        )
+        self.assertIn("quantum", block)
+        self.assertEqual(info["source_context"]["fallback"], "source")
+        self.assertLessEqual(len(block), int(12 * 1.6))
+        self.assertGreater(info["source_context"]["raw_sources"], 0)
+
+    def test_cross_session_source_is_never_rendered_raw(self):
+        self.add_source("s1", "cross session quantum secret", session="other:session")
+        block, info = self.recall("quantum trading")
+        self.assertNotIn("cross session quantum secret", block)
+        self.assertGreaterEqual(info["source_context"]["candidates"], 1)
+
+    def test_protected_source_backing_artifact_is_not_rendered_raw(self):
+        self.add_source("s1", "protected quantum secret phrase")
+        art = self.make(
+            "secret", {"ref": "protected quantum secret", "shadow_text": "hidden"},
+            scope="shared", subject_id="u1",
+            lineage=self.Lineage(sources=("s1",)),
+        )
+        self.db.artifacts.commit(
+            art, expected_revision=0, op="create", source_ids=("s1",)
+        )
+        block, info = self.recall("protected quantum secret")
+        self.assertNotIn("protected quantum secret", block)
+        self.assertGreaterEqual(info["source_context"]["protected_sources"], 1)
+
+    def test_disabled_source_context_keeps_legacy_empty_info_shape(self):
+        self.add_source("s1", "nothing here")
+        conf = {"source_context_enabled": False}
+        block, info = build_block(
+            self.cache, self.graph, self.db.artifacts, self.db.sources,
+            self.session, "nothing here", True, conf.get, self.session, "u1",
+            dry_run=True,
+        )
+        self.assertEqual(block, "")
+        self.assertNotIn("source_context", info)
+        self.assertEqual(
+            set(info),
+            {"mode", "picked", "pinned", "chars", "picked_ids", "pinned_ids",
+             "disclosure", "fallback", "candidates", "gate"},
+        )
+
+
+class SourceFallbackPreviewTest(unittest.TestCase):
+    def test_recall_service_preview_uses_the_same_source_fallback(self):
+        from services.recall_service import RecallService
+
+        db = open_store(":memory:")
+        self.addCleanup(db.close)
+        cache = Cache(db.artifacts)
+        graph = Graph(db.artifacts)
+        now = __import__("datetime").datetime.now().isoformat(timespec="seconds")
+        db.sources.append_sources([
+            Source("s1", "turn-s1", "bot:FriendMessage:u1", "u1", "user",
+                   "preview quantum trading", now)
+        ])
+        config = {
+            "bm25_enabled": False,
+            "budget_chars": 600,
+            "source_context_enabled": True,
+            "source_context_min_free_tokens": 0,
+        }
+        service = RecallService(
+            cache=cache,
+            graph=graph,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            budget=SimpleNamespace(injection_chars=600),
+            config=config.get,
+            owner_umo=lambda: "bot:FriendMessage:u1",
+        )
+        result = service.preview("quantum trading", "bot:FriendMessage:u1", True, "u1")
+        self.assertIn("quantum", result["block"])
+        self.assertEqual(result["info"]["source_context"]["fallback"], "source")
+        self.assertIn("visible", result)
+        self.assertIn("excluded", result)

@@ -69,9 +69,19 @@ exposure = context_affinity * subject_fit * scope_prior * topic_fit * (1 - sensi
 Levels: full >= 0.55, paraphrase >= 0.18, hint >= 0.03, otherwise silence.
 Paraphrase uses a generic safe sentence, never raw content or extractor tags. Scope is a continuous prior, not a visibility gate. Cross-session text is only injected as a direct quote when context/subject affinity is high enough.
 
+When the normal Artifact block is empty, `RecallService` may run one bounded Source
+fallback. It reads a recent global Source window, ranks locally by character-bigram BM25
+plus recency/session/speaker signals, and uses Source ids only to discover active
+Artifacts through `ArtifactStore.by_source_ids()`. Derived Artifacts still pass the
+normal visibility and disclosure path. Raw Source text is rendered only for the exact
+current session, is clipped to the remaining injection budget, and is excluded when the
+Source backs an active secret, designated or shadow Artifact. Cross-session Source text
+is never copied raw. Clock/greeting/empty queries do not trigger the fallback.
+
 ## I/O targets
 
-- Recall: zero SQL reads after warmup; use cache indexes by family, level and subject.
+- Recall: zero SQL reads after warmup for the Artifact path; the bounded Source
+  fallback uses one Source query only when the Artifact block is empty.
 - One user turn: append user and assistant Source rows; extraction commits a batch.
 - Reinforcement: state_events in memory; checkpoint once per 30 minutes.
 - SQLite is the first store; repository ports allow a later PostgreSQL adapter.
@@ -93,6 +103,26 @@ BM25 使用标准库字符 bigram 倒排索引，不调用模型或网络。正�
 `bm25_enabled=true`，新配置 `bm25_weight=1.0`；select 函数默认权重 2.0 保留旧调用兼容。
 BM25 本身无 SQL，现有 graph/source/history 路径仍可能查询 SQLite。
 本次不包含本地向量实现，不新增 semantic 字段或依赖；后续边界记录在 ISSUE-0024。
+
+## Token budgets
+
+`app.budget.ContextBudget` owns the request-side injection budget, including the
+bounded Source-context window and token limits. Token limits are converted to character
+limits at the text boundary with `int(tokens * CHARS_PER_TOKEN)`, and the final assembled
+block is always kept within `budget_chars`. `app.budget.ExtractionBudget` owns the
+per-chunk extraction token cap and the optional Dream total token budget.
+Defaults are `source_context_enabled=true`, `source_context_hours=12`,
+`source_context_max_sources=80`, `source_context_tokens=150`,
+`source_context_min_free_tokens=60`, `extraction_chunk_tokens=2400`, and
+`dream_token_budget=60000`; both zero-valued extraction caps preserve their legacy
+rollback behavior.
+
+`app.flush_policy.chunk_turns()` treats adjacent user/assistant reply pairs as
+indivisible units, respects both the turn cap and estimated-token cap, retains oversized
+units as their own chunk, and never drops a turn. `IngestService` estimates every chunk,
+returns per-call usage on `WriteOutcome`, and keeps a content-free cumulative
+`usage_snapshot()`. `DreamCycle` records the baseline-relative usage and whether it
+stopped for `token_budget`; committed work still proceeds to maintenance.
 
 All production writes use `artifacts.commit()` with expected revision, version snapshots,
 evidence links and ledger entries. `ArtifactRepository.upsert()` is a seed/benchmark primitive,

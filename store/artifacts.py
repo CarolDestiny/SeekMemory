@@ -147,6 +147,25 @@ class ArtifactRepository(SqliteRepository):
         ).fetchone()
         return row_to_artifact(row)
 
+    def by_source_ids(self, source_ids: list[str]) -> list[Artifact]:
+        ids: list[str] = []
+        for value in source_ids:
+            text = str(value or "").strip()
+            if text and text not in ids:
+                ids.append(text)
+        if not ids:
+            return []
+        marks = ",".join("?" for _ in ids)
+        rows = self.conn.execute(
+            "SELECT DISTINCT n.*, b.content AS blob_content FROM nodes n "
+            "LEFT JOIN blobs b ON b.hash = n.blob "
+            "JOIN artifact_evidence ae ON ae.entity = n.id "
+            f"WHERE n.state = 'active' AND ae.source IN ({marks}) "
+            "ORDER BY n.created_at, n.id",
+            ids,
+        ).fetchall()
+        return [art for art in map(row_to_artifact, rows) if art is not None]
+
     def list(
         self, family: str | None = None, state: str | None = None
     ) -> list[Artifact]:

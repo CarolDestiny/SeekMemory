@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..app.budget import CHARS_PER_TOKEN, estimate_tokens
     from ..app.ports import ArtifactCache, ArtifactStore, Retriever, SourceStore
     from ..core.disclosure import (
         DisclosureLevel,
@@ -31,7 +33,9 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.scope import visible
     from ..recall.temporal import filter_valid, in_window, query_window
     from ..recall.score import select
+    from ..recall.source_context import rank_recent, render_same_session
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
+    from app.budget import CHARS_PER_TOKEN, estimate_tokens
     from app.ports import ArtifactCache, ArtifactStore, Retriever, SourceStore
     from core.disclosure import (
         DisclosureLevel,
@@ -54,8 +58,16 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from recall.scope import visible
     from recall.temporal import filter_valid, in_window, query_window
     from recall.score import select
+    from recall.source_context import rank_recent, render_same_session
 
 Conf = Callable[[str, Any], Any]
+
+
+def _conf_bool(conf: Conf, key: str, default: bool) -> bool:
+    value = conf(key, default)
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "0", "false", "no", "off")
+    return bool(value)
 
 
 def subject_of(speaker: str, owner_umo: str) -> str:
@@ -154,7 +166,8 @@ def build_block(
             art for art in pool
             if art.header.family != "memory" or in_window(art, window)
         ]
-    if not pool and not pinned_arts:
+    source_enabled = _conf_bool(conf, "source_context_enabled", True)
+    if not pool and not pinned_arts and not source_enabled:
         return "", {
             "mode": "none",
             "picked": 0,
@@ -290,6 +303,105 @@ def build_block(
         notes=notes,
         overrides=overrides,
     )
+    normal_picked = list(picked)
+    source_info: dict[str, Any] | None = None
+    if source_enabled:
+        source_info = {
+            "enabled": True,
+            "candidates": 0,
+            "artifacts": 0,
+            "picked": 0,
+            "raw_sources": 0,
+            "chars": 0,
+            "tokens": 0,
+            "protected_sources": 0,
+            "fallback": "",
+        }
+        if not block.strip():
+            try:
+                hours = max(1, int(conf("source_context_hours", 12)))
+                max_sources = max(1, int(conf("source_context_max_sources", 80)))
+                since = (
+                    datetime.datetime.now() - datetime.timedelta(hours=hours)
+                ).isoformat(timespec="seconds")
+                recent = sources.recent_sources(since=since, limit=max_sources)
+                ranked = rank_recent(
+                    text,
+                    recent,
+                    session_id=umo,
+                    speaker=speaker,
+                    limit=max_sources,
+                )
+                source_ids = [item.source.id for item in ranked]
+                source_info["candidates"] = len(ranked)
+                source_arts = artifacts.by_source_ids(source_ids)
+                protected_ids: set[str] = set()
+                for art in source_arts:
+                    if (
+                        str(art.header.family or "") in ("secret", "designated")
+                        or str(art.header.scope or "") in ("shadow", "secret")
+                        or str(art.header.shareable or "") == "secret"
+                    ):
+                        protected_ids.update(str(value) for value in art.header.lineage.sources)
+                source_info["protected_sources"] = len(protected_ids)
+                eligible = [
+                    art for art in visible(source_arts, umo, owner_umo, lookup)
+                    if deliverable(art, text, private)
+                ]
+                eligible = filter_valid(eligible)
+                if window is not None:
+                    eligible = [
+                        art for art in eligible
+                        if art.header.family != "memory" or in_window(art, window)
+                    ]
+                fallback_picked = apply_disclosure(eligible, 1.0)
+                fallback_block, fallback_final, fallback_dropped = assemble_text_meta(
+                    fallback_picked,
+                    budget=budget,
+                    text=text,
+                    is_private=private,
+                    notes=notes,
+                    overrides=overrides,
+                )
+                source_info["artifacts"] = len(source_arts)
+                source_info["picked"] = len(fallback_picked)
+                if fallback_block:
+                    block = fallback_block
+                    final_ids = fallback_final
+                    dropped_ids = fallback_dropped
+                    picked = fallback_picked
+                    source_info["fallback"] = "artifact"
+                    source_info["chars"] = len(fallback_block)
+                    source_info["tokens"] = estimate_tokens(len(fallback_block))
+                else:
+                    source_cap = int(
+                        max(0, int(conf("source_context_tokens", 150)))
+                        * CHARS_PER_TOKEN
+                    )
+                    min_free = int(
+                        max(0, int(conf("source_context_min_free_tokens", 60)))
+                        * CHARS_PER_TOKEN
+                    )
+                    free = max(0, budget - len(block))
+                    if source_cap > 0 and free >= min_free:
+                        raw, used = render_same_session(
+                            ranked,
+                            scene,
+                            budget_chars=min(free, source_cap),
+                            protected_source_ids=protected_ids,
+                        )
+                        if raw:
+                            block = raw
+                            final_ids = ()
+                            dropped_ids = ()
+                            picked = []
+                            source_info["fallback"] = "source"
+                            source_info["raw_sources"] = len(used)
+                            source_info["chars"] = len(raw)
+                            source_info["tokens"] = estimate_tokens(len(raw))
+            except Exception as exc:  # noqa: BLE001 - Source fallback is optional
+                log(f"source fallback failed: {type(exc).__name__}")
+                source_info["error"] = type(exc).__name__
     if not dry_run:
         mark_given(artifacts, cache, safe_designated + picked, block)
     info = {
@@ -297,7 +409,7 @@ def build_block(
         "picked": len(picked),
         "pinned": len(safe_pinned),
         "chars": len(block),
-        "drift": bool(picked) and not designated,
+        "drift": bool(normal_picked) and not designated,
         "picked_ids": tuple(a.header.id for a in picked),
         "final_ids": final_ids,
         "dropped_ids": dropped_ids,
@@ -307,4 +419,6 @@ def build_block(
         "candidates": len(candidates),
         "gate": gate_info,
     }
+    if source_info is not None:
+        info["source_context"] = source_info
     return block, info

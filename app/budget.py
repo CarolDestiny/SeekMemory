@@ -23,16 +23,44 @@ class ContextBudget:
     system_chars: int = 1600        # 人格提示词 + 系统说明
     group_context_messages: int = 20  # 群聊流水最多注入多少条
     history_messages: int = 24      # 会话历史保留条数
+    source_context_enabled: bool = True
+    source_context_hours: int = 12
+    source_context_max_sources: int = 80
+    source_context_tokens: int = 150
+    source_context_min_free_tokens: int = 60
 
     @property
     def estimate_tokens(self) -> int:
         """不含对话历史时的保守估计。"""
         return estimate_tokens(self.system_chars + self.injection_chars)
 
+    @property
+    def source_context_chars(self) -> int:
+        """Source 片段的字符上限；配置按 token 表达，边界处换算。"""
+        return max(0, int(self.source_context_tokens * CHARS_PER_TOKEN))
+
+    @property
+    def source_context_min_free_chars(self) -> int:
+        """启用 Source 片段所需的最小剩余字符数。"""
+        return max(0, int(self.source_context_min_free_tokens * CHARS_PER_TOKEN))
+
     def as_dict(self) -> dict:
         data = asdict(self)
         data["estimate_tokens"] = self.estimate_tokens
+        data["source_context_chars"] = self.source_context_chars
+        data["source_context_min_free_chars"] = self.source_context_min_free_chars
         return data
+
+
+@dataclass(frozen=True)
+class ExtractionBudget:
+    """后台抽取的 token 预算；0 表示回退旧的分块/不设总停点。"""
+
+    extraction_chunk_tokens: int = 2400
+    dream_token_budget: int = 60000
+
+    def as_dict(self) -> dict:
+        return asdict(self)
 
 
 def estimate_tokens(chars: int, messages: int = 0) -> int:
@@ -50,12 +78,21 @@ def budget_from_config(conf: Callable[[str, object], object]) -> ContextBudget:
     """从插件配置读取预算；缺省值就是默认策略。"""
     default = ContextBudget()
 
-    def _num(key: str, fallback: int) -> int:
+    def _num(key: str, fallback: int, minimum: int = 1) -> int:
+        raw = conf(key, fallback)
+        if raw is None or raw == "":
+            raw = fallback
         try:
-            value = int(conf(key, fallback) or fallback)  # type: ignore[arg-type]
+            value = int(raw)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return fallback
-        return max(1, value)
+        return max(minimum, value)
+
+    def _bool(key: str, fallback: bool) -> bool:
+        value = conf(key, fallback)
+        if isinstance(value, str):
+            return value.strip().lower() not in ("", "0", "false", "no", "off")
+        return bool(value)
 
     return ContextBudget(
         injection_chars=_num("budget_chars", default.injection_chars),
@@ -64,6 +101,49 @@ def budget_from_config(conf: Callable[[str, object], object]) -> ContextBudget:
             "group_context_messages", default.group_context_messages
         ),
         history_messages=_num("history_messages", default.history_messages),
+        source_context_enabled=_bool(
+            "source_context_enabled", default.source_context_enabled
+        ),
+        source_context_hours=_num(
+            "source_context_hours", default.source_context_hours
+        ),
+        source_context_max_sources=_num(
+            "source_context_max_sources", default.source_context_max_sources
+        ),
+        source_context_tokens=_num(
+            "source_context_tokens", default.source_context_tokens, minimum=0
+        ),
+        source_context_min_free_tokens=_num(
+            "source_context_min_free_tokens",
+            default.source_context_min_free_tokens,
+            minimum=0,
+        ),
+    )
+
+
+def extraction_budget_from_config(
+    conf: Callable[[str, object], object],
+) -> ExtractionBudget:
+    """读取后台抽取预算；显式 0 保留旧行为/关闭硬停点。"""
+    default = ExtractionBudget()
+
+    def _num(key: str, fallback: int) -> int:
+        raw = conf(key, fallback)
+        if raw is None or raw == "":
+            raw = fallback
+        try:
+            value = int(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return fallback
+        return max(0, value)
+
+    return ExtractionBudget(
+        extraction_chunk_tokens=_num(
+            "extraction_chunk_tokens", default.extraction_chunk_tokens
+        ),
+        dream_token_budget=_num(
+            "dream_token_budget", default.dream_token_budget
+        ),
     )
 
 

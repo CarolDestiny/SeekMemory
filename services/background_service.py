@@ -110,6 +110,7 @@ class BackgroundService:
             flush_once=self.flush,
             pending=lambda: len(self.buffer.items),
             maintain=self.dream_maintain,
+            usage=getattr(self.ingest, "usage_snapshot", None),
         )
         self.journal.record(
             "dream",
@@ -122,6 +123,8 @@ class BackgroundService:
                 "batches": result.batches,
                 "written": result.written,
                 "errors": list(result.errors),
+                "budget": result.summary.get("budget"),
+                "usage": result.summary.get("usage"),
             },
         )
 

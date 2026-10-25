@@ -18,7 +18,30 @@ FlushFn = Callable[[str], Awaitable[tuple[int, int]]]
 PendingFn = Callable[[], int]
 MaintainFn = Callable[[], Awaitable[dict[str, Any]]]
 Clock = Callable[[], datetime.datetime]
+UsageFn = Callable[[], dict[str, Any]]
 Log = Callable[[str], None]
+
+
+def _usage_values(snapshot: dict[str, Any] | None) -> tuple[int, int, int, int]:
+    data = snapshot if isinstance(snapshot, dict) else {}
+    def number(key: str) -> int:
+        try:
+            return max(0, int(data.get(key, 0) or 0))
+        except (TypeError, ValueError):
+            return 0
+    return number("calls"), number("in"), number("cached"), number("out")
+
+
+def _usage_delta(
+    baseline: tuple[int, int, int, int],
+    current: tuple[int, int, int, int],
+) -> dict[str, int]:
+    return {
+        "calls": max(0, current[0] - baseline[0]),
+        "in": max(0, current[1] - baseline[1]),
+        "cached": max(0, current[2] - baseline[2]),
+        "out": max(0, current[3] - baseline[3]),
+    }
 
 
 @dataclass(frozen=True)
@@ -79,7 +102,8 @@ class DreamCycle:
 
     async def run(self, flush_once: FlushFn, pending: PendingFn,
                   maintain: MaintainFn | None = None,
-                  now: datetime.datetime | None = None) -> DreamResult:
+                  now: datetime.datetime | None = None,
+                  usage: UsageFn | None = None) -> DreamResult:
         """跑一次梦境；幂等、可续跑、失败不丢待处理行。"""
         moment = now or self.clock()
         date = moment.date().isoformat()
@@ -91,9 +115,23 @@ class DreamCycle:
             return DreamResult(date, "skipped", "already_done")
 
         limit = max(1, int(self._c("dream_max_batches", 12)))
+        budget_tokens = max(0, int(self._c("dream_token_budget", 60000)))
+        baseline = _usage_values(usage() if usage is not None else None)
+        current_usage = baseline
+        stopped = ""
         batches = written = 0
         errors: list[str] = []
         while batches < limit:
+            if usage is not None and budget_tokens > 0:
+                try:
+                    current_usage = _usage_values(usage())
+                except Exception:
+                    current_usage = baseline
+                used_tokens = max(0, current_usage[1] + current_usage[3]
+                                  - baseline[1] - baseline[3])
+                if used_tokens >= budget_tokens:
+                    stopped = "token_budget"
+                    break
             try:
                 left = int(pending())
             except Exception as exc:  # noqa: BLE001 - 读不到就当作没有
@@ -117,6 +155,20 @@ class DreamCycle:
                 summary = dict(await maintain() or {})
             except Exception as exc:  # noqa: BLE001 - 整理失败不影响已抽取的记忆
                 errors.append(f"maintain: {type(exc).__name__}: {exc}")
+
+        if usage is not None:
+            try:
+                current_usage = _usage_values(usage())
+            except Exception:
+                current_usage = baseline
+        usage_delta = _usage_delta(baseline, current_usage)
+        used_tokens = usage_delta["in"] + usage_delta["out"]
+        summary["budget"] = {
+            "tokens": budget_tokens,
+            "used": used_tokens,
+            "stopped": stopped,
+        }
+        summary["usage"] = usage_delta
 
         status = "done" if not errors else "failed"
         try:

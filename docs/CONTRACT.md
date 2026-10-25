@@ -383,10 +383,12 @@ class ArtifactRepository:
     def commit(self, art: Artifact, *, expected_revision: int, op: str,
                reason: str = "", source_ids: tuple[str, ...] = (),
                state_events: tuple[StateEvent, ...] = ()) -> None: ...
+    def by_source_ids(self, source_ids: list[str]) -> list[Artifact]: ...
     def history(self, node_id: str) -> list[dict]: ...
 
 class SourceRepository:
     def append_sources(self, sources: list[Source]) -> int: ...
+    def recent_sources(self, *, since: str, limit: int) -> list[Source]: ...
     def source_umos(self, source_ids: list[str]) -> dict[str, str]: ...
 ```
 
@@ -416,6 +418,7 @@ class RecallScene:
 
 def decide(art: Artifact, scene: RecallScene, relevance: float,
            origin_sessions: Iterable[str] = ()) -> DisclosureDecision: ...
+def decide_source(source: Source, scene: RecallScene) -> DisclosureDecision: ...
 def safe_text(art: Artifact, level: DisclosureLevel) -> str: ...
 ```
 
@@ -521,6 +524,49 @@ overrides. Source deletion is never a capacity action.
 When an impression is reinforced or reworded, `lineage.sources` is the union of the old and incoming evidence.
 `lineage.derived_from` records the incoming abstraction; it never records the artifact's own id.
 A cache removal follows a successful retirement commit; a failed commit leaves the active cache entry intact.
+
+## Source-backed recall fallback
+
+`RecallService.build()` still composes one recall path. The normal Artifact path runs
+first. Only when its assembled block is empty may it call
+`SourceStore.recent_sources(since=..., limit=...)`, rank the returned immutable Sources
+with local character-bigram BM25 plus recency/session/speaker signals, and resolve
+active derived Artifacts through `ArtifactStore.by_source_ids()`. Those Artifacts pass
+the existing visibility, deliverability and disclosure gates before assembly.
+
+Raw Source text is rendered only for the current session, never for another session.
+A same-session Source that backs an active secret, designated or shadow Artifact is
+excluded from raw rendering. Normalized text equal to the current query is excluded.
+Raw Source context uses only the remaining injection chars, capped by
+`source_context_tokens` converted through `int(tokens * CHARS_PER_TOKEN)`; the final
+block never exceeds `budget_chars`. Clock, greeting and empty queries do not trigger the
+fallback. `source_context_enabled=false` preserves the prior behavior and info shape.
+
+The fallback never writes Source, delivery state or reinforcement; only assembled
+Artifact ids can be marked delivered as before. `info["source_context"]` contains
+content-free enabled/candidate/artifact/raw/char/token/protected counters.
+
+## Extraction token budget and usage
+
+`ExtractionBudget` supplies `extraction_chunk_tokens` and `dream_token_budget`.
+`chunk_turns(items, limit=..., max_tokens=...)` keeps adjacent user/assistant replies in
+one unit, respects both caps when possible, retains an oversized unit as one chunk, and
+never drops a turn. `IngestService` estimates each chunk, records exact
+`usage_in`/`usage_cached`/`usage_out` from each `ChatResponse` on `WriteOutcome`, and
+exposes a content-free cumulative `usage_snapshot()`.
+
+`DreamCycle.run(..., usage=...)` captures a baseline before the first flush and stops
+before the next batch after cumulative input+output reaches `dream_token_budget`.
+Maintenance still runs for committed work. The dream summary receives:
+
+```json
+{
+  "budget": {"tokens": 60000, "used": 53120, "stopped": "token_budget"},
+  "usage": {"calls": 12, "in": 42100, "cached": 2000, "out": 11020}
+}
+```
+
+A budget of 0 disables only the hard stop; usage is still recorded.
 
 ## Temporal validity and query windows
 

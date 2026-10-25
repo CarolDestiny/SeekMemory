@@ -36,6 +36,31 @@
     "type": "int",
     "default": 600
   },
+  "source_context_enabled": {
+    "description": "Enable bounded recent Source fallback when Artifact recall is empty.",
+    "type": "bool",
+    "default": true
+  },
+  "source_context_hours": {
+    "description": "Recent Source lookback window in hours.",
+    "type": "int",
+    "default": 12
+  },
+  "source_context_max_sources": {
+    "description": "Maximum recent Sources considered by the recall fallback.",
+    "type": "int",
+    "default": 80
+  },
+  "source_context_tokens": {
+    "description": "Maximum estimated token budget for raw same-session Source context.",
+    "type": "int",
+    "default": 150
+  },
+  "source_context_min_free_tokens": {
+    "description": "Minimum remaining injection tokens required before Source context is used.",
+    "type": "int",
+    "default": 60
+  },
   "recall_k": {
     "description": "每轮最多注入几条记忆",
     "type": "int",
@@ -141,6 +166,16 @@
     "description": "一次梦境最多处理多少个话题批次",
     "type": "int",
     "default": 12
+  },
+  "extraction_chunk_tokens": {
+    "description": "Estimated token cap per extraction chunk; 0 keeps the legacy turn-only cap.",
+    "type": "int",
+    "default": 2400
+  },
+  "dream_token_budget": {
+    "description": "Total dream extraction input+output token budget; 0 disables the hard stop.",
+    "type": "int",
+    "default": 60000
   },
   "context_system_chars": {
     "description": "系统提示词预算（字）",

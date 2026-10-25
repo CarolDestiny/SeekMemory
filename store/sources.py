@@ -63,6 +63,34 @@ class SourceRepository(SqliteRepository):
                 written += write_source_conn(self.conn, source)
         return written
 
+    @staticmethod
+    def _source_from_row(row: sqlite3.Row) -> Source:
+        flags = load_json_object(row["flags"])
+        metadata = flags.get("metadata")
+        return Source(
+            str(row["id"]),
+            str(flags.get("turn_id") or ""),
+            str(row["umo"]),
+            str(flags.get("speaker_id") or ""),
+            str(row["role"]),
+            str(row["text"] or ""),
+            str(row["at"] or ""),
+            str(flags.get("reply_to") or "") or None,
+            metadata if isinstance(metadata, dict) else {},
+        )
+
+    def recent_sources(self, *, since: str, limit: int) -> list[Source]:
+        """Return globally ordered recent Sources, bounded by time and count."""
+        if int(limit) <= 0:
+            return []
+        rows = self.conn.execute(
+            "SELECT s.id, s.umo, s.at, s.role, s.flags, b.content AS text "
+            "FROM sources s JOIN blobs b ON b.hash = s.blob "
+            "WHERE s.at >= ? ORDER BY s.at DESC, s.id DESC LIMIT ?",
+            (str(since or ""), int(limit)),
+        ).fetchall()
+        return [self._source_from_row(row) for row in rows]
+
     def source_umo(self, source_id: str) -> str:
         row = self.conn.execute(
             "SELECT umo FROM sources WHERE id = ?", (source_id,)
@@ -94,22 +122,10 @@ class SourceRepository(SqliteRepository):
             f"WHERE s.id IN ({marks})",
             ids,
         ).fetchall()
-        out: dict[str, Source] = {}
-        for row in rows:
-            flags = load_json_object(row["flags"])
-            metadata = flags.get("metadata")
-            out[str(row["id"])] = Source(
-                str(row["id"]),
-                str(flags.get("turn_id") or ""),
-                str(row["umo"]),
-                str(flags.get("speaker_id") or ""),
-                str(row["role"]),
-                str(row["text"] or ""),
-                str(row["at"] or ""),
-                str(flags.get("reply_to") or "") or None,
-                metadata if isinstance(metadata, dict) else {},
-            )
-        return out
+        return {
+            str(row["id"]): self._source_from_row(row)
+            for row in rows
+        }
 
     def latest_user_source(self, session_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
