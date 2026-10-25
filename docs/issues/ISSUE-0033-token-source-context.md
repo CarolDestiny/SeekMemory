@@ -36,7 +36,7 @@ Artifact visibility/disclosure path decides what reaches the model.
 - No raw Source injection, HINT rendering or Source privacy matrix.
 - No vector database, embedding service, network call or chat-path model call.
 - No token-based extraction chunking; keep original `MAX_TOPIC_TURNS` behavior.
-- No favorability, proactive speech, ImportService, persona UI or Dream triage.
+- No favorability, proactive speech, ImportService, persona UI or additional Dream quality ranking beyond deterministic importance triage.
 - No change to Artifact fields, CAS/version/evidence/ledger semantics or Source truth.
 - No automatic schema migration beyond additive read indexes.
 
@@ -104,7 +104,26 @@ unchanged.
 `usage_snapshot()`, including parse/evidence/partial-commit outcomes reached after a
 successful model call.
 
-### 4. Repository ports
+### 4. Dream importance triage
+
+Before any Dream provider resolution or model call, `IngestService.split_topics(...,
+triage=True)` uses pure `perceive/importance.py` to score pending topics from user
+turns only. Categories are distinct and reason labels are content-free: explicit
+remember/reminder 4, identity/profile 3, preference/boundary 3, relationship/family 3,
+plan/commitment 3, privacy/boundary 4, significant event 2, strong emotion 1, and
+self-recall question 2. The default threshold is 2.0. Ties order by latest timestamp
+then topic id. Assistant-only topics, greetings, acks and generic commands score low.
+
+Selected high-value topics proceed through the existing extraction path and budgets.
+Low-value topics remain pending unchanged; there is no skipped state and no Source
+deletion. Only `DreamCycle` passes `triage=True`; nightly/idle extraction keeps FIFO
+selection. Journal metadata is category/count only (`candidates`, `eligible`,
+`selected`, `skipped_low_value`), never topic text.
+
+Known tradeoff: selecting by user-memory value can narrow self-impression coverage
+because assistant-only or otherwise low-value interaction topics may not be selected.
+
+### 5. Repository ports
 
 ```python
 class SourceStore(Protocol):
@@ -121,23 +140,27 @@ class ArtifactStore(Protocol):
 
 ## Acceptance criteria
 
-- [ ] Memory sufficient -> no Source query.
-- [ ] Weak memory -> at most one Source query and one `by_source_ids` batch.
-- [ ] Source-derived Artifacts fill only remaining recall capacity and pass existing
+- [x] Memory sufficient -> no Source query.
+- [x] Weak memory -> at most one Source query and one `by_source_ids` batch.
+- [x] Source-derived Artifacts fill only remaining recall capacity and pass existing
       visibility/disclosure.
-- [ ] Source text never appears in block, info, logs or assembly.
-- [ ] Cross-session Source query can discover an existing Artifact.
-- [ ] Pinned persona/impression does not gate Source evidence lookup.
-- [ ] `source_recall_enabled=false` preserves legacy empty-recall info shape.
-- [ ] `by_source_ids` remains revision-scoped.
-- [ ] `chunk_turns` original turn-only behavior remains.
-- [ ] Exact usage accounting survives parse failure/partial success.
-- [ ] `dream_max_calls` stops before exceeding the limit and leaves pending rows.
-- [ ] Dream summary records budget/usage/stopped; maintenance unchanged.
-- [ ] Architecture guards reject store imports in engines/services, duplicate recall
+- [x] Source text never appears in block, info, logs or assembly.
+- [x] Cross-session Source query can discover an existing Artifact.
+- [x] Pinned persona/impression does not gate Source evidence lookup.
+- [x] `source_recall_enabled=false` preserves legacy empty-recall info shape.
+- [x] `by_source_ids` remains revision-scoped.
+- [x] `chunk_turns` original turn-only behavior remains.
+- [x] Exact usage accounting survives parse failure/partial success.
+- [x] `dream_max_calls` stops before exceeding the limit and leaves pending rows.
+- [x] Dream summary records budget/usage/stopped; maintenance unchanged.
+- [x] Architecture guards reject store imports in engines/services, duplicate recall
       paths and extraction writers.
-- [ ] Focused, full, architecture/package and `scripts/run_tests.py --layer all`
+- [x] Focused, full, architecture/package and `scripts/run_tests.py --layer all`
       compatible tests pass.
+- [x] Dream triage is local/deterministic and runs before provider resolution.
+- [x] Low-value topics remain pending and unmarked.
+- [x] Non-Dream FIFO selection is unchanged.
+- [x] Triage journal metadata is category/count only.
 
 ## Tests
 
@@ -147,6 +170,9 @@ class ArtifactStore(Protocol):
 - `tests/test_absorb.py`: exact usage and IngestService call-budget pending retention.
 - `tests/test_dream.py`: call-budget stop, token secondary guard, summary metadata.
 - `tests/test_architecture_boundaries.py`, `tests/test_public_interfaces.py`.
+- `tests/test_importance.py`: scoring categories, category dedupe, recency/cap ordering.
+- Dream triage: high-value selected, low-value pending without model calls, non-Dream
+  FIFO preserved, budgets still enforced.
 
 ## Risks and rollback
 

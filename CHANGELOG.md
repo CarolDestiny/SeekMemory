@@ -23,6 +23,9 @@
 - Added exact extraction `WriteOutcome`/`usage_snapshot()` accounting and `dream_max_calls` as the
   primary Dream call budget. `dream_token_budget` remains an optional secondary guard; turn-only
   extraction chunking and committed-work maintenance are preserved.
+- Added deterministic Dream-only importance triage before provider resolution. High-value topics
+  are selected locally; low-value topics remain pending and unmarked. Normal nightly/idle FIFO
+  selection is unchanged. The known tradeoff is narrower self-impression coverage.
 
 - Invariant hardening: scoped identity dedupe, source identity, failure recovery, oversized topics,
   privacy output, reinforcement truth, lineage/cache consistency, temporal validity, migration and continuity.

@@ -160,6 +160,7 @@ class DreamCycle:
                     "梦境",
                     max_calls=remaining_calls,
                     max_tokens=remaining_tokens,
+                    triage=True,
                 )
             except Exception as exc:  # noqa: BLE001 - 保留待处理行，下次续跑
                 errors.append(f"flush: {type(exc).__name__}: {exc}")

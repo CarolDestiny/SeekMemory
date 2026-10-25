@@ -19,6 +19,7 @@ try:
     from ..maintain.link import link_new
     from ..perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
     from ..perceive.extract import build_prompt
+    from ..perceive.importance import MIN_IMPORTANCE_SCORE, rank_topics, select_important_topics
     from ..perceive.model import ProviderChatModel
 except ImportError:
     from app.contracts import ChatRequest, WriteOutcome
@@ -30,6 +31,7 @@ except ImportError:
     from maintain.link import link_new
     from perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
     from perceive.extract import build_prompt
+    from perceive.importance import MIN_IMPORTANCE_SCORE, rank_topics, select_important_topics
     from perceive.model import ProviderChatModel
 
 
@@ -149,11 +151,13 @@ class IngestService:
             and "schedule_extraction" in set(capacity_actions)
         )
 
-    def split_topics(self, items, cap: int | None = None):
-        return select_topic_batches(
-            items,
-            int(cap or self.config("max_sessions_per_flush", 6)),
-        )
+    def split_topics(
+        self, items, cap: int | None = None, triage: bool = False
+    ):
+        limit = int(cap or self.config("max_sessions_per_flush", 6))
+        if triage:
+            return select_important_topics(items, limit)
+        return select_topic_batches(items, limit)
 
     async def flush(
         self,
@@ -164,6 +168,7 @@ class IngestService:
         max_attempts: int = 5,
         max_calls: int = 0,
         max_tokens: int = 0,
+        triage: bool = False,
     ) -> tuple[int, int]:
         """Extract ready topics while preserving pending rows on failure."""
         if (
@@ -175,10 +180,25 @@ class IngestService:
             return 0, 0
         self.flushing = True
         try:
+            pending = list(self.buffer.items)
             topics = self.split_topics(
-                list(self.buffer.items),
+                pending,
                 cap=limit or batch_cap,
+                triage=triage,
             )
+            triage_metrics: dict[str, int] = {}
+            if triage:
+                ranked = rank_topics(pending)
+                eligible = sum(
+                    1 for item in ranked
+                    if item.score >= MIN_IMPORTANCE_SCORE
+                )
+                triage_metrics = {
+                    "candidates": len(ranked),
+                    "eligible": eligible,
+                    "selected": len(topics),
+                    "skipped_low_value": len(ranked) - eligible,
+                }
             ready_ids = self.extraction.ready_extraction_ids()
             ready = []
             failure: Exception | None = None
@@ -216,6 +236,14 @@ class IngestService:
             if not ready:
                 if failure is not None:
                     raise failure
+                if triage_metrics:
+                    self.journal.record(
+                        "extract",
+                        "info",
+                        "triage selected no extractable topics",
+                        context=triage_metrics,
+                        stage="triage",
+                    )
                 return 0, 0
             self.flush_count += 1
             usage_base = self.usage_snapshot()
@@ -289,11 +317,13 @@ class IngestService:
                     processed_topics += 1
                 if stopped_for_budget:
                     break
+            context = {"topics": processed_topics, "written": written}
+            context.update(triage_metrics)
             self.journal.record(
                 "extract",
                 "info",
                 f"tried {processed_topics} topics, wrote {written} memories",
-                context={"topics": processed_topics, "written": written},
+                context=context,
                 stage="batch.complete",
             )
             if failure is not None:

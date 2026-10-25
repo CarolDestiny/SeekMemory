@@ -80,6 +80,7 @@ class BackgroundService:
         limit: int = 0,
         max_calls: int = 0,
         max_tokens: int = 0,
+        triage: bool = False,
     ) -> tuple[int, int]:
         decision = self.capacity.observe()
         return await self.ingest.flush(
@@ -89,6 +90,7 @@ class BackgroundService:
             max_attempts=self.capacity.thresholds.extraction_max_attempts,
             max_calls=max_calls,
             max_tokens=max_tokens,
+            triage=triage,
         )
 
     def should_flush(self) -> bool:

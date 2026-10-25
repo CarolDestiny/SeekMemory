@@ -123,6 +123,13 @@ unstarted pending rows recoverable. `DreamCycle` passes both remaining budgets a
 records budget/usage/stopped in the dream summary. `dream_token_budget` is a secondary
 guard with at most one-call slack. Maintenance still runs for committed work.
 
+Dream extraction also runs deterministic, purely local importance triage before provider
+resolution and model calls. Topics are grouped by session/topic, scored from user turns
+only using distinct category labels, and selected high-to-low at or above a fixed
+threshold. Low-value topics remain pending and unmarked. Only Dream uses triage; normal
+nightly/idle extraction keeps FIFO topic selection. The known tradeoff is narrower
+self-impression coverage because selection is driven by user-memory value.
+
 All production writes use `artifacts.commit()` with expected revision, version snapshots,
 evidence links and ledger entries. `ArtifactRepository.upsert()` is a seed/benchmark primitive,
 not a production write path.

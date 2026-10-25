@@ -766,3 +766,132 @@ class IngestTokenBudgetTest(unittest.TestCase):
         self.assertEqual(provider.calls, 1)
         self.assertEqual(len(buffer.items), 1)
         self.assertEqual(len(buffer.failed), 0)
+
+
+class IngestTriageTest(unittest.TestCase):
+    def _run(self, texts, triage=True):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+
+        class Journal:
+            def __init__(self):
+                self.events = []
+
+            @contextmanager
+            def span(self, *_args, **_kwargs):
+                yield {}
+
+            def record(self, *args, **kwargs):
+                self.events.append((args, kwargs))
+
+        class Buffer:
+            def __init__(self, values):
+                self.items = [
+                    DialogueTurn("s", "u1", "user", text, "2026-10-25T10:00:00",
+                                 f"s{index}", f"t{index}")
+                    for index, text in enumerate(values)
+                ]
+                self.succeeded = []
+                self.failed = []
+
+            def mark_succeeded(self, chunk):
+                self.succeeded.extend(chunk)
+                self.items = [item for item in self.items if item not in chunk]
+
+            def mark_failed(self, chunk, *_args, **_kwargs):
+                self.failed.extend(chunk)
+
+        class Extraction:
+            def ready_extraction_ids(self):
+                return {f"s{index}" for index in range(len(texts))}
+
+        class Provider:
+            def __init__(self):
+                self.calls = 0
+
+            async def text_chat(self, system_prompt="", prompt=""):
+                self.calls += 1
+                return SimpleNamespace(
+                    completion_text=json.dumps([
+                        {"level": "fact", "text": f"memory {self.calls}"}
+                    ]),
+                    usage=SimpleNamespace(input=10, input_cached=0, output=5),
+                )
+
+        class Logger:
+            def info(self, *_args, **_kwargs):
+                pass
+
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        journal = Journal()
+        provider = Provider()
+
+        async def provider_for(_session):
+            return provider
+
+        buffer = Buffer(texts)
+        service = IngestService(
+            buffer=buffer,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            extraction=Extraction(),
+            cache=cache,
+            graph=graph,
+            journal=journal,
+            config=lambda _key, default: default,
+            provider_for=provider_for,
+            owner_id=lambda: "u1",
+            logger=Logger(),
+        )
+        result = asyncio.run(
+            service.flush("test", triage=triage, batch_cap=10)
+        )
+        return result, buffer, provider, journal
+
+    def test_triage_selects_high_value_and_leaves_low_value_pending(self):
+        result, buffer, provider, journal = self._run([
+            "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+            "\u65e9\u5b89",
+            "\u597d\u7684",
+        ])
+        self.assertEqual(result[0], 1)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 2)
+        context = journal.events[-1][1]["context"]
+        self.assertEqual(context["candidates"], 3)
+        self.assertEqual(context["eligible"], 1)
+        self.assertEqual(context["selected"], 1)
+        self.assertEqual(context["skipped_low_value"], 2)
+        self.assertNotIn("\u8bb0\u4f4f", str(context))
+
+    def test_low_value_only_triage_starts_no_model_call(self):
+        result, buffer, provider, _journal = self._run([
+            "\u65e9\u5b89",
+            "\u597d\u7684",
+        ])
+        self.assertEqual(result, (0, 0))
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(len(buffer.items), 2)
+
+    def test_non_dream_split_keeps_fifo_selection(self):
+        from app.flush_policy import select_topic_batches
+
+        db, _cache, _graph = make_db()
+        self.addCleanup(db.close)
+        items = [
+            DialogueTurn("s", "u1", "user", "\u65e9\u5b89", "2026-10-25T10:00:00",
+                         "s0", "t0"),
+            DialogueTurn("s", "u1", "user", "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                         "2026-10-25T10:01:00", "s1", "t1"),
+        ]
+        class _Service:
+            config = staticmethod(lambda _key, default: default)
+        got = IngestService.split_topics(_Service(), items, cap=10, triage=False)
+        expected = select_topic_batches(items, 10)
+        self.assertEqual([(s, t) for s, t, _ in got],
+                         [(s, t) for s, t, _ in expected])

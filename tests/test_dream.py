@@ -73,7 +73,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_runs_once_and_is_idempotent(self):
         store, calls, left = FakeStore(), [], {"pending": 1}
 
-        async def flush(_reason, *, max_calls=0, max_tokens=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             calls.append(1)
             left["pending"] = 0
             return 2, 1
@@ -90,7 +90,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_failure_keeps_pending_for_resume(self):
         store = FakeStore()
 
-        async def boom(_reason, *, max_calls=0, max_tokens=0):
+        async def boom(_reason, *, max_calls=0, max_tokens=0, triage=False):
             raise RuntimeError("model down")
 
         dream = DreamCycle(store, conf())
@@ -100,7 +100,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
         # 失败后当天仍可续跑
         self.assertTrue(dream.due(AT))
 
-        async def ok(_reason, *, max_calls=0, max_tokens=0):
+        async def ok(_reason, *, max_calls=0, max_tokens=0, triage=False):
             return 1, 1
 
         again = await dream.run(ok, pending=lambda: 0, now=AT)
@@ -109,7 +109,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_max_batches_bound(self):
         store, calls = FakeStore(), []
 
-        async def flush(_reason, *, max_calls=0, max_tokens=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             calls.append(1)
             return 0, 1
 
@@ -117,10 +117,21 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
         await dream.run(flush, pending=lambda: 99, now=AT)
         self.assertEqual(len(calls), 2)
 
+    async def test_dream_passes_triage_true_to_flush(self):
+        store, seen = FakeStore(), []
+
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
+            seen.append(triage)
+            return 0, 0
+
+        dream = DreamCycle(store, conf())
+        await dream.run(flush, pending=lambda: 1, now=AT)
+        self.assertEqual(seen, [True])
+
     async def test_maintain_runs_after_flush(self):
         store, seen = FakeStore(), []
 
-        async def flush(_reason, *, max_calls=0, max_tokens=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             return 1, 1
 
         async def maintain():
@@ -183,7 +194,7 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         calls = []
         maintained = []
 
-        async def flush(_reason, *, max_calls=0, max_tokens=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             calls.append(1)
             usage["calls"] += 1
             usage["in"] += 400
@@ -218,7 +229,7 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         calls = []
         maintained = []
 
-        async def flush(_reason, *, max_calls=0, max_tokens=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             calls.append(max_calls)
             usage["calls"] += 1
             usage["in"] += 10
@@ -255,7 +266,7 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         seen = []
         maintained = []
 
-        async def flush(_reason, *, max_calls=0, max_tokens=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             seen.append((max_calls, max_tokens))
             usage["calls"] += 1
             usage["in"] += 100
@@ -288,7 +299,7 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         usage = {"calls": 0, "in": 10, "cached": 0, "out": 5}
         calls = []
 
-        async def flush(_reason, *, max_calls=0, max_tokens=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             calls.append(1)
             usage["calls"] += 1
             usage["in"] += 10
