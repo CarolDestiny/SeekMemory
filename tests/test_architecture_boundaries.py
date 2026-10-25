@@ -196,13 +196,28 @@ class LayerDependencyTest(unittest.TestCase):
 
     def test_no_public_db_dependency_outside_store(self) -> None:
         self.assertFalse((ROOT / "store" / "db.py").exists())
+        paths = [ROOT / "main.py"]
         for folder in ("app", "adapters", "core", "services", "recall",
-                       "perceive", "maintain", "webui", "scripts"):
-            for path in (ROOT / folder).rglob("*.py"):
-                source = path.read_text(encoding="utf-8")
-                self.assertNotIn("store.db", source, str(path))
-                self.assertNotIn("from store import DB", source, str(path))
-                self.assertNotIn("from ..store import DB", source, str(path))
+                       "perceive", "maintain", "webui", "scripts",
+                       "benchmarks", "tests"):
+            paths.extend((ROOT / folder).rglob("*.py"))
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    if module.endswith("store.db"):
+                        self.fail(f"imports store.db: {path}")
+                    if module.endswith("store"):
+                        self.assertNotIn(
+                            "DB", {alias.name for alias in node.names}, str(path)
+                        )
+                elif isinstance(node, ast.Import):
+                    self.assertFalse(
+                        any(alias.name.startswith("store.db") for alias in node.names),
+                        str(path),
+                    )
 
     def test_services_do_not_import_host_or_adapters(self) -> None:
         imports = self._imports(ROOT / "services")

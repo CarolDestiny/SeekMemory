@@ -76,7 +76,7 @@ faithful staging copy. Record commands and results in the PR file.
 - Fail open at external boundaries; fail loudly in core invariants.
 - Do not duplicate scoring or privacy rules. Put shared policy in core/ or app/.
 - Do not add an Artifact field without an issue and an explicit Lead decision.
-- Do not hold a DB transaction open while calling an LLM or network service.
+- Do not hold a SQLite transaction open while calling an LLM or network service.
 - Do not add a dependency when the standard library is sufficient; justify new dependencies in the PR.
 - Do not add new dual-import fallbacks unless the module must run in both package and test contexts.
 

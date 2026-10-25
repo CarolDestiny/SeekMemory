@@ -188,13 +188,13 @@ def build(arts: list[Artifact], budget: int = 2000,
 ## maintain/decay.py
 
 ```python
-def decay_all(db: DB, cache: Cache, today: str) -> int: ...  # 返回被标 forgotten 的数量
+def decay_all(db: Store, cache: Cache, today: str) -> int: ...  # 返回被标 forgotten 的数量
 ```
 
 ## maintain/merge.py
 
 ```python
-def merge_similar(db: DB, cache: Cache, threshold: float = 0.6, limit: int = 50) -> int: ...
+def merge_similar(db: Store, cache: Cache, threshold: float = 0.6, limit: int = 50) -> int: ...
 ```
 
 ## maintain/promote.py
@@ -210,7 +210,7 @@ def promote_candidates(cache: Cache, min_hits: int = 3,
 ```python
 def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
              created: str | None = None) -> int: ...
-def persist(art: Artifact, db: DB, cache: Cache | None,
+def persist(art: Artifact, db: Store, cache: Cache | None,
             graph: Graph | None) -> int: ...
     # 先写库/缓存，再建 similar/temporal；建边失败返回 0，不影响写入
 ```
@@ -219,7 +219,7 @@ def persist(art: Artifact, db: DB, cache: Cache | None,
 
 ```python
 def compose(impressions: list[Artifact]) -> str: ...
-def distill_persona(db: DB, cache: Cache, today: str | None = None) -> Artifact | None: ...
+def distill_persona(db: Store, cache: Cache, today: str | None = None) -> Artifact | None: ...
     # 取 top3 impression 拼第二人称 persona；旧 persona 置 merged，写 merge 账本
 ```
 
@@ -458,7 +458,7 @@ put 按 ID 新增或替换，只索引 active；search 返回本次 pool 中正�
 ## recall/pipeline.py 的可选检索器
 
 ```python
-def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
+def build_block(cache: Cache, graph: Graph, db: Store, umo: str, text: str,
                 private: bool, conf: Conf, owner_umo: str, speaker: str = "",
                 log: Callable[[str], None] = lambda _msg: None, *,
                 dry_run: bool = False,
@@ -504,7 +504,7 @@ Actions are `schedule_extraction`, `raise_batch_size`, `backpressure`,
 `compact_artifacts`, `forget_expired`, `degrade_recall`, `trim_trace` and
 `alert`. `CapacityDecision.pressure` is the 0..1 ratio to the hardest limit.
 `backpressure` closes ingestion admission: `Buffer.add(deferred=True)` writes
-Source plus a `deferred` extraction state, and `DB.release_deferred()` promotes
+Source plus a `deferred` extraction state, and `store.extraction.release_deferred()` promotes
 parked rows back once the governor returns to `normal`. Extraction batches are
 selected round-robin across sessions. Thresholds accept `capacity_thresholds`
 (a JSON object in plugin config) or `SEEKMEMORY_CAPACITY_<FIELD>` environment

@@ -58,7 +58,7 @@ Repository modules share the `SqliteDatabase` connection; they never open indepe
 2. Artifact commit uses expected_revision CAS.
 3. One transaction writes blob, node head, version, evidence and ledger.
 4. Cache is a derived view and updates only after commit.
-5. LLM calls never run inside a DB transaction.
+5. LLM calls never run inside a SQLite transaction.
 
 ## Read and disclosure
 

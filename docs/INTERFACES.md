@@ -92,7 +92,7 @@ This is the first contribution layer. It does not yet cover a plugin marketplace
 
 ## Two-sided evidence and self persona (GitHub #15)
 
-`DB.sources_by_ids(ids) -> dict[str, Source]` bulk-reads immutable originals,
+`store.sources.sources_by_ids(ids) -> dict[str, Source]` bulk-reads immutable originals,
 including session, speaker and reply links. Missing ids are omitted. Read errors
 propagate so extraction can retain retryable input. It never updates queue state.
 
