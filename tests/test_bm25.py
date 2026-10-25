@@ -14,7 +14,7 @@ from recall.retriever import GraphRetriever, HybridRetriever
 from recall.score import select
 from recall.tokenizer import tokenize
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 
 class TokenizerTest(unittest.TestCase):
@@ -128,7 +128,7 @@ class BM25IndexTest(unittest.TestCase):
 
 class CacheVersionTest(unittest.TestCase):
     def test_cache_version_changes_when_active_documents_change(self):
-        db = DB(":memory:")
+        db = open_store(":memory:")
         self.addCleanup(db.close)
         cache = Cache(db.artifacts)
         art = memory("量化交易项目")
@@ -142,7 +142,7 @@ class CacheVersionTest(unittest.TestCase):
         self.assertGreater(cache.version, after_put)
 
     def test_reloading_empty_cache_advances_version(self):
-        db = DB(":memory:")
+        db = open_store(":memory:")
         self.addCleanup(db.close)
         cache = Cache(db.artifacts)
         initial = cache.version
@@ -152,7 +152,7 @@ class CacheVersionTest(unittest.TestCase):
 
 class RetrieverTest(unittest.TestCase):
     def setUp(self):
-        self.db = DB(":memory:")
+        self.db = open_store(":memory:")
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)

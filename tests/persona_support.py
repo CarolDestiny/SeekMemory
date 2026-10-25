@@ -8,14 +8,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.artifact import Lineage, Strength, make
 from core.source import Source
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 
 class PersonaCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.db = DB(str(Path(self.temp.name) / "memory.db"))
+        self.db = open_store(str(Path(self.temp.name) / "memory.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.seq = 0

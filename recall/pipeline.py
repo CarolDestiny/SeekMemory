@@ -32,7 +32,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.temporal import filter_valid, in_window, query_window
     from ..recall.score import select
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from app.ports import Retriever
     from core.disclosure import (
@@ -45,7 +45,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.graph import Graph
     from core.bot_behavior import trusted_self_persona
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
 
     from recall.assemble import build_with_meta as assemble_text_meta
     from recall.designated import deliverable, mark_given
@@ -109,7 +109,7 @@ def recent_context(pool: list, subject: str, *, profile: bool = False,
 def build_block(
     cache: Cache,
     graph: Graph,
-    db: DB,
+    db: Store,
     umo: str,
     text: str,
     private: bool,

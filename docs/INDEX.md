@@ -27,6 +27,7 @@ v0.3.1 + WebUI branch
 | docs/INTERFACES.md | Public protocols, DTOs and contract tests | docs/INTERFACES.md |
 | docs/README.md | Documentation entry point and status legend | docs/README.md |
 | docs/refactor/STEP-01-services.md | Services/lifecycle acceptance record | docs/refactor/STEP-01-services.md |
+| docs/refactor/STEP-02-open-store.md | Repository store boundary acceptance record | docs/refactor/STEP-02-open-store.md |
 | docs/INVARIANTS.md | Non-negotiable identity, privacy, recovery and reinforcement rules | docs/INVARIANTS.md |
 | docs/TESTING.md | Test layers, commands and known coverage gaps | docs/TESTING.md |
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |
@@ -119,7 +120,7 @@ BM25 默认开启（`bm25_enabled=true`），配置权重默认为 1.0。插件�
 AstrBot plugin page
   -> webui/routes.py
   -> webui/service.py
-  -> store/db.py repositories + cache + recall pipeline
+  -> store/__init__.py repositories + cache + recall pipeline
   -> JSON response or SSE lifecycle event
 ```
 
@@ -136,7 +137,7 @@ one-time delivery state.
 ## Hard rules
 
 1. Only core/artifact.py defines Artifact data structures.
-2. Only store/ writes SQL; store/db.py composes repositories.
+2. Only store/ writes SQL; store/__init__.py composes repositories.
 3. All production writes use db.artifacts.commit with expected revision.
 4. Source is immutable truth; Artifact is derived interpretation.
 5. Cross-session content must pass disclosure before injection.

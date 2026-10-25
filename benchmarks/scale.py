@@ -29,7 +29,7 @@ from recall.score import select  # noqa: E402
 from recall.seed import seeds  # noqa: E402
 from recall.spread import activate  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 from benchmarks import simdata
 from benchmarks.retrieval_compare import Query, comparison
@@ -60,7 +60,7 @@ def main() -> None:
     t0 = time.time()
     msgs = gen_messages()
     tmp = tempfile.mkdtemp()
-    db = DB(os.path.join(tmp, "scale.db"))
+    db = open_store(os.path.join(tmp, "scale.db"))
     cache = Cache(db.artifacts)
     graph = Graph(db, cache)
 

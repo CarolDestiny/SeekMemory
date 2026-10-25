@@ -12,12 +12,12 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.runtime import (  # noqa: E402
-    DBEpisodeStore,
+    RepoEpisodeStore,
     EpisodeRecorder,
     RunRecorder,
     EpisodeRecord,
 )
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class FakeDB:
@@ -218,7 +218,7 @@ class RunRecorderTest(unittest.TestCase):
         )
         conn.commit()
         conn.close()
-        db = DB(path)
+        db = open_store(path)
         self.addCleanup(db.close)
         db.runtime_episodes.append({
             "id": "ep-old", "at": "2026-01-01T00:00:00", "session_id": "s1",
@@ -227,9 +227,9 @@ class RunRecorderTest(unittest.TestCase):
         self.assertEqual(db.runtime_episodes.list("s1")[0]["run_id"], "run-old")
 
     def test_database_rejects_duplicate_episode_run_ids(self):
-        db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_recorder_"), "memory.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_recorder_"), "memory.db"))
         self.addCleanup(db.close)
-        sink = DBEpisodeStore(db.runtime_episodes)
+        sink = RepoEpisodeStore(db.runtime_episodes)
         recorder = EpisodeRecorder(sink)
         episode = EpisodeRecord(
             session_id="s1", at="2026-01-01T00:00:00", decision="reply",

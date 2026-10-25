@@ -164,26 +164,26 @@ class LayerDependencyTest(unittest.TestCase):
         imports = self._imports(ROOT / "app" / "runtime")
         self.assertFalse([item for item in imports if item.startswith("astrbot")])
 
-    def test_store_db_is_composition_only(self) -> None:
-        source = (ROOT / "store" / "db.py").read_text(encoding="utf-8")
+    def test_store_composition_is_only_repository_bundle(self) -> None:
+        source = (ROOT / "store" / "__init__.py").read_text(encoding="utf-8")
         for keyword in ("SELECT ", "INSERT ", "UPDATE ", "DELETE "):
             self.assertNotIn(keyword, source)
         self.assertLessEqual(len(source.splitlines()), 100)
 
-    def test_store_db_exposes_repositories_not_domain_methods(self) -> None:
+    def test_store_exposes_repositories_not_domain_methods(self) -> None:
         import sys
 
         sys.path.insert(0, str(ROOT))
-        from store.db import DB
+        from store import open_store
 
-        db = DB(":memory:")
-        self.addCleanup(db.close)
+        store = open_store(":memory:")
+        self.addCleanup(store.close)
         for name in ("artifacts", "sources", "extraction", "runtime_state",
                      "runtime_episodes", "dreams", "ledger", "metrics"):
-            self.assertTrue(hasattr(db, name), name)
+            self.assertTrue(hasattr(store, name), name)
         for name in ("commit", "append_sources", "enqueue_extraction",
                      "get_runtime_state", "append_runtime_episode"):
-            self.assertFalse(hasattr(db, name), name)
+            self.assertFalse(hasattr(store, name), name)
 
     def test_store_does_not_import_host_or_adapters(self) -> None:
         imports = self._imports(ROOT / "store")
@@ -193,6 +193,31 @@ class LayerDependencyTest(unittest.TestCase):
                 if item.startswith("astrbot") or item.startswith("adapters")
             ]
         )
+
+    def test_no_public_db_dependency_outside_store(self) -> None:
+        self.assertFalse((ROOT / "store" / "db.py").exists())
+        paths = [ROOT / "main.py"]
+        for folder in ("app", "adapters", "core", "services", "recall",
+                       "perceive", "maintain", "webui", "scripts",
+                       "benchmarks", "tests"):
+            paths.extend((ROOT / folder).rglob("*.py"))
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    if module.endswith("store.db"):
+                        self.fail(f"imports store.db: {path}")
+                    if module.endswith("store"):
+                        self.assertNotIn(
+                            "DB", {alias.name for alias in node.names}, str(path)
+                        )
+                elif isinstance(node, ast.Import):
+                    self.assertFalse(
+                        any(alias.name.startswith("store.db") for alias in node.names),
+                        str(path),
+                    )
 
     def test_services_do_not_import_host_or_adapters(self) -> None:
         imports = self._imports(ROOT / "services")

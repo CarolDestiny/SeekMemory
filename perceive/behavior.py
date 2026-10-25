@@ -56,7 +56,7 @@ def check_payload(payload: Mapping[str, Any] | None) -> None:
 def payload_of(item: Mapping[str, Any]) -> dict[str, Any]:
     """Copy an extracted item for storage without raw evidence or fake behavior.
 
-    Evidence ids belong to lineage and the DB evidence table, not to the memory
+    Evidence ids belong to lineage and the repository evidence table, not to the memory
     body. Behavior text fields are optional descriptions and are preserved
     individually, but they never qualify an item on their own.
     """

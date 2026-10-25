@@ -19,13 +19,13 @@ from recall.history import trajectory  # noqa: E402
 from perceive.calls import log_call  # noqa: E402
 from recall.intent import intent_of  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 def temp_cache():
     """建临时库并返回 (db, cache)。"""
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_call_"), "t.db")
-    db = DB(path)
+    db = open_store(path)
     return db, Cache(db.artifacts)
 
 

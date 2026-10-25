@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import threading
-import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -178,8 +177,8 @@ class JsonlEpisodeStore:
                 self.last_error = type(exc).__name__
 
 
-class DBEpisodeStore:
-    """Persist runtime episodes through the project's SQLite DB facade."""
+class RepoEpisodeStore:
+    """Persist runtime episodes through the project's runtime repository."""
 
     def __init__(self, repository) -> None:
         self.repository = repository

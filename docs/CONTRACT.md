@@ -88,12 +88,12 @@ class Graph:
     def neighbours(self, node_id: str, kinds: tuple[str, ...] = ("similar","causal","temporal")) -> list[tuple[str, float]]: ...
 ```
 
-## store/db.py and repositories
+## store/__init__.py and repositories
 
-`DB` is composition only. It owns one SQLite connection and exposes domain repositories:
+`Store` is composition only. It owns one SQLite connection and exposes domain repositories:
 
 ```python
-class DB:
+class Store:
     artifacts: ArtifactRepository
     sources: SourceRepository
     extraction: ExtractionRepository
@@ -188,13 +188,13 @@ def build(arts: list[Artifact], budget: int = 2000,
 ## maintain/decay.py
 
 ```python
-def decay_all(db: DB, cache: Cache, today: str) -> int: ...  # 返回被标 forgotten 的数量
+def decay_all(db: Store, cache: Cache, today: str) -> int: ...  # 返回被标 forgotten 的数量
 ```
 
 ## maintain/merge.py
 
 ```python
-def merge_similar(db: DB, cache: Cache, threshold: float = 0.6, limit: int = 50) -> int: ...
+def merge_similar(db: Store, cache: Cache, threshold: float = 0.6, limit: int = 50) -> int: ...
 ```
 
 ## maintain/promote.py
@@ -210,7 +210,7 @@ def promote_candidates(cache: Cache, min_hits: int = 3,
 ```python
 def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
              created: str | None = None) -> int: ...
-def persist(art: Artifact, db: DB, cache: Cache | None,
+def persist(art: Artifact, db: Store, cache: Cache | None,
             graph: Graph | None) -> int: ...
     # 先写库/缓存，再建 similar/temporal；建边失败返回 0，不影响写入
 ```
@@ -219,7 +219,7 @@ def persist(art: Artifact, db: DB, cache: Cache | None,
 
 ```python
 def compose(impressions: list[Artifact]) -> str: ...
-def distill_persona(db: DB, cache: Cache, today: str | None = None) -> Artifact | None: ...
+def distill_persona(db: Store, cache: Cache, today: str | None = None) -> Artifact | None: ...
     # 取 top3 impression 拼第二人称 persona；旧 persona 置 merged，写 merge 账本
 ```
 
@@ -307,7 +307,7 @@ Mock 返回值也对照 YAML 校验。契约未同步生成类型、实现输出
 
 1. 单文件 ≤ 300 行，尽量 150
 2. `core/` `store/` `recall/` 不 import `astrbot`
-3. 只有 `store/` 写 SQL；`store/db.py` 只负责组合
+3. 只有 `store/` 写 SQL；`store/__init__.py` 只负责组合
 4. 所有函数带类型标注
 5. 每个文件头部有 docstring：职责一句话
 
@@ -458,7 +458,7 @@ put 按 ID 新增或替换，只索引 active；search 返回本次 pool 中正�
 ## recall/pipeline.py 的可选检索器
 
 ```python
-def build_block(cache: Cache, graph: Graph, db: DB, umo: str, text: str,
+def build_block(cache: Cache, graph: Graph, db: Store, umo: str, text: str,
                 private: bool, conf: Conf, owner_umo: str, speaker: str = "",
                 log: Callable[[str], None] = lambda _msg: None, *,
                 dry_run: bool = False,
@@ -504,7 +504,7 @@ Actions are `schedule_extraction`, `raise_batch_size`, `backpressure`,
 `compact_artifacts`, `forget_expired`, `degrade_recall`, `trim_trace` and
 `alert`. `CapacityDecision.pressure` is the 0..1 ratio to the hardest limit.
 `backpressure` closes ingestion admission: `Buffer.add(deferred=True)` writes
-Source plus a `deferred` extraction state, and `DB.release_deferred()` promotes
+Source plus a `deferred` extraction state, and `store.extraction.release_deferred()` promotes
 parked rows back once the governor returns to `normal`. Extraction batches are
 selected round-robin across sessions. Thresholds accept `capacity_thresholds`
 (a JSON object in plugin config) or `SEEKMEMORY_CAPACITY_<FIELD>` environment
@@ -603,7 +603,7 @@ generation is not implemented and has no timing path in this layer.
 
 ## Runtime actions and episodes
 
-`AstrBotActionPort` provides the host send port and `AstrBotModelGateway` wraps provider lookup plus `text_chat`. `AgentRuntime.dispatch_deferred()` owns the deferred lifecycle: it claims the session, builds recall context, calls `ModelGateway.complete()`, sends through `MessageSender`, records through `RunRecorder`, marks delivery and schedules bounded retry on failure. `RuntimeWorker` selects due sessions and the `AstrBotPlugin` composition callback maps the latest user Source into `RunContext`; `main.py` itself is composition only. `RunRecorder` is the single write-back service for assistant Source, the pending extraction buffer and `EpisodeRecord`. It is idempotent per `run_id`: repeated callbacks do not duplicate Source, checkpoint reinforcement or episode rows. `DBStateStore` and `DBEpisodeStore` persist mutable session state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.run_id` correlates the episode with the admin run trace, and a partial unique index protects non-empty run ids. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
+`AstrBotActionPort` provides the host send port and `AstrBotModelGateway` wraps provider lookup plus `text_chat`. `AgentRuntime.dispatch_deferred()` owns the deferred lifecycle: it claims the session, builds recall context, calls `ModelGateway.complete()`, sends through `MessageSender`, records through `RunRecorder`, marks delivery and schedules bounded retry on failure. `RuntimeWorker` selects due sessions and the `AstrBotPlugin` composition callback maps the latest user Source into `RunContext`; `main.py` itself is composition only. `RunRecorder` is the single write-back service for assistant Source, the pending extraction buffer and `EpisodeRecord`. It is idempotent per `run_id`: repeated callbacks do not duplicate Source, checkpoint reinforcement or episode rows. `RepoStateStore` and `RepoEpisodeStore` persist mutable session state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.run_id` correlates the episode with the admin run trace, and a partial unique index protects non-empty run ids. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
 
 ## Agent run traces
 

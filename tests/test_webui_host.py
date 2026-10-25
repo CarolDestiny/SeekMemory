@@ -162,7 +162,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await self.plugin.terminate()
         self.assertTrue(all(task.done() for task in tasks))
         self.assertEqual(self.context.registered_web_apis, [])
-        self.assertIsNone(self.plugin.db)
+        self.assertIsNone(self.plugin.store)
 
     async def test_failed_extraction_preserves_buffer(self) -> None:
         class Provider:
@@ -174,8 +174,8 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.plugin.services.background_service.nightly()
         self.assertEqual(len(self.plugin.buffer.items), 1)
-        # DB-backed pending lives in Source + extraction_state, not pending.json.
-        self.assertEqual(len(self.plugin.db.extraction.pending_extractions()), 1)
+        # Store-backed pending lives in Source + extraction_state, not pending.json.
+        self.assertEqual(len(self.plugin.store.extraction.pending_extractions()), 1)
 
     async def test_missing_provider_preserves_daily_quota_and_messages(self) -> None:
         self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
@@ -216,7 +216,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
-        rows = self.plugin.db.extraction.pending_extractions()
+        rows = self.plugin.store.extraction.pending_extractions()
         self.assertEqual(sorted(row["text"] for row in rows), ["New plan", "Plan A"])
         self.assertFalse(plugin.services.ingest_service.flushing)
 
@@ -265,9 +265,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     async def test_persona_status_exposes_revision_timeline(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
         first = artifact.make("persona", {"text": "first persona"})
-        self.plugin.db.artifacts.commit(first, expected_revision=0, op="promote")
+        self.plugin.store.artifacts.commit(first, expected_revision=0, op="promote")
         second = artifact.revise(first, payload={"text": "second persona"})
-        self.plugin.db.artifacts.commit(second, expected_revision=1, op="promote")
+        self.plugin.store.artifacts.commit(second, expected_revision=1, op="promote")
         timeline = self.plugin.services.status_service.persona()
         self.assertIsNotNone(timeline)
         self.assertEqual(timeline["id"], first.header.id)
@@ -278,10 +278,10 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
         first = artifact.make("persona", {"text": "first"},
                               lineage=artifact.Lineage(sources=("s1",), derived_from=("i1",)))
-        self.plugin.db.artifacts.commit(first, expected_revision=0, op="promote")
+        self.plugin.store.artifacts.commit(first, expected_revision=0, op="promote")
         second = artifact.revise(first, payload={"text": "second"},
                                   lineage=artifact.Lineage(sources=("s1", "s2"), derived_from=("i1", "i2")))
-        self.plugin.db.artifacts.commit(second, expected_revision=1, op="promote")
+        self.plugin.store.artifacts.commit(second, expected_revision=1, op="promote")
         timeline = self.plugin.services.status_service.persona()
         self.assertEqual(timeline["revisions"][0]["sourceIds"], ["s1"])
         self.assertEqual(timeline["revisions"][1]["sourceIds"], ["s1", "s2"])
@@ -309,7 +309,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             await self.plugin.buffer_message(event)
             await self.plugin.capture_reply(event, SimpleNamespace(role="assistant", completion_text="听起来你很难过，先缓缓"))
         self.assertEqual(self.plugin.context.provider_sessions, [])
-        pending = self.plugin.db.extraction.pending_extractions()
+        pending = self.plugin.store.extraction.pending_extractions()
         self.assertEqual(len(pending), 6)
         for row in pending:
             if row["role"] == "assistant":
@@ -317,7 +317,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(row["topic_id"], parent["topic_id"])
         class Provider:
             async def text_chat(inner, **kwargs):
-                rows = self.plugin.db.extraction.pending_extractions()
+                rows = self.plugin.store.extraction.pending_extractions()
                 selected = [r for r in rows if f'[{r["source_id"]}]' in kwargs["prompt"]]
                 results = []
                 for row in selected:
@@ -464,7 +464,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             speaker_id="u1", role="user", text="ambient deferred message",
             at="2026-01-01T00:00:00",
         )
-        self.plugin.db.sources.append_sources([src])
+        self.plugin.store.sources.append_sources([src])
         state = self.plugin.services.runtime.store.get(session_id)
         state.wait_until = now
         self.plugin.services.runtime.store.put(state)
@@ -496,12 +496,12 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider.calls[0][0], "ambient deferred message")
         await self.plugin.services.runtime_worker.dispatch(session_id, now)
         self.assertEqual(actions.sent, [(session_id, "deferred reply")])
-        rows = self.plugin.db.runtime_episodes.list(session_id)
+        rows = self.plugin.store.runtime_episodes.list(session_id)
         self.assertEqual(rows[0]["reason"], "deferred_wait")
         self.assertTrue(rows[0]["assistant_source_id"])
         self.assertTrue(rows[0]["run_id"])
         self.assertEqual(self.plugin.services.runtime.store.get(session_id).wait_until, 0.0)
-        source_row = self.plugin.db.conn.execute(
+        source_row = self.plugin.store.conn.execute(
             "SELECT role FROM sources WHERE id = ?", (rows[0]["assistant_source_id"],)
         ).fetchone()
         self.assertEqual(source_row["role"], "assistant")
@@ -515,7 +515,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         session_id = "bot:GroupMessage:g-gate-off"
         now = time.time()
         self.plugin.cfg["runtime_gate_enabled"] = False
-        self.plugin.db.sources.append_sources([source_module.Source(
+        self.plugin.store.sources.append_sources([source_module.Source(
             id="src-gate-off", turn_id="turn-gate-off", session_id=session_id,
             speaker_id="u1", role="user", text="must stay deferred",
             at="2026-01-01T00:00:00",
@@ -570,7 +570,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         session_id = "bot:GroupMessage:g-retry-only"
         now = time.time()
         self.plugin.cfg["runtime_gate_enabled"] = True
-        self.plugin.db.sources.append_sources([source_module.Source(
+        self.plugin.store.sources.append_sources([source_module.Source(
             id="src-retry-only", turn_id="turn-retry-only", session_id=session_id,
             speaker_id="u1", role="user", text="retry-only input",
             at="2026-01-01T00:00:00",
@@ -605,7 +605,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         session_id = "bot:GroupMessage:g-tick-defer"
         now = time.time()
         self.plugin.cfg["runtime_gate_enabled"] = True
-        self.plugin.db.sources.append_sources([source_module.Source(
+        self.plugin.store.sources.append_sources([source_module.Source(
             id="src-tick", turn_id="turn-tick", session_id=session_id,
             speaker_id="u1", role="user", text="tick deferred",
             at="2026-01-01T00:00:00",
@@ -640,7 +640,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         session_id = "bot:GroupMessage:g-provider-fail"
         now = time.time()
         self.plugin.cfg["runtime_gate_enabled"] = True
-        self.plugin.db.sources.append_sources([source_module.Source(
+        self.plugin.store.sources.append_sources([source_module.Source(
             id="src-fail", turn_id="turn-fail", session_id=session_id,
             speaker_id="u1", role="user", text="secret provider input",
             at="2026-01-01T00:00:00",
@@ -658,7 +658,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         state = self.plugin.services.runtime.store.get(session_id)
         self.assertGreater(state.wait_until, now)
         self.assertGreater(state.next_retry_at, now)
-        rows = self.plugin.db.runtime_episodes.list(session_id)
+        rows = self.plugin.store.runtime_episodes.list(session_id)
         self.assertEqual(rows[0]["outcome"], "error")
         self.assertNotIn("secret", json.dumps([row.context for row in self.plugin.trace.rows]))
 
@@ -667,7 +667,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         session_id = "bot:GroupMessage:g-send-fail"
         now = time.time()
         self.plugin.cfg["runtime_gate_enabled"] = True
-        self.plugin.db.sources.append_sources([source_module.Source(
+        self.plugin.store.sources.append_sources([source_module.Source(
             id="src-send-fail", turn_id="turn-send-fail", session_id=session_id,
             speaker_id="u1", role="user", text="send failure input",
             at="2026-01-01T00:00:00",
@@ -694,7 +694,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         state = self.plugin.services.runtime.store.get(session_id)
         self.assertGreater(state.wait_until, now)
         self.assertGreater(state.next_retry_at, now)
-        rows = self.plugin.db.runtime_episodes.list(session_id)
+        rows = self.plugin.store.runtime_episodes.list(session_id)
         self.assertEqual(rows[0]["outcome"], "error")
         self.assertEqual(rows[0]["error"], "RuntimeError")
 
@@ -703,7 +703,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         session_id = "bot:GroupMessage:g-retry-dead"
         now = time.time()
         self.plugin.cfg["runtime_gate_enabled"] = True
-        self.plugin.db.sources.append_sources([source_module.Source(
+        self.plugin.store.sources.append_sources([source_module.Source(
             id="src-retry", turn_id="turn-retry", session_id=session_id,
             speaker_id="u1", role="user", text="retry me",
             at="2026-01-01T00:00:00",
@@ -724,7 +724,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.next_retry_at, 0.0)
         self.assertEqual(state.last_reason, "dispatch_dead")
         self.assertEqual(state.dispatch_attempts, 3)
-        rows = self.plugin.db.runtime_episodes.list(session_id)
+        rows = self.plugin.store.runtime_episodes.list(session_id)
         self.assertEqual(len(rows), 3)
 
     async def test_tool_filter_is_opt_in(self) -> None:
@@ -773,7 +773,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             scope="shared",
             subject_id="u1",
         )
-        self.plugin.db.artifacts.commit(art, expected_revision=0, op="create")
+        self.plugin.store.artifacts.commit(art, expected_revision=0, op="create")
         self.plugin.cache.put(art)
 
         class Event:
@@ -824,7 +824,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             event, SimpleNamespace(role="assistant", completion_text="ok")
         )
         self.assertEqual(self.plugin.checkpoint.pending(), 1)
-        pending = self.plugin.db.extraction.pending_extractions()
+        pending = self.plugin.store.extraction.pending_extractions()
         self.assertTrue(any(
             row["role"] == "assistant" and row["text"] == "ok" for row in pending
         ))
@@ -837,7 +837,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             "agent_begin", "llm_request", "llm_response", "message_sent", "agent_done"
         ])
         self.assertNotIn("shared recall phrase", json.dumps(trace))
-        episodes = self.plugin.db.runtime_episodes.list("bot:GroupMessage:g1")
+        episodes = self.plugin.store.runtime_episodes.list("bot:GroupMessage:g1")
         self.assertEqual(len(episodes), 1)
         self.assertEqual(episodes[0]["delivered"], 1)
         self.assertEqual(episodes[0]["run_id"], trace["runs"][0]["id"])
@@ -847,21 +847,21 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await self.plugin.observe_agent_done(
             failure_event, None, SimpleNamespace(role="err")
         )
-        failures = self.plugin.db.runtime_episodes.list("bot:GroupMessage:g1")
+        failures = self.plugin.store.runtime_episodes.list("bot:GroupMessage:g1")
         self.assertEqual(len(failures), 2)
         self.assertEqual(failures[0]["outcome"], "error")
 
     async def test_shutdown_flushes_upstream_checkpoint_before_closing_db(self) -> None:
         artifact = importlib.import_module(f"{ROOT.name}.core.artifact")
-        store = importlib.import_module(f"{ROOT.name}.store.db")
+        store = importlib.import_module(f"{ROOT.name}.store")
         art = artifact.make("memory", {"text": "需要保留强化次数", "level": "fact"})
-        self.plugin.db.artifacts.commit(art, expected_revision=0, op="create")
+        self.plugin.store.artifacts.commit(art, expected_revision=0, op="create")
         self.plugin.cache.put(art)
         self.plugin.checkpoint.record(art)
         response = await self.request("status")
         self.assertEqual(json.loads(response.body)["checkpointPending"], 1)
         await self.plugin.terminate()
-        db = store.DB(str(Path(self.temp.name) / "memory.db"))
+        db = store.open_store(str(Path(self.temp.name) / "memory.db"))
         try:
             saved = db.artifacts.get(art.header.id)
             self.assertEqual(saved.header.revision, 2)

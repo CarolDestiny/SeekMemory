@@ -20,7 +20,7 @@ from maintain.merge import merge_similar  # noqa: E402
 from perceive.absorb import absorb, existing_texts_by_subject  # noqa: E402
 from perceive.extract import filter_duplicates  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class FakeProvider:
@@ -40,7 +40,7 @@ def _turn(text: str, session: str = "umo:a", speaker: str = "10001") -> Dialogue
 
 def _db():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_identity_"), "t.db")
-    db = DB(path)
+    db = open_store(path)
     return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
 
 

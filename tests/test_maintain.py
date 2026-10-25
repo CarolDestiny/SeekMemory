@@ -19,7 +19,7 @@ from maintain.decay import decay_all
 from maintain.merge import merge_similar
 from maintain.reflect import signals
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 from store.ledger import Ledger
 
 OLD_TIME = {"created": "2019-01-01T00:00:00", "updated": "2019-01-01T00:00:00"}
@@ -56,7 +56,7 @@ class _MaintainCase(unittest.TestCase):
     def setUp(self) -> None:
         """创建临时数据库与缓存。"""
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_maintain_")
-        self.db = DB(os.path.join(self.tmpdir, "memory.db"))
+        self.db = open_store(os.path.join(self.tmpdir, "memory.db"))
         self.cache = Cache(self.db.artifacts)
         self.ledger = Ledger(self.db.ledger)
 

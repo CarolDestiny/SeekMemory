@@ -15,7 +15,7 @@ try:
     from ..recall.pipeline import Conf, build_block
     from ..recall.scope import owner_of, visible
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
 except ImportError:
     from app.ports import Retriever
     from core.artifact import Artifact, content_of, revise, validate
@@ -25,7 +25,7 @@ except ImportError:
     from recall.pipeline import Conf, build_block
     from recall.scope import owner_of, visible
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
 
 
 def timestamp(value: str) -> str:
@@ -46,7 +46,7 @@ def timestamp(value: str) -> str:
 class ManagementService:
     """管理操作复用既有存储、缓存和 scope 规则。"""
 
-    def __init__(self, db: DB, cache: Cache, graph: Graph, conf: Conf,
+    def __init__(self, db: Store, cache: Cache, graph: Graph, conf: Conf,
                  hybrid_retriever: Retriever | None = None) -> None:
         self.db, self.cache, self.graph, self.conf = db, cache, graph, conf
         self.hybrid_retriever = hybrid_retriever

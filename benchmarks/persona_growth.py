@@ -34,7 +34,7 @@ async def main():
     from app.contracts import ChatResponse, DialogueTurn
     from core.source import Source
     from core.graph import Graph
-    from store.db import DB
+    from store import open_store
     from store.cache import Cache
     from perceive.absorb import absorb
     from maintain.self_impression import build_self_impressions
@@ -61,7 +61,7 @@ async def main():
     async def run_case(case,repeat):
         name,expected,pairs=case
         with tempfile.TemporaryDirectory(prefix='seekmemory_accept_') as temp:
-            db=DB(str(Path(temp)/'memory.db')); cache=Cache(db.artifacts); graph=Graph(db,cache)
+            db=open_store(str(Path(temp)/'memory.db')); cache=Cache(db.artifacts); graph=Graph(db,cache)
             session='probe:FriendMessage:71001'
             outcomes=[]
             model=Model()

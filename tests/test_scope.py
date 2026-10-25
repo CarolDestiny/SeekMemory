@@ -19,7 +19,7 @@ from recall.assemble import build
 from recall.designated import deliverable, mark_given
 from recall.scope import owner_of, visible
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 
 def _artifact(text: str, scope: str = "private", **payload):
@@ -137,7 +137,7 @@ class MarkGivenTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_scope_")
-        self.db = DB(os.path.join(self.tmpdir, "scope.db"))
+        self.db = open_store(os.path.join(self.tmpdir, "scope.db"))
         self.cache = Cache(self.db.artifacts)
 
     def tearDown(self) -> None:

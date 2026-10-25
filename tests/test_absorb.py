@@ -19,7 +19,7 @@ from perceive.absorb import absorb, dialogue_of, owner_of, worth_now  # noqa: E4
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import build_prompt, parse_response  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class FakeProvider:
@@ -44,7 +44,7 @@ class FakeProvider:
 def make_db():
     """建一个临时库，返回 (db, cache, graph)。"""
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_abs_"), "t.db")
-    db = DB(path)
+    db = open_store(path)
     return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
 
 

@@ -9,14 +9,14 @@ try:
                                      SELF_SUBJECT, confident, trusted_self_impression)
     from ..core.source import Source
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
 except ImportError:
     from core.artifact import Artifact, Lineage, Strength, make, revise
     from core.bot_behavior import (BEHAVIORS, BEHAVIOR_TEXT, MIN_EVIDENCE,
                                    SELF_SUBJECT, confident, trusted_self_impression)
     from core.source import Source
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
 
 MIN_HITS = MIN_EVIDENCE
 
@@ -59,7 +59,7 @@ def _supported(art: Artifact, sources: dict[str, Source]) -> bool:
             and len(_pairs(art.header.lineage.sources, sources)) >= MIN_EVIDENCE)
 
 
-def build_self_impressions(db: DB, cache: Cache, min_hits: int = MIN_HITS,
+def build_self_impressions(db: Store, cache: Cache, min_hits: int = MIN_HITS,
                            today: str | None = None) -> int:
     """至少三次独立证据才建立印象；新增证据修订原编号，重跑不重复写。"""
     pool = cache.active("memory")

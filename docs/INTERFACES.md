@@ -7,7 +7,7 @@ This page is for contributors who want to extend SeekMemory without reading the 
 - Source is the only immutable truth.
 - Artifact is a derived, versioned interpretation.
 - Production writes go through ArtifactStore.commit with expected_revision.
-- SQL lives only in store/; store/db.py is a composition facade.
+- SQL lives only in store/; store/__init__.py is a composition facade.
 - Retrievers do not write.
 - ChatModel is stateless. Context management belongs to the caller.
 
@@ -92,7 +92,7 @@ This is the first contribution layer. It does not yet cover a plugin marketplace
 
 ## Two-sided evidence and self persona (GitHub #15)
 
-`DB.sources_by_ids(ids) -> dict[str, Source]` bulk-reads immutable originals,
+`store.sources.sources_by_ids(ids) -> dict[str, Source]` bulk-reads immutable originals,
 including session, speaker and reply links. Missing ids are omitted. Read errors
 propagate so extraction can retain retryable input. It never updates queue state.
 

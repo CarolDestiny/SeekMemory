@@ -13,7 +13,7 @@ from benchmarks.real_eval import load_cases, score_items  # noqa: E402
 from core.artifact import make  # noqa: E402
 from scripts.live_probe import probe  # noqa: E402
 from scripts.snapshot_db import snapshot  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class EvalHarnessTest(unittest.TestCase):
@@ -36,7 +36,7 @@ class SnapshotTest(unittest.TestCase):
         directory = tempfile.mkdtemp(prefix="seekmem_snapshot_")
         source = os.path.join(directory, "source.db")
         target = os.path.join(directory, "target.db")
-        db = DB(source)
+        db = open_store(source)
         db.artifacts.commit(make("memory", {"text": "snapshot fact", "level": "fact"}),
                   expected_revision=0, op="create")
         db.close()
@@ -47,7 +47,7 @@ class SnapshotTest(unittest.TestCase):
 class LiveProbeTest(unittest.TestCase):
     def test_probe_reads_counts_and_ledger(self) -> None:
         path = os.path.join(tempfile.mkdtemp(prefix="seekmem_probe_"), "t.db")
-        db = DB(path)
+        db = open_store(path)
         art = make("memory", {"text": "probe fact", "level": "fact"})
         db.artifacts.commit(art, expected_revision=0, op="create")
         db.close()

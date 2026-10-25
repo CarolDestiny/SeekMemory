@@ -23,7 +23,9 @@ package = ModuleType("_seekmemory_contract")
 package.__path__ = [str(ROOT)]
 sys.modules[package.__name__] = package
 artifact = importlib.import_module("_seekmemory_contract.core.artifact")
-DB = importlib.import_module("_seekmemory_contract.store.db").DB
+store_module = importlib.import_module("_seekmemory_contract.store")
+Store = store_module.Store
+open_store = store_module.open_store
 Cache = importlib.import_module("_seekmemory_contract.store.cache").Cache
 Graph = importlib.import_module("_seekmemory_contract.core.graph").Graph
 HybridRetriever = importlib.import_module("_seekmemory_contract.recall.retriever").HybridRetriever
@@ -67,7 +69,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        db = DB(":memory:")
+        db = open_store(":memory:")
         self.addCleanup(db.close)
         cache = Cache(db.artifacts)
         journal = Journal(Path(self.temp.name) / "lifecycle.jsonl")
@@ -75,7 +77,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(jobs.close)
         self.plugin = SimpleNamespace(
             ready=True,
-            db=db,
+            store=db,
             cache=cache,
             graph=Graph(db, cache),
             journal=journal,
@@ -222,12 +224,12 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             "update", {**self.command, "expectedRevision": 2, "state": "forgotten"}
         )
         await self.call("records")
-        before = self.plugin.db.conn.total_changes
+        before = self.plugin.store.conn.total_changes
         await self.call(
             "diagnose",
             {"query": "咖啡", "umo": "bot:FriendMessage:alice", "speaker": "alice"},
         )
-        self.assertEqual(before, self.plugin.db.conn.total_changes)
+        self.assertEqual(before, self.plugin.store.conn.total_changes)
         task = await self.call("task", {"kind": "extract", "confirmed": True})
         await asyncio.sleep(0)
         await self.call("status")
@@ -264,7 +266,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.call("task", {"kind": "extract", "confirmed": True}, expected=409)
         await self.call("update", self.command, expected=409)
         await self.plugin.jobs.close()
-        with patch.object(self.plugin.db.artifacts, "list", side_effect=OSError("private error")):
+        with patch.object(self.plugin.store.artifacts, "list", side_effect=OSError("private error")):
             await self.call("records", expected=500)
         self.plugin.ready = False
         await self.call("records", expected=503)

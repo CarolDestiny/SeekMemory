@@ -14,12 +14,12 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of, revise
     from ..core.graph import Graph
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of, revise
     from core.graph import Graph
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
 
 SIMILAR_BAR = 0.45
 MAX_SIMILAR = 3
@@ -61,7 +61,7 @@ def _day(value: Any) -> str:
     return text[:10] if len(text) >= 10 else ""
 
 
-def _edges(db: DB, node_id: str) -> list[tuple[str, str, float]]:
+def _edges(db: Store, node_id: str) -> list[tuple[str, str, float]]:
     """读取节点的全部边；存储异常时按无边处理，保证 fail-open。"""
     try:
         return list(db.artifacts.edges_of(node_id))
@@ -69,7 +69,7 @@ def _edges(db: DB, node_id: str) -> list[tuple[str, str, float]]:
         return []
 
 
-def _has_edge(db: DB, src: str, dst: str, kind: str | None = None) -> bool:
+def _has_edge(db: Store, src: str, dst: str, kind: str | None = None) -> bool:
     """判断 src 与 dst 之间是否已有边；kind 为 None 时任意类型都算。"""
     for edge in _edges(db, src):
         if len(edge) < 3 or edge[0] != dst:
@@ -165,7 +165,7 @@ def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
         return 0
 
 
-def persist(art: Artifact, db: DB, cache: Cache | None, graph: Graph | None) -> int:
+def persist(art: Artifact, db: Store, cache: Cache | None, graph: Graph | None) -> int:
     # Compatibility writer: route every write through the CAS commit path.
     existing = db.artifacts.get(art.header.id)
     if existing is None:

@@ -24,7 +24,7 @@ This file is normative. If it conflicts with a casual instruction, stop and ask 
 2. **Artifact is a derived, revisable interpretation.** It is never the raw truth.
 3. **Every production write goes through `db.artifacts.commit()`** with expected revision, version snapshot,
    evidence links and ledger entry. `ArtifactRepository.upsert()` is seed/benchmark-only.
-4. **SQL lives only in `store/`.** `store/db.py` is composition only; repositories own their SQL.
+4. **SQL lives only in `store/`.** `store/__init__.py` is composition only; repositories own their SQL.
 5. **Dependency direction:** adapters -> app -> core. `core/` imports no storage, SDK, plugin or app code.
 6. **External calls use ports.** LLM calls go through `ChatModel`; AstrBot, SQLite and files stay at edges.
 7. **Recall has no hidden writes.** Delivery, reinforcement and checkpoint are explicit write use cases.
@@ -76,7 +76,7 @@ faithful staging copy. Record commands and results in the PR file.
 - Fail open at external boundaries; fail loudly in core invariants.
 - Do not duplicate scoring or privacy rules. Put shared policy in core/ or app/.
 - Do not add an Artifact field without an issue and an explicit Lead decision.
-- Do not hold a DB transaction open while calling an LLM or network service.
+- Do not hold a SQLite transaction open while calling an LLM or network service.
 - Do not add a dependency when the standard library is sufficient; justify new dependencies in the PR.
 - Do not add new dual-import fallbacks unless the module must run in both package and test contexts.
 

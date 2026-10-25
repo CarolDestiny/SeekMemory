@@ -1,6 +1,6 @@
 """抽象树：impression / scene / detail 三级的父子关系与查询。
 
-节点内容由 DB/Cache 持有；Tree 负责两件事：
+节点内容由 Store/Cache 持有；Tree 负责两件事：
 1. 用 db.artifacts.set_parent（若存在）记录父指针，供持久化层按 parent 列查询；
 2. 用 kind="tree_child:<父 id>" 的边记录父子关系，使 children() 在
    db.artifacts.edges_of 双向返回时仍能分辨方向（只认后缀等于本节点的那条边）。

@@ -21,7 +21,7 @@ from core.source import Source, make_source_id
 from core.versioning import StateEvent, VersionError, assert_next_revision
 from perceive.model import ProviderChatModel
 from recall.score import select
-from store.db import DB
+from store import open_store
 from store.cache import Cache
 from store.ledger import Ledger
 
@@ -52,7 +52,7 @@ class VersionTest(unittest.TestCase):
 
 class CommitTest(unittest.TestCase):
     def test_cas_history_and_ledger(self):
-        db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         first = _memory(subject="owner")
         db.artifacts.commit(first, expected_revision=0, op="create", reason="test",
                   source_ids=("source-1",))
@@ -142,7 +142,7 @@ class RetrievalCandidateTest(unittest.TestCase):
 
 class StoreBoundaryTest(unittest.TestCase):
     def test_source_batch_and_subject_index(self):
-        db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         src = Source("s1", "turn1", "umo1", "u1", "user", "hello", "t")
         self.assertEqual(db.sources.append_sources([src]), 1)
         self.assertEqual(db.sources.append_sources([src]), 0)
@@ -155,7 +155,7 @@ class StoreBoundaryTest(unittest.TestCase):
 
 class CheckpointTest(unittest.TestCase):
     def test_checkpoint_creates_revision_and_state_event(self):
-        db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db.artifacts)
         art = _memory()
         db.artifacts.commit(art, expected_revision=0, op="create")
@@ -220,7 +220,7 @@ class MigrationTest(unittest.TestCase):
         con.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, family TEXT, level TEXT, parent TEXT, blob TEXT, state TEXT, scope TEXT, strength TEXT, time TEXT, said_by TEXT, shareable TEXT, created_at TEXT, updated_at TEXT, revision INTEGER, lineage TEXT)")
         con.commit()
         con.close()
-        db = DB(path)
+        db = open_store(path)
         cols = {r[1] for r in db.conn.execute("PRAGMA table_info(nodes)")}
         self.assertIn("subject_id", cols)
 

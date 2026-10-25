@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from perceive.buffer import Buffer  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 def main() -> int:
@@ -18,7 +18,7 @@ def main() -> int:
     parser.add_argument("--db", required=True, help="SeekMemory SQLite database path")
     parser.add_argument("--pending", required=True, help="Legacy pending.json path")
     args = parser.parse_args()
-    db = DB(args.db)
+    db = open_store(args.db)
     try:
         buffer = Buffer(args.pending, extraction=db.extraction)
         migrated = buffer.migrate_legacy()

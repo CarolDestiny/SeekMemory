@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.artifact import Artifact, make, revise
 from store.cache import Cache
-from store.db import DB
+from store import Store, open_store
 from store.ledger import chain_hash, chain_payload
 from store.ledger import Ledger
 
@@ -38,7 +38,7 @@ def _example() -> Artifact:
     return make("example", {"user": "你好", "assistant": "嗨"})
 
 
-def _edges(db: DB, node_id: str) -> list[tuple[str, str, float]]:
+def _edges(db: Store, node_id: str) -> list[tuple[str, str, float]]:
     """把边权四舍五入到 6 位，避免浮点比较噪声。"""
     return [(other, kind, round(weight, 6)) for other, kind, weight in db.artifacts.edges_of(node_id)]
 
@@ -49,7 +49,7 @@ class _StoreCase(unittest.TestCase):
     def setUp(self) -> None:
         """创建临时数据库与缓存。"""
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_store_")
-        self.db = DB(os.path.join(self.tmpdir, "memory.db"))
+        self.db = open_store(os.path.join(self.tmpdir, "memory.db"))
         self.cache = Cache(self.db.artifacts)
 
     def tearDown(self) -> None:
