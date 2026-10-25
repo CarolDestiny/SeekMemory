@@ -27,7 +27,7 @@ Before adding code, identify the single owner:
 | Semantics | Owner |
 |---|---|
 | artifact read/write mechanics | ArtifactStore |
-| immutable dialogue/Source evidence | RunRecorder for live runs; ImportService for bulk import |
+| immutable dialogue/Source evidence | RunRecorder for live runs; bulk import admission is planned in issue #76 and is not implemented yet |
 | extraction and artifact generation | IngestService |
 | long-term maintenance writes | MaintenanceService |
 | recall and delivery state | RecallService |
@@ -44,7 +44,7 @@ If two owners appear, stop and resolve ownership before writing code.
 3. SQL lives only in store.
 4. Engine and service layers must not import store, DB, SQLite or adapters.
 5. Store must not import app, services, adapters or AstrBot.
-6. Only the AstrBot composition root calls open_store.
+6. Only the production AstrBot composition root calls open_store. Tests, scripts and benchmarks may call it for isolated fixtures.
 7. ServiceCollection is typed data only. It is not a registry, locator or DI container.
 8. main.py is explicit composition and lifecycle only.
 9. One semantic has one write path.
@@ -180,12 +180,12 @@ Before coding, answer:
 7. What architecture test will prevent regression?
 8. What acceptance evidence will be recorded?
 
-## Adding a format importer or external adapter
+## Adding a format importer or external adapter (planned, issue #76)
 
-Importers are read-only adapters:
+No production importer/ImportService exists yet. When implemented, importers remain read-only adapters:
 
 - importer parses external data into normalized DTOs
-- ImportService admits immutable Sources and extraction state
+- a planned ImportService admits immutable Sources and extraction state
 - IngestService remains the only artifact writer
 - importers must not import store, services, AstrBot or call models
 - community contributors add one format adapter and one fixture test
@@ -194,24 +194,18 @@ Importers are read-only adapters:
 
 ## Changing AgentRuntime
 
-Runtime owns run decisions, not storage.
+Runtime currently owns normal and deferred run decisions, attention timing and wake/dispatch state. It does not own storage.
 
 Rules:
 
-- timing, attention, relationship and proactive policy belong in runtime
+- timing and attention policy belong in runtime
 - memory retrieval stays behind a memory-context port
 - runtime must not import store
 - missing persistence fails open
 - decisions must be content-free and testable
 - host extras or host events must not leak into core
 
-Relationship/favorability example:
-
-- favorability is evidence-backed, versioned relationship memory
-- it affects reply/proactive behavior only
-- it must never block recall, scope or memory injection
-- updates happen in Dream/Maintenance, not on every message
-- long-term state is cached and read by the runtime
+Planned but not current (issues #75/#77): relationship/favorability policy and proactive speech are design proposals. They are not implemented in AgentRuntime today. If implemented, they must remain runtime interaction policy only, never recall/permission policy, and updates must live in Dream/Maintenance rather than every message.
 
 ## Issue format
 
@@ -257,7 +251,7 @@ Expected properties:
 
 - store has no app/adapters/astrbot imports
 - inner layers have no store imports
-- only adapters/composition use open_store
+- only production adapters/composition use open_store; tests/scripts/benchmarks may use it for isolated fixtures
 - no DB symbol outside store
 - no duplicate maintenance or recall entry point
 - write calls appear only in their explicit owners
