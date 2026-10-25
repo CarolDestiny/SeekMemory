@@ -35,7 +35,7 @@ class FakeProvider:
 def _db():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_recovery_"), "t.db")
     db = open_store(path)
-    return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
+    return db, Cache(db.artifacts), Graph(db.artifacts)
 
 
 def _turn(text: str = "hello") -> DialogueTurn:
@@ -56,7 +56,7 @@ class AbsorbRecoveryTest(unittest.TestCase):
     def test_bad_json_is_retryable(self) -> None:
         db, cache, graph = _db()
         outcome = asyncio.run(absorb(
-            [_turn()], db, cache, graph, FakeProvider("not json at all"),
+            [_turn()], db.artifacts, db.sources, cache, graph, FakeProvider("not json at all"),
         ))
         self.assertTrue(outcome.model_failed)
         self.assertTrue(outcome.retryable)
@@ -65,7 +65,7 @@ class AbsorbRecoveryTest(unittest.TestCase):
     def test_valid_empty_array_is_a_completed_empty_batch(self) -> None:
         db, cache, graph = _db()
         outcome = asyncio.run(absorb(
-            [_turn()], db, cache, graph, FakeProvider("[]"),
+            [_turn()], db.artifacts, db.sources, cache, graph, FakeProvider("[]"),
         ))
         self.assertFalse(outcome.model_failed)
         self.assertFalse(outcome.retryable)
@@ -89,7 +89,7 @@ class AbsorbRecoveryTest(unittest.TestCase):
             {"level": "fact", "text": "second fact"},
         ])
         outcome = asyncio.run(absorb(
-            [_turn()], db, cache, graph, FakeProvider(raw),
+            [_turn()], db.artifacts, db.sources, cache, graph, FakeProvider(raw),
         ))
         self.assertEqual(outcome.written, 1)
         self.assertTrue(outcome.retryable)

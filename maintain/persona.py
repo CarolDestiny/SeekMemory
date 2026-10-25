@@ -5,13 +5,13 @@ try:
     from ..core.artifact import Artifact, Lineage, Strength, make, revise
     from ..core.bot_behavior import SELF_SUBJECT, compose_behaviors, trusted_self_impression
     from ..store.cache import Cache
-    from ..store import Store, open_store
+    from ..app.ports import ArtifactStore, SourceStore
     from .self_impression import promote_self_candidates
 except ImportError:
     from core.artifact import Artifact, Lineage, Strength, make, revise
     from core.bot_behavior import SELF_SUBJECT, compose_behaviors, trusted_self_impression
     from store.cache import Cache
-    from store import Store, open_store
+    from app.ports import ArtifactStore, SourceStore
     from maintain.self_impression import promote_self_candidates
 
 TOP_N = 3
@@ -23,8 +23,9 @@ def compose(impressions: list[Artifact]) -> str:
     return compose_behaviors(kinds)
 
 
-def distill_self_persona(db: Store, cache: Cache, today: str | None = None) -> Artifact | None:
-    candidates = promote_self_candidates(cache, db.sources, today)
+def distill_self_persona(artifacts: ArtifactStore, sources: SourceStore, cache: Cache,
+                        today: str | None = None) -> Artifact | None:
+    candidates = promote_self_candidates(cache, sources, today)
     chosen = []
     seen = set()
     for art in candidates:
@@ -58,7 +59,7 @@ def distill_self_persona(db: Store, cache: Cache, today: str | None = None) -> A
     writes = [] if unchanged else [(persona, base.header.revision if base else 0, lineage.sources)]
     retired = [revise(a, state="merged") for a in old[1:]]
     writes.extend((a, a.header.revision - 1, a.header.lineage.sources) for a in retired)
-    db.artifacts.commit_many(writes, op="promote", reason="self-only stable persona and consolidation")
+    artifacts.commit_many(writes, op="promote", reason="self-only stable persona and consolidation")
     if writes:
         cache.put(persona)
         for art in retired:
@@ -66,7 +67,8 @@ def distill_self_persona(db: Store, cache: Cache, today: str | None = None) -> A
     return persona
 
 
-def distill_persona(db: Store, cache: Cache, today: str | None = None,
+def distill_persona(artifacts: ArtifactStore, sources: SourceStore, cache: Cache,
+                    today: str | None = None,
                     only_umo: str = "") -> Artifact | None:
     """保留旧签名，但用户印象不再是人格来源。"""
-    return distill_self_persona(db, cache, today)
+    return distill_self_persona(artifacts, sources, cache, today)

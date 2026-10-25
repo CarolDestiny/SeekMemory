@@ -36,12 +36,12 @@ class KernelEndToEndTest(unittest.TestCase):
     def test_source_to_artifact_to_disclosure_to_checkpoint(self):
         db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db.artifacts)
-        graph = Graph(db, cache)
+        graph = Graph(db.artifacts)
         user = Source("s_user", "turn1", "umo1", "u1", "user", "I have an interview", "t1")
         bot = Source("s_bot", "turn1", "umo1", "bot", "assistant", "good luck", "t2", reply_to="s_user")
         self.assertEqual(db.sources.append_sources([user, bot]), 2)
         written = asyncio.run(absorb([DialogueTurn("umo1", "u1", "user", "I have an interview", "", "s_user")],
-                                      db, cache, graph, FakeChatModel()))
+                                      db.artifacts, db.sources, cache, graph, FakeChatModel()))
         self.assertEqual(written.written, 1)
         arts = cache.active("memory")
         self.assertEqual(len(arts), 1)

@@ -14,12 +14,12 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of, revise
     from ..core.graph import Graph
     from ..store.cache import Cache
-    from ..store import Store, open_store
+    from ..app.ports import ArtifactStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of, revise
     from core.graph import Graph
     from store.cache import Cache
-    from store import Store, open_store
+    from app.ports import ArtifactStore
 
 SIMILAR_BAR = 0.45
 MAX_SIMILAR = 3
@@ -61,17 +61,17 @@ def _day(value: Any) -> str:
     return text[:10] if len(text) >= 10 else ""
 
 
-def _edges(db: Store, node_id: str) -> list[tuple[str, str, float]]:
+def _edges(artifacts: ArtifactStore, node_id: str) -> list[tuple[str, str, float]]:
     """读取节点的全部边；存储异常时按无边处理，保证 fail-open。"""
     try:
-        return list(db.artifacts.edges_of(node_id))
+        return list(artifacts.edges_of(node_id))
     except Exception:  # noqa: BLE001
         return []
 
 
-def _has_edge(db: Store, src: str, dst: str, kind: str | None = None) -> bool:
+def _has_edge(artifacts: ArtifactStore, src: str, dst: str, kind: str | None = None) -> bool:
     """判断 src 与 dst 之间是否已有边；kind 为 None 时任意类型都算。"""
-    for edge in _edges(db, src):
+    for edge in _edges(artifacts, src):
         if len(edge) < 3 or edge[0] != dst:
             continue
         if kind is None or edge[1] == kind:
@@ -94,11 +94,11 @@ def _candidate_pool(art: Artifact, cache: Cache) -> list[Artifact]:
 def _link(art: Artifact, graph: Graph, cache: Cache,
           created: str | None = None) -> int:
     """在出度预算内建 similar / temporal 边，返回实际新增的边数。"""
-    db = getattr(graph, "db", None)
-    if db is None:
+    artifacts = getattr(graph, "artifacts", None)
+    if artifacts is None:
         return 0
     pool = _candidate_pool(art, cache)
-    room = MAX_EDGES - len(_edges(db, art.header.id))
+    room = MAX_EDGES - len(_edges(artifacts, art.header.id))
     if room <= 0 or not pool:
         return 0
 
@@ -117,9 +117,9 @@ def _link(art: Artifact, graph: Graph, cache: Cache,
         if added >= room:
             break
         other_id = other.header.id
-        if len(_edges(db, other_id)) >= MAX_EDGES:
+        if len(_edges(artifacts, other_id)) >= MAX_EDGES:
             continue
-        if _has_edge(db, art.header.id, other_id):
+        if _has_edge(artifacts, art.header.id, other_id):
             continue
         try:
             graph.link(art.header.id, other_id, "similar", score)
@@ -134,7 +134,7 @@ def _link(art: Artifact, graph: Graph, cache: Cache,
         other
         for other in pool
         if _day(other.header.time.created) == day
-        and not _has_edge(db, art.header.id, other.header.id)
+        and not _has_edge(artifacts, art.header.id, other.header.id)
     ]
     same_day.sort(key=lambda other: (other.header.time.created, other.header.id),
                   reverse=True)
@@ -143,7 +143,7 @@ def _link(art: Artifact, graph: Graph, cache: Cache,
         if added >= room or temporal >= MAX_TEMPORAL:
             break
         other_id = other.header.id
-        if len(_edges(db, other_id)) >= MAX_EDGES:
+        if len(_edges(artifacts, other_id)) >= MAX_EDGES:
             continue
         try:
             graph.link(art.header.id, other_id, "temporal", TEMPORAL_WEIGHT)
@@ -165,9 +165,10 @@ def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
         return 0
 
 
-def persist(art: Artifact, db: Store, cache: Cache | None, graph: Graph | None) -> int:
+def persist(art: Artifact, artifacts: ArtifactStore,
+            cache: Cache | None, graph: Graph | None) -> int:
     # Compatibility writer: route every write through the CAS commit path.
-    existing = db.artifacts.get(art.header.id)
+    existing = artifacts.get(art.header.id)
     if existing is None:
         op = "create"
         expected = 0
@@ -186,7 +187,7 @@ def persist(art: Artifact, db: Store, cache: Cache | None, graph: Graph | None) 
                 shareable=art.header.shareable,
                 subject_id=art.header.subject_id,
             )
-    db.artifacts.commit(art, expected_revision=expected, op=op, reason="persist",
+    artifacts.commit(art, expected_revision=expected, op=op, reason="persist",
               source_ids=tuple(art.header.lineage.sources))
     if cache is not None:
         cache.put(art)

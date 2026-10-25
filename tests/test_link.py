@@ -26,7 +26,7 @@ from maintain.link import (
 from recall.seed import seeds
 from recall.spread import activate
 from store.cache import Cache
-from store import Store, open_store
+from store import open_store
 
 
 def _memory(
@@ -67,8 +67,8 @@ class _BoomCache:
 class _BoomGraph:
     """link() 必抛异常的图替身：db 可读，边写入失败。"""
 
-    def __init__(self, db: Store) -> None:
-        self.db = db
+    def __init__(self, artifacts) -> None:
+        self.artifacts = artifacts
 
     def link(self, *_args: object) -> None:
         """模拟边表写入失败。"""
@@ -83,7 +83,7 @@ class _LinkCase(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_link_")
         self.db = open_store(os.path.join(self.tmpdir, "memory.db"))
         self.cache = Cache(self.db.artifacts)
-        self.graph = Graph(self.db, self.cache)
+        self.graph = Graph(self.db.artifacts)
 
     def tearDown(self) -> None:
         """关闭数据库并删除临时目录。"""
@@ -92,7 +92,7 @@ class _LinkCase(unittest.TestCase):
 
     def _write(self, art: Artifact) -> Artifact:
         """走生产写入路径：写库 + 入缓存 + 建边。"""
-        persist(art, self.db, self.cache, self.graph)
+        persist(art, self.db.artifacts, self.cache, self.graph)
         return art
 
     def _edges(self, art: Artifact) -> list[tuple[str, str, float]]:
@@ -217,8 +217,8 @@ class FailOpenTest(_LinkCase):
 
         self.assertEqual(link_new(second, None, self.cache), 0)
         self.assertEqual(link_new(second, self.graph, None), 0)
-        self.assertEqual(link_new(second, Graph(None, self.cache), self.cache), 0)
-        self.assertEqual(persist(second, self.db, None, None), 0)
+        self.assertEqual(link_new(second, Graph(None), self.cache), 0)
+        self.assertEqual(persist(second, self.db.artifacts, None, None), 0)
         self.assertIsNotNone(self.db.artifacts.get(second.header.id))
         self.assertEqual(self._edges(first), [])
         self.assertEqual(self._edges(second), [])
@@ -231,7 +231,7 @@ class FailOpenTest(_LinkCase):
                          created="2026-10-19T20:00:00")
         boom = _BoomCache(self.cache)
 
-        persist(second, self.db, boom, self.graph)  # type: ignore[arg-type]
+        persist(second, self.db.artifacts, boom, self.graph)  # type: ignore[arg-type]
 
         self.assertIsNotNone(self.db.artifacts.get(second.header.id))
         self.assertIsNotNone(self.cache.get(second.header.id))
@@ -245,8 +245,8 @@ class FailOpenTest(_LinkCase):
         second = _memory("他今天加班到凌晨两点才回家，很累",
                          created="2026-10-19T20:00:00")
 
-        persist(second, self.db, self.cache,  # type: ignore[arg-type]
-                _BoomGraph(self.db))
+        persist(second, self.db.artifacts, self.cache,  # type: ignore[arg-type]
+                _BoomGraph(self.db.artifacts))
 
         self.assertIsNotNone(self.db.artifacts.get(second.header.id))
         self.assertIsNotNone(self.cache.get(second.header.id))
@@ -268,7 +268,7 @@ class GraphApiTest(_LinkCase):
                       self.graph.neighbours(first.header.id))
         self.assertEqual(self.graph.degree(first.header.id), 1)
         self.assertEqual(self.graph.degree(""), 0)
-        self.assertEqual(Graph(None, self.cache).degree(first.header.id), 0)
+        self.assertEqual(Graph(None).degree(first.header.id), 0)
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ def make_db():
     """建一个临时库，返回 (db, cache, graph)。"""
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_abs_"), "t.db")
     db = open_store(path)
-    return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
+    return db, Cache(db.artifacts), Graph(db.artifacts)
 
 
 GOOD = json.dumps([
@@ -124,7 +124,7 @@ class AbsorbTest(unittest.TestCase):
     def test_writes_memories_with_tags(self):
         db, cache, graph = make_db()
         n = asyncio.run(absorb(
-            [DialogueTurn("umo:a", "10001", "user", "我下周三去杭州出差")], db, cache, graph,
+            [DialogueTurn("umo:a", "10001", "user", "我下周三去杭州出差")], db.artifacts, db.sources, cache, graph,
             FakeProvider(GOOD),
         ))
         self.assertEqual(n.written, 2)
@@ -142,7 +142,7 @@ class AbsorbTest(unittest.TestCase):
                            "valid_from": "2026-10-21"}])
         turn = DialogueTurn("napcat:FriendMessage:999", "999", "user", "interview",
                             "2026-10-20T23:14:00", "s1")
-        n = asyncio.run(absorb([turn], db, cache, graph, FakeProvider(raw)))
+        n = asyncio.run(absorb([turn], db.artifacts, db.sources, cache, graph, FakeProvider(raw)))
         self.assertEqual(n.written, 1)
         art = cache.active("memory")[0]
         self.assertEqual(art.header.subject_id, "999")
@@ -152,7 +152,7 @@ class AbsorbTest(unittest.TestCase):
     def test_provider_failure_returns_zero(self):
         db, cache, graph = make_db()
         n = asyncio.run(absorb(
-            [DialogueTurn("umo:a", "10001", "user", "随便说说")], db, cache, graph,
+            [DialogueTurn("umo:a", "10001", "user", "随便说说")], db.artifacts, db.sources, cache, graph,
             FakeProvider("", boom=True),
         ))
         self.assertEqual(n.written, 0)
@@ -162,7 +162,7 @@ class AbsorbTest(unittest.TestCase):
     def test_bad_items_skipped(self):
         db, cache, graph = make_db()
         n = asyncio.run(absorb(
-            [DialogueTurn("umo:a", "10001", "user", "说点什么")], db, cache, graph,
+            [DialogueTurn("umo:a", "10001", "user", "说点什么")], db.artifacts, db.sources, cache, graph,
             FakeProvider('[{"level": "fact"}, {"level": "fact", "text": "他喜欢猫"}]'),
         ))
         self.assertEqual(n.written, 1)  # 缺字段的被跳过
@@ -322,7 +322,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
                          "2026-10-22T12:00:05", "s_extra", "", "t9")
         ]
         outcome = asyncio.run(absorb(
-            turns, db, cache, graph,
+            turns, db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_a1", "s_u1"], confidence=0.95)),
         ))
         self.assertEqual(outcome.written, 1)
@@ -339,7 +339,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         db, cache, graph = make_db()
         parent, reply = _sources(db)
         outcome = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_u1", "s_bogus"])),
         ))
         self.assertTrue(outcome.retryable)
@@ -356,7 +356,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
                    REPLY_AT, reply_to="s_other_u"),
         ])
         outcome = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_other_u", "s_other_a"])),
         ))
         self.assertTrue(outcome.retryable)
@@ -367,7 +367,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         db, cache, graph = make_db()
         parent, reply = _sources(db)
         outcome = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_u1"])),
         ))
         self.assertTrue(outcome.retryable)
@@ -377,12 +377,12 @@ class BehaviorEvidenceTest(unittest.TestCase):
         db, cache, graph = make_db()
         parent, reply = _sources(db)
         first = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_u1", "s_a1"], text="她先接住情绪")),
         ))
         self.assertEqual(first.written, 1)
         retry = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_u1", "s_bogus"], text="她先接住情绪")),
         ))
         self.assertTrue(retry.retryable)
@@ -395,7 +395,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         raw = json.dumps([{"level": "scene", "text": "她的语气很温和",
                            "tags": "语气", "bot_tone": "温和"}], ensure_ascii=False)
         outcome = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph, FakeProvider(raw),
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph, FakeProvider(raw),
         ))
         self.assertEqual(outcome.written, 1)
         art = cache.active("memory")[0]
@@ -406,7 +406,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         db, cache, graph = make_db()
         parent, reply = _sources(db)
         outcome = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_u1", "s_a1"])),
         ))
         self.assertEqual(outcome.written, 1)
@@ -419,7 +419,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         raw = json.dumps([{"level": "fact", "text": "他今天很累", "tags": "累"}],
                          ensure_ascii=False)
         outcome = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph, FakeProvider(raw),
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph, FakeProvider(raw),
         ))
         self.assertEqual(outcome.written, 1)
         self.assertAlmostEqual(
@@ -433,7 +433,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
                 self.addCleanup(db.close)
                 parent, reply = _sources(db)
                 result = asyncio.run(absorb(
-                    _pair(parent, reply), db, cache, graph,
+                    _pair(parent, reply), db.artifacts, db.sources, cache, graph,
                     FakeProvider(_behavior_raw([parent.id, reply.id], confidence=value)),
                 ))
                 self.assertEqual(result.written, 1)
@@ -443,12 +443,12 @@ class BehaviorEvidenceTest(unittest.TestCase):
         db, cache, graph = make_db()
         parent, reply = _sources(db, "1")
         first = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_u1", "s_a1"], text="她先接住情绪")),
         ))
         self.assertEqual(first.written, 1)
         again = asyncio.run(absorb(
-            _pair(parent, reply), db, cache, graph,
+            _pair(parent, reply), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_a1", "s_u1"],
                                        text="她会先把情绪接住再问细节")),
         ))
@@ -456,7 +456,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
         self.assertEqual(len(cache.active("memory")), 1)
         parent2, reply2 = _sources(db, "2", user="10003")
         third = asyncio.run(absorb(
-            _pair(parent2, reply2), db, cache, graph,
+            _pair(parent2, reply2), db.artifacts, db.sources, cache, graph,
             FakeProvider(_behavior_raw(["s_u2", "s_a2"], text="她先接住情绪")),
         ))
         self.assertEqual(third.written, 1)
@@ -470,7 +470,7 @@ class BehaviorEvidenceTest(unittest.TestCase):
             ensure_ascii=False,
         ))
         outcome = asyncio.run(absorb(
-            _pair(parent, reply)[1:], db, cache, graph, provider,
+            _pair(parent, reply)[1:], db.artifacts, db.sources, cache, graph, provider,
         ))
         self.assertEqual(outcome.written, 1)
         art = cache.active("memory")[0]
@@ -503,7 +503,7 @@ class DialogueWindowTest(unittest.TestCase):
         rows += [DialogueTurn(PAIR_SESSION, "10001", "user", f"filler {i}",
                               PAIR_AT, f"f{i}") for i in range(119)]
         provider = FakeProvider("[]")
-        result = asyncio.run(absorb(rows, db, cache, graph, provider))
+        result = asyncio.run(absorb(rows, db.artifacts, db.sources, cache, graph, provider))
         self.assertFalse(result.retryable)
         for row in rows:
             self.assertIn(f"[{row.source_id}]", provider.seen)
@@ -519,7 +519,7 @@ class DialogueWindowTest(unittest.TestCase):
         reply = DialogueTurn(PAIR_SESSION, "bot", "assistant", "reply", REPLY_AT,
                              "reply", reply_to=foreign.id)
         provider = FakeProvider("[]")
-        asyncio.run(absorb([reply], db, cache, graph, provider))
+        asyncio.run(absorb([reply], db.artifacts, db.sources, cache, graph, provider))
         self.assertNotIn(foreign.text, provider.seen)
 
     def test_parent_read_failure_is_retryable_before_model_call(self):
@@ -529,7 +529,7 @@ class DialogueWindowTest(unittest.TestCase):
         parent, reply = _sources(db)
         provider = FakeProvider("[]")
         with patch.object(db.sources, "sources_by_ids", side_effect=RuntimeError("busy")):
-            result = asyncio.run(absorb(_pair(parent, reply)[1:], db, cache,
+            result = asyncio.run(absorb(_pair(parent, reply)[1:], db.artifacts, db.sources, cache,
                                         graph, provider))
         self.assertTrue(result.retryable)
         self.assertEqual(provider.seen, "")

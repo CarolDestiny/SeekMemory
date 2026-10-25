@@ -79,7 +79,7 @@ class DecayTest(_MaintainCase):
         art = _memory("很久以前的一件小事", "scene", weight=0.4)
         self._seed(art)
 
-        self.assertEqual(decay_all(self.db, self.cache, TODAY), 1)
+        self.assertEqual(decay_all(self.db.artifacts, self.cache, TODAY), 1)
         stored = self.db.artifacts.get(art.header.id)
         self.assertIsNotNone(stored)
         self.assertEqual(stored.header.state, "forgotten")
@@ -101,7 +101,7 @@ class DecayTest(_MaintainCase):
         self._seed(fact)
         self._seed(scene)
 
-        self.assertEqual(decay_all(self.db, self.cache, TODAY), 1)
+        self.assertEqual(decay_all(self.db.artifacts, self.cache, TODAY), 1)
         stored = self.db.artifacts.get(fact.header.id)
         self.assertEqual(stored.header.state, "active")
         self.assertEqual(stored.header.revision, 1)
@@ -117,7 +117,7 @@ class DecayTest(_MaintainCase):
             time={"created": "2024-01-01T00:00:00", "updated": "2024-01-01T00:00:00"},
         )
         self._seed(fresh)
-        self.assertEqual(decay_all(self.db, self.cache, TODAY), 0)
+        self.assertEqual(decay_all(self.db.artifacts, self.cache, TODAY), 0)
         self.assertEqual(self.db.artifacts.get(fresh.header.id).header.state, "active")
         self.assertIsNotNone(self.cache.get(fresh.header.id))
 
@@ -125,7 +125,7 @@ class DecayTest(_MaintainCase):
         """today 无法解析时不做任何淘汰。"""
         art = _memory("很久以前的一件小事", weight=0.3)
         self._seed(art)
-        self.assertEqual(decay_all(self.db, self.cache, "not-a-date"), 0)
+        self.assertEqual(decay_all(self.db.artifacts, self.cache, "not-a-date"), 0)
         self.assertEqual(self.db.artifacts.get(art.header.id).header.state, "active")
 
 

@@ -13,11 +13,9 @@ from pathlib import Path
 try:
     from ..app.contracts import DialogueTurn, ExtractionState
     from ..core.source import Source, make_source_id
-    from ..store import Store, open_store
 except ImportError:
     from app.contracts import DialogueTurn, ExtractionState
     from core.source import Source, make_source_id
-    from store import Store, open_store
 
 TOPIC_GAP_SECONDS = 5400
 TOPIC_SIMILARITY = 0.12
@@ -50,7 +48,7 @@ def _new_topic_id(turn: DialogueTurn) -> str:
 class Buffer:
     """In-memory view of a Source-backed extraction projection.
 
-    A path-only Buffer keeps the legacy JSON test/support behavior. When a Store is
+    A path-only Buffer keeps the legacy JSON test/support behavior. When a repository is
     supplied, queued turns are rebuilt from Source plus extraction_state.
     """
 
@@ -140,7 +138,7 @@ class Buffer:
         turn_id: str,
         deferred: bool = False,
     ) -> DialogueTurn:
-        """Give a Store-backed turn its immutable Source and extraction state.
+        """Give a repository-backed turn its immutable Source and extraction state.
 
         Host callers may add a turn without a Source id. The pending projection
         deduplicates by Source id, so an empty id would collapse every such turn

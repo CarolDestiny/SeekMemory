@@ -7,7 +7,7 @@ import datetime
 import json
 
 try:
-    from ..app.ports import Retriever
+    from ..app.ports import ArtifactStore, LedgerStore, Retriever, SourceStore
     from ..core.artifact import Artifact, content_of, revise, validate
     from ..core.graph import Graph
     from ..core.versioning import VersionError
@@ -15,9 +15,8 @@ try:
     from ..recall.pipeline import Conf, build_block
     from ..recall.scope import owner_of, visible
     from ..store.cache import Cache
-    from ..store import Store, open_store
 except ImportError:
-    from app.ports import Retriever
+    from app.ports import ArtifactStore, LedgerStore, Retriever, SourceStore
     from core.artifact import Artifact, content_of, revise, validate
     from core.graph import Graph
     from core.versioning import VersionError
@@ -25,7 +24,6 @@ except ImportError:
     from recall.pipeline import Conf, build_block
     from recall.scope import owner_of, visible
     from store.cache import Cache
-    from store import Store, open_store
 
 
 def timestamp(value: str) -> str:
@@ -46,9 +44,15 @@ def timestamp(value: str) -> str:
 class ManagementService:
     """管理操作复用既有存储、缓存和 scope 规则。"""
 
-    def __init__(self, db: Store, cache: Cache, graph: Graph, conf: Conf,
+    def __init__(self, artifacts: ArtifactStore, sources: SourceStore,
+                 ledger: LedgerStore, cache: Cache, graph: Graph, conf: Conf,
                  hybrid_retriever: Retriever | None = None) -> None:
-        self.db, self.cache, self.graph, self.conf = db, cache, graph, conf
+        self.artifacts = artifacts
+        self.sources = sources
+        self.ledger = ledger
+        self.cache = cache
+        self.graph = graph
+        self.conf = conf
         self.hybrid_retriever = hybrid_retriever
 
     def catalog(self) -> list[dict]:
@@ -58,11 +62,11 @@ class ManagementService:
             覆盖全部 scope 和非活跃状态的管理记录。
         """
         records = []
-        for art in self.db.artifacts.list():
+        for art in self.artifacts.list():
             header, payload = art.header, art.payload
             text = content_of(art) or "（空内容）"
             versions = {}
-            for version in self.db.artifacts.history(header.id):
+            for version in self.artifacts.history(header.id):
                 previous = Artifact(header=header, payload=version["payload"])
                 versions[version["revision"]] = {
                     "revision": version["revision"],
@@ -96,7 +100,7 @@ class ManagementService:
                         or header.said_by
                         or "未知对象"
                     ),
-                    "session": owner_of(art, self.db.sources.source_umo) or "未标注会话",
+                    "session": owner_of(art, self.sources.source_umo) or "未标注会话",
                     "tags": [str(tag) for tag in tags if str(tag)]
                     if isinstance(tags, list)
                     else [],
@@ -109,7 +113,7 @@ class ManagementService:
                         reverse=True,
                     ),
                     "relatedIds": list(
-                        dict.fromkeys(edge[0] for edge in self.db.artifacts.edges_of(header.id))
+                        dict.fromkeys(edge[0] for edge in self.artifacts.edges_of(header.id))
                     ),
                 }
             )
@@ -127,15 +131,15 @@ class ManagementService:
         Raises:
             LookupError: Artifact 已不存在。
         """
-        art = self.db.artifacts.get(node_id)
+        art = self.artifacts.get(node_id)
         if art is None:
             raise LookupError("记忆不存在")
         return {
             "artifact": dataclasses.asdict(art),
-            **self.db.artifacts.inspect_record(node_id),
+            **self.artifacts.inspect_record(node_id),
             "ledger": [
                 dict(row)
-                for row in self.db.ledger.entries()
+                for row in self.ledger.entries()
                 if row["entity"] == node_id
             ],
         }
@@ -181,7 +185,7 @@ class ManagementService:
             or len(json.dumps(body["payload"])) > 50000
         ):
             raise ValueError("记忆内容必须为 JSON 对象，序列化后不超过 50,000 个字符")
-        art = self.db.artifacts.get(body["id"])
+        art = self.artifacts.get(body["id"])
         if art is None:
             raise LookupError("记忆不存在")
         if art.header.state == "merged" and body["state"] != "merged":
@@ -193,7 +197,7 @@ class ManagementService:
         )
         validate(replacement)
         try:
-            self.db.artifacts.commit(
+            self.artifacts.commit(
                 replacement,
                 expected_revision=body["expectedRevision"],
                 op="forget" if body["state"] == "forgotten" else "revise",
@@ -225,7 +229,7 @@ class ManagementService:
                 raise ValueError(f"字段 {key} 无效")
         owner = str(self.conf("owner_umo", ""))
         pool = self.cache.active()
-        eligible = visible(pool, body["umo"], owner, self.db.sources.source_umo)
+        eligible = visible(pool, body["umo"], owner, self.sources.source_umo)
         private = ":FriendMessage:" in body["umo"]
         eligible = [
             art for art in eligible
@@ -235,7 +239,8 @@ class ManagementService:
         block, info = build_block(
             self.cache,
             self.graph,
-            self.db,
+            self.artifacts,
+            self.sources,
             body["umo"],
             body["query"],
             private,

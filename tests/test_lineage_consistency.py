@@ -41,7 +41,7 @@ class ImpressionLineageTest(unittest.TestCase):
         incoming = _impression(
             "he is stubborn but helps when it really matters", ("s2",)
         )
-        got = revise_impression(self.db, self.cache, incoming)
+        got = revise_impression(self.db.artifacts, self.cache, incoming)
         self.assertIsNotNone(got)
         self.assertEqual(content_of(got), "he is stubborn but helps when it really matters")
         self.assertEqual(got.header.lineage.sources, ("s1", "s2"))
@@ -53,7 +53,7 @@ class ImpressionLineageTest(unittest.TestCase):
         self.db.artifacts.commit(old, expected_revision=0, op="create")
         self.cache.put(old)
         incoming = _impression("he is stubborn but helps", ("s2",))
-        got = revise_impression(self.db, self.cache, incoming)
+        got = revise_impression(self.db.artifacts, self.cache, incoming)
         self.assertIsNotNone(got)
         self.assertEqual(got.header.lineage.sources, ("s1", "s2"))
 

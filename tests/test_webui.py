@@ -29,7 +29,12 @@ class ManagementTests(unittest.TestCase):
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.service = ManagementService(
-            self.db, self.cache, Graph(self.db, self.cache), {}.get
+            artifacts=self.db.artifacts,
+            sources=self.db.sources,
+            ledger=self.db.ledger,
+            cache=self.cache,
+            graph=Graph(self.db.artifacts),
+            conf={}.get,
         )
         self.art = make(
             "memory",

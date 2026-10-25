@@ -57,7 +57,7 @@ class TemporalRecallTest(unittest.TestCase):
         self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_time_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
-        self.graph = Graph(self.db, self.cache)
+        self.graph = Graph(self.db.artifacts)
         self.config = {"bm25_enabled": False, "explore_rate": 0.0,
                        "budget_chars": 600}
 
@@ -77,7 +77,7 @@ class TemporalRecallTest(unittest.TestCase):
 
     def recall(self, text: str):
         return build_block(
-            self.cache, self.graph, self.db, "g1", text, True,
+            self.cache, self.graph, self.db.artifacts, self.db.sources, "g1", text, True,
             self.config.get, "bot:FriendMessage:p1", "u1", dry_run=True,
         )
 

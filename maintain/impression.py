@@ -18,12 +18,12 @@ from dataclasses import replace
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of, revise
     from ..store.cache import Cache
-    from ..store import Store, open_store
+    from ..app.ports import ArtifactStore
     from ..recall.seed import bigrams
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of, revise
     from store.cache import Cache
-    from store import Store, open_store
+    from app.ports import ArtifactStore
     from recall.seed import bigrams
 
 LEVEL = "impression"
@@ -91,7 +91,7 @@ def _best_match(cache: Cache, art: Artifact) -> tuple[Artifact | None, float, fl
     return best, best_dice, best_contain
 
 
-def revise_impression(db: Store, cache: Cache, art: Artifact) -> Artifact | None:
+def revise_impression(artifacts: ArtifactStore, cache: Cache, art: Artifact) -> Artifact | None:
     """把新印象并入旧印象，返回改写后的版本；不需要修订时返回 None。"""
     try:
         if art.header.family != FAMILY:
@@ -105,14 +105,14 @@ def revise_impression(db: Store, cache: Cache, art: Artifact) -> Artifact | None
                                      float(art.header.strength.weight)) + WEIGHT_STEP)
         hits = int(old.header.strength.hits or 0) + 1
         if dice >= REINFORCE_OVERLAP:
-            return _reinforce(db, cache, art, old, weight, hits)
+            return _reinforce(artifacts, cache, art, old, weight, hits)
         if contain >= REVISE_CONTAIN and dice >= REVISE_DICE:
             # 旧说法被完整包含（新说法只是说得更细）时不必看长度；
             # 否则要求两边都够长，避免只共用一个词就合并。
             short = min(len(bigrams(_text(art))), len(bigrams(_text(old)))) < MIN_GRAMS
             if contain < 0.9 and short:
                 return None
-            return _reword(db, cache, art, old, weight, hits, dice)
+            return _reword(artifacts, cache, art, old, weight, hits, dice)
         return None
     except Exception:  # noqa: BLE001 - 修订失败不能影响写入
         return None
@@ -124,20 +124,20 @@ def _merged_sources(old: Artifact, art: Artifact) -> tuple[str, ...]:
     ))
 
 
-def _reinforce(db: Store, cache: Cache, art: Artifact, old: Artifact,
+def _reinforce(artifacts: ArtifactStore, cache: Cache, art: Artifact, old: Artifact,
                weight: float, hits: int) -> Artifact:
     sources = _merged_sources(old, art)
     lineage = replace(old.header.lineage, sources=sources)
     new = revise(old, strength=replace(old.header.strength, weight=weight, hits=hits),
                  lineage=lineage)
-    db.artifacts.commit(new, expected_revision=old.header.revision, op="reinforce",
+    artifacts.commit(new, expected_revision=old.header.revision, op="reinforce",
               reason="impression reinforced", source_ids=sources)
     cache.put(new)
-    _retire(db, cache, art)
+    _retire(artifacts, cache, art)
     return new
 
 
-def _reword(db: Store, cache: Cache, art: Artifact, old: Artifact,
+def _reword(artifacts: ArtifactStore, cache: Cache, art: Artifact, old: Artifact,
             weight: float, hits: int, score: float) -> Artifact:
     text = _text(art)
     payload = {**old.payload, **art.payload, "text": text}
@@ -155,20 +155,20 @@ def _reword(db: Store, cache: Cache, art: Artifact, old: Artifact,
         lineage=lineage,
         scope=art.header.scope,
     )
-    db.artifacts.commit(new, expected_revision=old.header.revision, op="merge",
+    artifacts.commit(new, expected_revision=old.header.revision, op="merge",
               reason=f"impression revised: {score:.2f}",
               source_ids=sources)
     cache.put(new)
-    _retire(db, cache, art)
+    _retire(artifacts, cache, art)
     return new
 
 
-def _retire(db: Store, cache: Cache, art: Artifact) -> None:
+def _retire(artifacts: ArtifactStore, cache: Cache, art: Artifact) -> None:
     if art.header.id == "":
         return
     try:
         updated = revise(art, state="merged")
-        db.artifacts.commit(updated, expected_revision=art.header.revision, op="merge",
+        artifacts.commit(updated, expected_revision=art.header.revision, op="merge",
                   reason="impression merged",
                   source_ids=tuple(art.header.lineage.sources))
     except Exception:

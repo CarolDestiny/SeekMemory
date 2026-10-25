@@ -8,12 +8,12 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, revise
     from ..core.strength import retention
     from ..store.cache import Cache
-    from ..store import Store, open_store
+    from ..app.ports import ArtifactStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, revise
     from core.strength import retention
     from store.cache import Cache
-    from store import Store, open_store
+    from app.ports import ArtifactStore
 
 FORGET_BELOW = 0.3
 
@@ -34,7 +34,7 @@ def _anchor(art: Artifact) -> datetime.date | None:
     return _day(span.updated) or _day(span.created)
 
 
-def decay_all(db: Store, cache: Cache, today: str) -> int:
+def decay_all(artifacts: ArtifactStore, cache: Cache, today: str) -> int:
     base = _day(today)
     if base is None:
         return 0
@@ -60,7 +60,7 @@ def decay_all(db: Store, cache: Cache, today: str) -> int:
          tuple(art.header.lineage.sources))
         for art in expired
     ]
-    db.artifacts.commit_many(writes, op="forget", reason="retention decay")
+    artifacts.commit_many(writes, op="forget", reason="retention decay")
     for art in expired:
         cache.remove(art.header.id)
     return len(expired)

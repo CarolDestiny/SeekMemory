@@ -18,11 +18,11 @@ MAX_SIDE = 22   # 旧说法最长字数，超了就截断
 
 def _texts(cache: Cache, art: Artifact) -> list[str]:
     """取这条记忆的正文版本链（旧→新），去掉连续重复。"""
-    db = getattr(cache, "artifacts", None)
-    if db is None:
+    artifacts = getattr(cache, "artifacts", None)
+    if artifacts is None:
         return []
     try:
-        rows = db.history(art.header.id)
+        rows = artifacts.history(art.header.id)
     except Exception:  # noqa: BLE001 - 读不到历史就当作没有
         return []
     out: list[str] = []
@@ -64,11 +64,11 @@ def _when(iso: str) -> str:
 
 def _first_at(cache: Cache, art: Artifact) -> str:
     """最早一版的时间，用来把「以前」说具体。"""
-    db = getattr(cache, "artifacts", None)
-    if db is None:
+    artifacts = getattr(cache, "artifacts", None)
+    if artifacts is None:
         return ""
     try:
-        rows = db.history(art.header.id)
+        rows = artifacts.history(art.header.id)
     except Exception:  # noqa: BLE001
         return ""
     return str(rows[0].get("at") or "") if rows else ""

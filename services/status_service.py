@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 
+try:
+    from ..app.ports import ArtifactStore
+except ImportError:
+    from app.ports import ArtifactStore
+
 
 class StatusService:
     """Expose persona revisions without leaking source text."""
 
-    def __init__(self, *, artifacts) -> None:
+    def __init__(self, *, artifacts: ArtifactStore | None) -> None:
         self.artifacts = artifacts
 
     @staticmethod

@@ -39,7 +39,7 @@ try:  # 作为 astrbot 插件包的一部分导入
         parse_response_checked,
     )
     from ..store.cache import Cache
-    from ..store import Store, open_store
+    from ..app.ports import ArtifactStore, SourceStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
     from core.artifact import Lineage, Strength, TimeSpan, content_of, make, revise, validate
@@ -47,7 +47,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from maintain.impression import revise_impression
     from maintain.link import link_new
     from store.cache import Cache
-    from store import Store, open_store
+    from app.ports import ArtifactStore, SourceStore
 
     from perceive.behavior import (
         DEFAULT_BEHAVIOR_CONFIDENCE,
@@ -207,7 +207,7 @@ def dialogue_of(items: list[DialogueTurn]) -> str:
     return "\n".join(lines)
 
 
-def _recover_parents(items: list[DialogueTurn], db: Store | None) -> list[DialogueTurn]:
+def _recover_parents(items: list[DialogueTurn], sources: SourceStore | None) -> list[DialogueTurn]:
     """Recover already-extracted user parents as read-only pairing context.
 
     A chunk boundary or a restart can leave an assistant turn without the user
@@ -219,7 +219,7 @@ def _recover_parents(items: list[DialogueTurn], db: Store | None) -> list[Dialog
             pending rows retryable instead of extracting without context.
     """
     rows = list(items)
-    if db is None:
+    if sources is None:
         return rows
     present = {turn.source_id for turn in items if turn.source_id}
     wanted: list[str] = []
@@ -231,12 +231,12 @@ def _recover_parents(items: list[DialogueTurn], db: Store | None) -> list[Dialog
             wanted.append(parent_id)
     if not wanted:
         return rows
-    sources = db.sources.sources_by_ids(wanted)
+    source_rows = sources.sources_by_ids(wanted)
     out: list[DialogueTurn] = []
     added: set[str] = set()
     for turn in items:
         parent_id = str(turn.reply_to or "") if turn.role == "assistant" else ""
-        parent = sources.get(parent_id) if parent_id else None
+        parent = source_rows.get(parent_id) if parent_id else None
         # 只有同会话、role=user、且就是被回复的那条 Source 才能进提示词。
         if parent is not None and parent.id not in present and parent.id not in added:
             same_session = parent.session_id == turn.session_id
@@ -299,7 +299,7 @@ def existing_texts_by_subject(cache: Cache | None) -> dict[str, list[str]]:
     return out
 
 
-def _supersede(db: Store, cache: Cache, new_art) -> int:
+def _supersede(artifacts: ArtifactStore, cache: Cache, new_art) -> int:
     """Expire an explicitly superseded old memory without deleting its Source."""
     payload = new_art.payload if isinstance(new_art.payload, dict) else {}
     old_text = str(payload.get("supersedes") or "").strip()
@@ -319,7 +319,7 @@ def _supersede(db: Store, cache: Cache, new_art) -> int:
         if not key or not body or (key not in body and body not in key):
             continue
         updated = revise(old, time=replace(old.header.time, valid_to=cutoff))
-        db.artifacts.commit(updated, expected_revision=old.header.revision, op="revise",
+        artifacts.commit(updated, expected_revision=old.header.revision, op="revise",
                   reason="superseded by extraction",
                   source_ids=tuple(old.header.lineage.sources))
         cache.put(updated)
@@ -334,7 +334,8 @@ def owner_of(items: list[DialogueTurn]) -> str:
 
 async def absorb(
     items: list[DialogueTurn],
-    db: Store,
+    artifacts: ArtifactStore,
+    sources: SourceStore,
     cache: Cache | None,
     graph: Graph | None,
     model: Any,
@@ -350,7 +351,7 @@ async def absorb(
 
     Args:
         items: 缓冲中的对话记录。
-        db: 运行中的 Artifact 数据库。
+        artifacts/sources: repository ports for writes and pairing lookups.
         cache: 可选的运行中 Artifact 缓存。
         graph: 可选的关系图，用于关联新 Artifact。
         model: 上游 ChatModel 接口或兼容的模型服务。
@@ -365,14 +366,14 @@ async def absorb(
     Raises:
         Exception: 启用 strict 时传播的模型服务异常。
     """
-    if not items or db is None or model is None:
+    if not items or artifacts is None or sources is None or model is None:
         return WriteOutcome(errors=("invalid extraction input",))
     items = list(items)
     owner = owner_of(items)
     source_ids = tuple(turn.source_id for turn in items if turn.source_id)
     # 分块边界或重启后，assistant 行的 user 父行可能已抽走；只读补回配对上下文。
     try:
-        context = _recover_parents(items, db)
+        context = _recover_parents(items, sources)
     except Exception as exc:
         if strict:
             raise
@@ -497,7 +498,7 @@ async def absorb(
             continue
         try:
             with stage("artifact.persist"):
-                db.artifacts.commit(
+                artifacts.commit(
                     art,
                     expected_revision=0,
                     op="create",
@@ -509,7 +510,7 @@ async def absorb(
                 link_new(art, graph, cache)
                 written_ids.append(art.header.id)
                 try:
-                    _supersede(db, cache, art)
+                    _supersede(artifacts, cache, art)
                 except Exception as exc:  # noqa: BLE001 - supersede is best effort
                     errors.append(f"supersede: {exc}")
         except Exception as exc:
@@ -521,7 +522,7 @@ async def absorb(
         try:
             if cache is not None and str(payload.get("level") or "") == "impression":
                 with stage("impression.revise"):
-                    revise_impression(db, cache, art)
+                    revise_impression(artifacts, cache, art)
         except Exception as exc:
             errors.append(f"impression: {exc}")
             log(f"印象修订失败： {type(exc).__name__}")

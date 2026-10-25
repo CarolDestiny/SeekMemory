@@ -89,7 +89,7 @@ class ImpressionTest(unittest.TestCase):
         db.artifacts.upsert(old)
         cache.put(old)
         new = mem("他有点倔，嘴上不饶人", level="impression", weight=1.6)
-        got = revise_impression(db, cache, new)
+        got = revise_impression(db.artifacts, cache, new)
         self.assertIsNotNone(got)
         self.assertEqual(got.header.id, old.header.id)
         self.assertEqual(got.header.revision, old.header.revision + 1)
@@ -102,7 +102,7 @@ class ImpressionTest(unittest.TestCase):
         db.artifacts.upsert(old)
         cache.put(old)
         new = mem("他有点倔，嘴上不饶人，但真有事会帮", level="impression", weight=1.6)
-        got = revise_impression(db, cache, new)
+        got = revise_impression(db.artifacts, cache, new)
         self.assertIsNotNone(got)
         self.assertEqual(got.header.revision, old.header.revision + 1)
         self.assertIn("真有事会帮", content_of(got))
@@ -114,12 +114,12 @@ class ImpressionTest(unittest.TestCase):
         old = mem("他有点倔，嘴上不饶人", level="impression")
         db.artifacts.upsert(old)
         cache.put(old)
-        got = revise_impression(db, cache, mem("他很会做饭，做得不错", level="impression"))
+        got = revise_impression(db.artifacts, cache, mem("他很会做饭，做得不错", level="impression"))
         self.assertIsNone(got)
 
     def test_non_impression_ignored(self):
         db, cache = temp_cache()
-        self.assertIsNone(revise_impression(db, cache, mem("他面试过了", level="scene")))
+        self.assertIsNone(revise_impression(db.artifacts, cache, mem("他面试过了", level="scene")))
 
 
 class LayerOrderTest(unittest.TestCase):
@@ -186,7 +186,7 @@ class TrajectoryTest(unittest.TestCase):
         cache.put(old)
         self.assertEqual(trajectory(cache, old), "")  # 只有一版没有轨迹
         new = mem("他有点倔，但真有事会帮", level="impression", weight=1.8)
-        got = revise_impression(db, cache, new)
+        got = revise_impression(db.artifacts, cache, new)
         self.assertIsNotNone(got)
         return cache, got
 

@@ -84,7 +84,7 @@ def gen_messages():
 def ingest(msgs):
     tmp = tempfile.mkdtemp(prefix="seekmem_e2e_")
     db = open_store(os.path.join(tmp, "e2e.db"))
-    cache = Cache(db.artifacts); graph = Graph(db, cache); by_key = {}
+    cache = Cache(db.artifacts); graph = Graph(db.artifacts); by_key = {}
     for m in msgs:
         if m["uid"] == "bot":
             continue

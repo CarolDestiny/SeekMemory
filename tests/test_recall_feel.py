@@ -77,7 +77,7 @@ class RecallFallbackTest(unittest.TestCase):
         self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_feel_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
-        self.graph = Graph(self.db, self.cache)
+        self.graph = Graph(self.db.artifacts)
 
     def save(self, text, level, subject="u1", umo="g1"):
         source = Source("s1", "turn1", umo, subject, "user", text, "2026-10-22T12:00:00")
@@ -91,7 +91,7 @@ class RecallFallbackTest(unittest.TestCase):
 
     def recall(self, query, speaker="u1"):
         config = {"bm25_enabled": False, "explore_rate": 0.0}
-        return build_block(self.cache, self.graph, self.db, "p1", query, True,
+        return build_block(self.cache, self.graph, self.db.artifacts, self.db.sources, "p1", query, True,
                            lambda key, default: config.get(key, default),
                            "p1", speaker, dry_run=True)
 
@@ -110,7 +110,7 @@ class RecallFallbackTest(unittest.TestCase):
     def test_shared_fact_is_full_in_same_group(self):
         art = self.save("owner works in Hangzhou", "fact")
         config = {"bm25_enabled": False, "explore_rate": 0.0}
-        block, info = build_block(self.cache, self.graph, self.db, "g1",
+        block, info = build_block(self.cache, self.graph, self.db.artifacts, self.db.sources, "g1",
                                   "owner works in Hangzhou", False,
                                   lambda key, default: config.get(key, default),
                                   "p1", "u2", dry_run=True)

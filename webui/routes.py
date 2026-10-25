@@ -202,8 +202,13 @@ class WebRoutes:
                     "记忆引擎不可用，请检查运行检测与日志", status_code=503
                 )
             service = ManagementService(
-                plugin.store, plugin.cache, plugin.graph, plugin._c,
-                plugin.hybrid_retriever,
+                artifacts=plugin.store.artifacts,
+                sources=plugin.store.sources,
+                ledger=plugin.store.ledger,
+                cache=plugin.cache,
+                graph=plugin.graph,
+                conf=plugin._c,
+                hybrid_retriever=plugin.hybrid_retriever,
             )
             if action == "records":
                 return json_response({"records": service.catalog()})

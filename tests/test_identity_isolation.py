@@ -41,7 +41,7 @@ def _turn(text: str, session: str = "umo:a", speaker: str = "10001") -> Dialogue
 def _db():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_identity_"), "t.db")
     db = open_store(path)
-    return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
+    return db, Cache(db.artifacts), Graph(db.artifacts)
 
 
 class SourceIdentityTest(unittest.TestCase):
@@ -100,11 +100,11 @@ class AbsorbIsolationTest(unittest.TestCase):
         db, cache, graph = _db()
         raw = json.dumps([{"level": "fact", "text": "I live in Hangzhou"}])
         one = asyncio.run(absorb(
-            [_turn("I live in Hangzhou", "umo:a", "10001")], db, cache, graph,
+            [_turn("I live in Hangzhou", "umo:a", "10001")], db.artifacts, db.sources, cache, graph,
             FakeProvider(raw),
         ))
         two = asyncio.run(absorb(
-            [_turn("I live in Hangzhou", "umo:b", "10002")], db, cache, graph,
+            [_turn("I live in Hangzhou", "umo:b", "10002")], db.artifacts, db.sources, cache, graph,
             FakeProvider(raw),
         ))
         self.assertEqual(one.written, 1)
@@ -141,7 +141,7 @@ class ImpressionIsolationTest(unittest.TestCase):
                        "level": "impression"},
             strength=Strength(weight=1.6), scope="private", subject_id="10002",
         )
-        self.assertIsNone(revise_impression(db, cache, new))
+        self.assertIsNone(revise_impression(db.artifacts, cache, new))
         self.assertEqual(cache.get(old.header.id).header.revision, 1)
         self.assertIsNone(cache.get(new.header.id))
 

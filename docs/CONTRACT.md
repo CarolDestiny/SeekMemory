@@ -71,7 +71,7 @@ def hit_cooldown_ok(last_window: str | None, now: str) -> bool: ...
 
 ```python
 class Tree:
-    def __init__(self, db, cache): ...
+    def __init__(self, artifacts: ArtifactStore, cache: Cache): ...
     def children(self, node_id: str) -> list[Artifact]: ...
     def impressions(self) -> list[Artifact]: ...
     def add_under(self, child: Artifact, parent_id: str | None) -> Artifact: ...
@@ -81,7 +81,7 @@ class Tree:
 
 ```python
 class Graph:
-    def __init__(self, db, cache): ...
+    def __init__(self, artifacts: ArtifactStore): ...
     def link(self, src: str, dst: str, kind: str, weight: float) -> None: ...
     def link_causal(self, src: str, dst: str, weight: float = 1.0) -> None: ...  # 仅接口，不自动调用
     def degree(self, node_id: str) -> int: ...
@@ -171,7 +171,7 @@ def matches(art: Artifact, text: str) -> bool: ...
 def already_given(art: Artifact) -> bool: ...
 def is_private(event) -> bool: ...
 def deliverable(art: Artifact, text: str, private: bool) -> bool: ...
-def mark_given(db, cache, arts: list[Artifact], block: str, now: str | None = None) -> int: ...
+def mark_given(artifacts, cache, arts: list[Artifact], block: str, now: str | None = None) -> int: ...
 ```
 
 ## recall/assemble.py
@@ -188,13 +188,13 @@ def build(arts: list[Artifact], budget: int = 2000,
 ## maintain/decay.py
 
 ```python
-def decay_all(db: Store, cache: Cache, today: str) -> int: ...  # 返回被标 forgotten 的数量
+def decay_all(artifacts: ArtifactStore, cache: Cache, today: str) -> int: ...  # 返回被标 forgotten 的数量
 ```
 
 ## maintain/merge.py
 
 ```python
-def merge_similar(db: Store, cache: Cache, threshold: float = 0.6, limit: int = 50) -> int: ...
+def merge_similar(artifacts: ArtifactStore, cache: Cache, threshold: float = 0.6, limit: int = 50) -> int: ...
 ```
 
 ## maintain/promote.py
@@ -210,7 +210,7 @@ def promote_candidates(cache: Cache, min_hits: int = 3,
 ```python
 def link_new(art: Artifact, graph: Graph | None, cache: Cache | None,
              created: str | None = None) -> int: ...
-def persist(art: Artifact, db: Store, cache: Cache | None,
+def persist(art: Artifact, artifacts: ArtifactStore, cache: Cache | None,
             graph: Graph | None) -> int: ...
     # 先写库/缓存，再建 similar/temporal；建边失败返回 0，不影响写入
 ```
@@ -219,7 +219,8 @@ def persist(art: Artifact, db: Store, cache: Cache | None,
 
 ```python
 def compose(impressions: list[Artifact]) -> str: ...
-def distill_persona(db: Store, cache: Cache, today: str | None = None) -> Artifact | None: ...
+def distill_persona(artifacts: ArtifactStore, sources: SourceStore,
+                    cache: Cache, today: str | None = None) -> Artifact | None: ...
     # 取 top3 impression 拼第二人称 persona；旧 persona 置 merged，写 merge 账本
 ```
 
@@ -258,7 +259,7 @@ def signals(prev_user: str, cur_user: str) -> dict: ...
 | POST cancel | id，confirmed=true | `{id}`；仅取消当前匹配的活动任务 |
 
 update 拒绝多余字段，reason 为 1–300 字符，payload 为对象且序列化长度不超过 50,000，
-使用原有 family 校验器，统一调用上游 `db.artifacts.commit()`，通过 expected_revision 检测版本冲突。
+使用原有 family 校验器，统一调用上游 `artifacts.commit()`，通过 expected_revision 检测版本冲突。
 版本、版本级证据和账本在同一事务内提交，失败整体回滚；成功后更新 Cache。
 遗忘使用 `forget`，其他人工修订（含恢复）使用 `revise`；账本 before_hash/after_hash
 沿用上游语义，记录修订号字符串。内容哈希从版本的 blob 字段查看。
@@ -457,8 +458,8 @@ put 按 ID 新增或替换，只索引 active；search 返回本次 pool 中正�
 
 ## recall/pipeline.py 的可选检索器
 
-```python
-def build_block(cache: Cache, graph: Graph, db: Store, umo: str, text: str,
+def build_block(cache: Cache, graph: Graph, artifacts: ArtifactStore,
+                sources: SourceStore, umo: str, text: str,
                 private: bool, conf: Conf, owner_umo: str, speaker: str = "",
                 log: Callable[[str], None] = lambda _msg: None, *,
                 dry_run: bool = False,
@@ -561,7 +562,7 @@ No additional per-chat model or network call is introduced.
 
 ## Atomic batch writes
 
-`db.artifacts.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.
+`artifacts.commit_many(writes, op=..., reason=...)` executes several artifact commits inside one SQLite transaction. `merge_similar()` uses it to create the impression and retire all members atomically; a failed member write leaves the cache and database unchanged.
 
 
 Lifecycle expiry and retention decay also use one `commit_many()` transaction: either all selected Artifacts become `forgotten`, or none do and the cache remains intact.
