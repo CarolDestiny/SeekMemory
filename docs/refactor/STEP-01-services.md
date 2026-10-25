@@ -56,7 +56,8 @@ class ServiceCollection:
 - DB initialization failure degrades safely.
 - Hooks/WebUI/tests use `plugin.services.*`.
 - Package allowlist contains `services/`.
-- Local fake-host suite: 487 tests passed.
+- Local fake-host suite: 487 tests passed (all tests except environment-bound
+  `test_api_contract.py` and `test_webui_host.py`, using the local fake-AstrBot stub).
 - Package + architecture tests: 23 passed.
 - GitHub CI: test 3.10/3.11/3.12, frontend-contract, build all passed.
 - Independent subagent review: APPROVE after lifecycle fixes.
