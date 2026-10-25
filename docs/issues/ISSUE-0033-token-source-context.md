@@ -1,6 +1,6 @@
-# ISSUE-0033: Token control and Source-assisted retrieval
+# ISSUE-0033: Token control and Source-evidence recall
 
-- Status: implemented (pending merge)
+- Status: verified (pending merge)
 - Priority: P1
 - Owner: application services, with pure policy helpers
 - Related: ISSUE-0024 (BM25), ISSUE-0028 (capacity/Source projection), ISSUE-0031 (request context budget)
