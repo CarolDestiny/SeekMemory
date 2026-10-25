@@ -7,22 +7,18 @@ import datetime
 import json
 
 try:
-    from ..app.ports import ArtifactStore, LedgerStore, Retriever, SourceStore
+    from ..app.ports import ArtifactStore, LedgerStore, SourceStore
     from ..core.artifact import Artifact, content_of, revise, validate
-    from ..core.graph import Graph
     from ..core.versioning import VersionError
-    from ..recall.designated import deliverable
-    from ..recall.pipeline import Conf, build_block
-    from ..recall.scope import owner_of, visible
+    from ..recall.scope import owner_of
+    from ..services.recall_service import RecallService
     from ..store.cache import Cache
 except ImportError:
-    from app.ports import ArtifactStore, LedgerStore, Retriever, SourceStore
+    from app.ports import ArtifactStore, LedgerStore, SourceStore
     from core.artifact import Artifact, content_of, revise, validate
-    from core.graph import Graph
     from core.versioning import VersionError
-    from recall.designated import deliverable
-    from recall.pipeline import Conf, build_block
-    from recall.scope import owner_of, visible
+    from recall.scope import owner_of
+    from services.recall_service import RecallService
     from store.cache import Cache
 
 
@@ -45,15 +41,13 @@ class ManagementService:
     """管理操作复用既有存储、缓存和 scope 规则。"""
 
     def __init__(self, artifacts: ArtifactStore, sources: SourceStore,
-                 ledger: LedgerStore, cache: Cache, graph: Graph, conf: Conf,
-                 hybrid_retriever: Retriever | None = None) -> None:
+                 ledger: LedgerStore, cache: Cache,
+                 recall_service: RecallService) -> None:
         self.artifacts = artifacts
         self.sources = sources
         self.ledger = ledger
         self.cache = cache
-        self.graph = graph
-        self.conf = conf
-        self.hybrid_retriever = hybrid_retriever
+        self.recall_service = recall_service
 
     def catalog(self) -> list[dict]:
         """将所有 Artifact 家族转换为统一的记忆库契约。
@@ -227,32 +221,7 @@ class ManagementService:
                 or not 0 < len(body[key].strip()) <= maximum
             ):
                 raise ValueError(f"字段 {key} 无效")
-        owner = str(self.conf("owner_umo", ""))
-        pool = self.cache.active()
-        eligible = visible(pool, body["umo"], owner, self.sources.source_umo)
         private = ":FriendMessage:" in body["umo"]
-        eligible = [
-            art for art in eligible
-            if deliverable(art, body["query"], private)
-        ]
-        ids = {art.header.id for art in eligible}
-        block, info = build_block(
-            self.cache,
-            self.graph,
-            self.artifacts,
-            self.sources,
-            body["umo"],
-            body["query"],
-            private,
-            self.conf,
-            owner,
-            body["speaker"],
-            dry_run=True,
-            hybrid_retriever=self.hybrid_retriever,
+        return self.recall_service.preview(
+            body["query"], body["umo"], private, body["speaker"]
         )
-        return {
-            "block": block,
-            "info": info,
-            "visible": sorted(ids),
-            "excluded": [art.header.id for art in pool if art.header.id not in ids],
-        }

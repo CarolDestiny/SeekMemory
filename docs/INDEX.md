@@ -29,6 +29,7 @@ v0.3.1 + WebUI branch
 | docs/refactor/STEP-01-services.md | Services/lifecycle acceptance record | docs/refactor/STEP-01-services.md |
 | docs/refactor/STEP-02-open-store.md | Repository store boundary acceptance record | docs/refactor/STEP-02-open-store.md |
 | docs/refactor/STEP-03-repository-ports.md | Explicit repository port acceptance record | docs/refactor/STEP-03-repository-ports.md |
+| docs/refactor/STEP-04-single-write-paths.md | Single write path acceptance record | docs/refactor/STEP-04-single-write-paths.md |
 | docs/INVARIANTS.md | Non-negotiable identity, privacy, recovery and reinforcement rules | docs/INVARIANTS.md |
 | docs/TESTING.md | Test layers, commands and known coverage gaps | docs/TESTING.md |
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |

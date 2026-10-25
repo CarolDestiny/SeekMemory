@@ -67,3 +67,29 @@ class MaintenanceService:
             "self_impressions": self_made,
             "persona": bool(persona),
         }
+
+    def compact_artifacts(self) -> int:
+        """Merge similar active memories through the single maintenance path."""
+        try:
+            from ..maintain.merge import merge_similar
+        except ImportError:
+            from maintain.merge import merge_similar
+        if self.artifacts is None or self.cache is None:
+            return 0
+        with self.journal.span("capacity", "compact_artifacts") as metrics:
+            merged = merge_similar(self.artifacts, self.cache, threshold=0.6)
+            metrics["merged"] = merged
+        return merged
+
+    def forget_expired(self, today: str = "") -> int:
+        """Forget expired artifacts through the single maintenance path."""
+        try:
+            from ..maintain.lifecycle import forget_expired
+        except ImportError:
+            from maintain.lifecycle import forget_expired
+        if self.artifacts is None or self.cache is None:
+            return 0
+        with self.journal.span("capacity", "forget_expired") as metrics:
+            forgotten = forget_expired(self.artifacts, self.cache, today)
+            metrics["forgotten"] = forgotten
+        return forgotten

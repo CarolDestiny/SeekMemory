@@ -29,6 +29,7 @@ open_store = store_module.open_store
 Cache = importlib.import_module("_seekmemory_contract.store.cache").Cache
 Graph = importlib.import_module("_seekmemory_contract.core.graph").Graph
 HybridRetriever = importlib.import_module("_seekmemory_contract.recall.retriever").HybridRetriever
+RecallService = importlib.import_module("_seekmemory_contract.services.recall_service").RecallService
 Journal = importlib.import_module("_seekmemory_contract.webui.journal").Journal
 Jobs = importlib.import_module("_seekmemory_contract.webui.jobs").Jobs
 Buffer = importlib.import_module("_seekmemory_contract.perceive.buffer").Buffer
@@ -118,6 +119,16 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         self.plugin.hybrid_retriever = HybridRetriever(self.plugin.graph, cache)
+        self.plugin.services.recall_service = RecallService(
+            cache=cache,
+            graph=self.plugin.graph,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            budget=SimpleNamespace(injection_chars=600),
+            config={}.get,
+            owner_umo=lambda: "",
+            hybrid_retriever=self.plugin.hybrid_retriever,
+        )
         self.plugin.run_traces = TraceStore(Path(self.temp.name) / "runs.jsonl")
         self.plugin.buffer.add(
             "bot:FriendMessage:alice",

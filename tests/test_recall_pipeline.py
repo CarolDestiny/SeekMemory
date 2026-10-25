@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -14,6 +15,7 @@ from core.graph import Graph
 from core.source import Source
 from recall.pipeline import build_block
 from recall.retriever import HybridRetriever
+from services.recall_service import RecallService
 from store.cache import Cache
 from store import open_store
 from webui.service import ManagementService
@@ -147,14 +149,22 @@ class OptionalBM25PipelineTest(unittest.TestCase):
 
     def test_readonly_diagnosis_does_not_consume_designated_delivery(self):
         designated = self.save("designated", {"text": "归还书籍清单", "trigger": "书籍"})
+        recall_service = RecallService(
+            cache=self.cache,
+            graph=self.graph,
+            artifacts=self.db.artifacts,
+            sources=self.db.sources,
+            budget=SimpleNamespace(injection_chars=600),
+            config=self.conf.get,
+            owner_umo=lambda: self.conf["owner_umo"],
+            hybrid_retriever=self.retriever,
+        )
         service = ManagementService(
             artifacts=self.db.artifacts,
             sources=self.db.sources,
             ledger=self.db.ledger,
             cache=self.cache,
-            graph=self.graph,
-            conf=self.conf.get,
-            hybrid_retriever=self.retriever,
+            recall_service=recall_service,
         )
         result = service.diagnose({"query": "还记得书籍吗", "umo": self.session,
                                    "speaker": "u1"})

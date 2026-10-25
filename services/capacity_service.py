@@ -6,7 +6,8 @@ import datetime
 from typing import Any, Callable
 
 try:
-    from ..app.ports import ArtifactStore, ExtractionStore, MetricsStore
+    from ..app.ports import ExtractionStore, MetricsStore
+    from .maintenance_service import MaintenanceService
     from ..core.capacity import (
         NORMAL,
         PROTECTIVE,
@@ -15,7 +16,8 @@ try:
         CapacitySnapshot,
     )
 except ImportError:
-    from app.ports import ArtifactStore, ExtractionStore, MetricsStore
+    from app.ports import ExtractionStore, MetricsStore
+    from services.maintenance_service import MaintenanceService
     from core.capacity import (
         NORMAL,
         PROTECTIVE,
@@ -33,8 +35,7 @@ class CapacityService:
         *,
         metrics: MetricsStore | None,
         extraction: ExtractionStore | None,
-        artifacts: ArtifactStore | None,
-        cache: Any,
+        maintenance: MaintenanceService,
         trace,
         journal,
         governor: CapacityGovernor,
@@ -44,8 +45,7 @@ class CapacityService:
     ) -> None:
         self.metrics = metrics
         self.extraction = extraction
-        self.artifacts = artifacts
-        self.cache = cache
+        self.maintenance = maintenance
         self.trace = trace
         self.journal = journal
         self.governor = governor
@@ -166,27 +166,10 @@ class CapacityService:
         if mark == self._action_mark:
             return
         self._action_mark = mark
-        if "compact_artifacts" in actions and self.artifacts and self.cache:
-            try:
-                from ..maintain.merge import merge_similar
-            except ImportError:
-                from maintain.merge import merge_similar
-
-            with self.journal.span("capacity", "compact_artifacts") as metrics:
-                metrics["merged"] = merge_similar(
-                    self.artifacts,
-                    self.cache,
-                    threshold=0.6,
-                    limit=50,
-                )
-        if "forget_expired" in actions and self.artifacts and self.cache:
-            try:
-                from ..maintain.lifecycle import forget_expired
-            except ImportError:
-                from maintain.lifecycle import forget_expired
-
-            with self.journal.span("capacity", "forget_expired") as metrics:
-                metrics["forgotten"] = forget_expired(self.artifacts, self.cache)
+        if "compact_artifacts" in actions:
+            self.maintenance.compact_artifacts()
+        if "forget_expired" in actions:
+            self.maintenance.forget_expired()
         if "trim_trace" in actions:
             with self.journal.span("capacity", "trim_trace") as metrics:
                 metrics["removed"] = self.trace.trim(
