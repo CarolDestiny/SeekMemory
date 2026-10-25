@@ -232,6 +232,31 @@ class LayerDependencyTest(unittest.TestCase):
                             self.assertNotIn("Store", names, str(path))
                             self.assertNotIn("open_store", names, str(path))
 
+    def test_capacity_delegates_maintenance_writes(self) -> None:
+        source = (ROOT / "services" / "capacity_service.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("from ..maintain", source)
+        self.assertNotIn("from maintain", source)
+        self.assertIn("self.maintenance.compact_artifacts()", source)
+        self.assertIn("self.maintenance.forget_expired()", source)
+
+    def test_webui_preview_uses_recall_service(self) -> None:
+        source = (ROOT / "webui" / "service.py").read_text(encoding="utf-8")
+        self.assertNotIn("recall.pipeline", source)
+        self.assertNotIn("build_block", source)
+        self.assertIn("self.recall_service.preview(", source)
+
+    def test_ingest_service_is_the_only_production_absorb_caller(self) -> None:
+        callers = []
+        for folder in ("app", "adapters", "services", "core", "recall",
+                       "perceive", "maintain", "webui"):
+            for path in (ROOT / folder).rglob("*.py"):
+                source = path.read_text(encoding="utf-8")
+                if "perceive.absorb import absorb" in source or "from .absorb import absorb" in source:
+                    callers.append(path)
+        self.assertEqual(callers, [ROOT / "services" / "ingest_service.py"])
+
     def test_engine_and_service_functions_do_not_take_aggregate_db(self) -> None:
         for folder in ("core", "services", "recall", "perceive", "maintain"):
             for path in (ROOT / folder).rglob("*.py"):

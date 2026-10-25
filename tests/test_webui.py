@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -15,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.artifact import Lineage, make, revise  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
+from services.recall_service import RecallService  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store import open_store  # noqa: E402
 from store.ledger import Ledger  # noqa: E402
@@ -28,13 +30,22 @@ class ManagementTests(unittest.TestCase):
         self.db = open_store(":memory:")
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
+        graph = Graph(self.db.artifacts)
+        recall_service = RecallService(
+            cache=self.cache,
+            graph=graph,
+            artifacts=self.db.artifacts,
+            sources=self.db.sources,
+            budget=SimpleNamespace(injection_chars=600),
+            config={}.get,
+            owner_umo=lambda: "",
+        )
         self.service = ManagementService(
             artifacts=self.db.artifacts,
             sources=self.db.sources,
             ledger=self.db.ledger,
             cache=self.cache,
-            graph=Graph(self.db.artifacts),
-            conf={}.get,
+            recall_service=recall_service,
         )
         self.art = make(
             "memory",

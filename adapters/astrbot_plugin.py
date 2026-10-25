@@ -178,12 +178,19 @@ class AstrBotPlugin(AstrBotHooks):
                 self.store.dreams, self._c,
                 log=lambda msg: logger.info(f"[seekmemory] {msg}"),
             )
+        maintenance = MaintenanceService(
+            artifacts=self.store.artifacts if self.store is not None else None,
+            sources=self.store.sources if self.store is not None else None,
+            cache=self.cache,
+            journal=self.journal,
+            task_id=lambda: self.jobs.task_id,
+            logger=logger,
+        )
         scheduler = Scheduler(runtime.store)
         capacity = CapacityService(
             metrics=self.store.metrics if self.store is not None else None,
             extraction=self.store.extraction if self.store is not None else None,
-            artifacts=self.store.artifacts if self.store is not None else None,
-            cache=self.cache,
+            maintenance=maintenance,
             trace=self.trace,
             journal=self.journal,
             governor=self.capacity,
@@ -204,14 +211,6 @@ class AstrBotPlugin(AstrBotHooks):
             owner_id=lambda: (
                 self.owner_umo.split(":")[-1] if self.owner_umo else ""
             ),
-            logger=logger,
-        )
-        maintenance = MaintenanceService(
-            artifacts=self.store.artifacts if self.store is not None else None,
-            sources=self.store.sources if self.store is not None else None,
-            cache=self.cache,
-            journal=self.journal,
-            task_id=lambda: self.jobs.task_id,
             logger=logger,
         )
         status = StatusService(

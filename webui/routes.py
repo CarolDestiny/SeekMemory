@@ -206,9 +206,7 @@ class WebRoutes:
                 sources=plugin.store.sources,
                 ledger=plugin.store.ledger,
                 cache=plugin.cache,
-                graph=plugin.graph,
-                conf=plugin._c,
-                hybrid_retriever=plugin.hybrid_retriever,
+                recall_service=plugin.services.recall_service,
             )
             if action == "records":
                 return json_response({"records": service.catalog()})

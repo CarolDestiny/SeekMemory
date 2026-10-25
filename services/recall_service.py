@@ -10,9 +10,13 @@ except ImportError:
     from app.ports import ArtifactStore, SourceStore
 
 try:
+    from ..recall.designated import deliverable
     from ..recall.pipeline import build_block
+    from ..recall.scope import visible
 except ImportError:
+    from recall.designated import deliverable
     from recall.pipeline import build_block
+    from recall.scope import visible
 
 
 class RecallService:
@@ -53,6 +57,7 @@ class RecallService:
         speaker: str = "",
         *,
         degraded: bool = False,
+        dry_run: bool = False,
     ) -> tuple[str, dict]:
         """Return the recalled text and its content-free recall metadata."""
         budget_chars = int(self.budget.injection_chars)
@@ -80,5 +85,26 @@ class RecallService:
             self.owner_umo(),
             speaker,
             log=self.log,
+            dry_run=dry_run,
             hybrid_retriever=self.hybrid_retriever,
         )
+
+    def preview(self, text: str, session_id: str, private: bool,
+                speaker: str = "") -> dict:
+        """Run the recall path without writing delivery state."""
+        block, info = self.build(
+            text, session_id, private, speaker, dry_run=True
+        )
+        owner = self.owner_umo()
+        pool = self.cache.active() if self.cache is not None else []
+        eligible = visible(pool, session_id, owner, self.sources.source_umo)
+        eligible = [
+            art for art in eligible if deliverable(art, text, private)
+        ]
+        ids = {art.header.id for art in eligible}
+        return {
+            "block": block,
+            "info": info,
+            "visible": sorted(ids),
+            "excluded": [art.header.id for art in pool if art.header.id not in ids],
+        }
