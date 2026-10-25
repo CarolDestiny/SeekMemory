@@ -60,48 +60,53 @@ def pack_same_session_batches(
 ) -> list[ExtractionBatch]:
     """Pack already-chunked topic units into same-session pure batches.
 
-    Units are indivisible and input order is preserved. A unit may exceed the
-    token limit; it is then emitted as its own batch and never split again.
+    Sessions are grouped in first-seen order, preserving the original unit
+    order within each session. Units are indivisible; an oversized unit is
+    emitted as its own batch and never split again. Sessions are never mixed.
     """
     limit = max(1, int(token_limit))
-    batches: list[ExtractionBatch] = []
-    current_session = ""
-    current_rows: list[DialogueTurn] = []
-    current_topics: list[str] = []
-    current_text_tokens = 0
-    reserved = max(0, int(fixed_tokens))
+    grouped: dict[str, list[tuple[str, list[DialogueTurn]]]] = {}
+    session_order: list[str] = []
+    for session_id, topic_id, rows in units:
+        if session_id not in grouped:
+            grouped[session_id] = []
+            session_order.append(session_id)
+        grouped[session_id].append((topic_id, rows))
 
-    def flush() -> None:
-        nonlocal current_rows, current_topics, current_text_tokens
-        if not current_rows:
-            return
-        batches.append(
-            ExtractionBatch(
-                current_session,
-                current_rows,
-                tuple(current_topics),
-                reserved + current_text_tokens,
-            )
-        )
-        current_rows = []
-        current_topics = []
+    reserved = max(0, int(fixed_tokens))
+    batches: list[ExtractionBatch] = []
+    for session_id in session_order:
+        current_rows: list[DialogueTurn] = []
+        current_topics: list[str] = []
         current_text_tokens = 0
 
-    for session_id, topic_id, rows in units:
-        unit_tokens = estimate_messages([turn.text for turn in rows])
-        if current_rows and (
-            session_id != current_session
-            or reserved + current_text_tokens + unit_tokens > limit
-        ):
-            flush()
-        current_session = session_id
-        current_rows.extend(rows)
-        if topic_id not in current_topics:
-            current_topics.append(topic_id)
-        current_text_tokens += unit_tokens
-        if reserved + current_text_tokens > limit:
-            flush()
-    flush()
+        def flush() -> None:
+            nonlocal current_rows, current_topics, current_text_tokens
+            if not current_rows:
+                return
+            batches.append(
+                ExtractionBatch(
+                    session_id,
+                    current_rows,
+                    tuple(current_topics),
+                    reserved + current_text_tokens,
+                )
+            )
+            current_rows = []
+            current_topics = []
+            current_text_tokens = 0
+
+        for topic_id, rows in grouped[session_id]:
+            unit_tokens = estimate_messages([turn.text for turn in rows])
+            if current_rows and reserved + current_text_tokens + unit_tokens > limit:
+                flush()
+            current_rows.extend(rows)
+            if topic_id not in current_topics:
+                current_topics.append(topic_id)
+            current_text_tokens += unit_tokens
+            if reserved + current_text_tokens > limit:
+                flush()
+        flush()
     return batches
 
 

@@ -61,6 +61,20 @@ class SameSessionPackingTest(unittest.TestCase):
         batches = pack_same_session_batches(units, token_limit=1000)
         self.assertEqual([batch.session_id for batch in batches], ["a", "b"])
 
+    def test_interleaved_sessions_group_by_first_seen_session(self) -> None:
+        units = [
+            ("a", "t1", [turn("a", "t1", "a1")]),
+            ("b", "t1", [turn("b", "t1", "b1")]),
+            ("a", "t2", [turn("a", "t2", "a2")]),
+        ]
+        batches = pack_same_session_batches(units, token_limit=1000)
+        self.assertEqual(len(batches), 2)
+        by_session = {batch.session_id: batch for batch in batches}
+        self.assertEqual(by_session["a"].topics, ("t1", "t2"))
+        self.assertEqual([row.text for row in by_session["a"].rows], ["a1", "a2"])
+        self.assertEqual(by_session["b"].topics, ("t1",))
+        self.assertEqual([row.text for row in by_session["b"].rows], ["b1"])
+
     def test_token_limit_splits_and_oversized_unit_stays_whole(self) -> None:
         units = [
             ("s", "t1", [turn("s", "t1", "x" * 100)]),

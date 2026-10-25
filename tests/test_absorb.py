@@ -786,6 +786,7 @@ class IngestTriageTest(unittest.TestCase):
         max_tokens=0,
         overrides=None,
         fail=False,
+        swallow_failure=False,
     ):
         from contextlib import contextmanager
         from types import SimpleNamespace
@@ -870,15 +871,20 @@ class IngestTriageTest(unittest.TestCase):
             owner_id=lambda: "u1",
             logger=Logger(),
         )
-        result = asyncio.run(
-            service.flush(
-                "test",
-                triage=triage,
-                batch_cap=10,
-                max_calls=max_calls,
-                max_tokens=max_tokens,
+        try:
+            result = asyncio.run(
+                service.flush(
+                    "test",
+                    triage=triage,
+                    batch_cap=10,
+                    max_calls=max_calls,
+                    max_tokens=max_tokens,
+                )
             )
-        )
+        except Exception:
+            if not swallow_failure:
+                raise
+            result = None
         return result, buffer, provider, journal
 
     def test_triage_selects_high_value_and_leaves_low_value_pending(self):
@@ -939,14 +945,19 @@ class IngestTriageTest(unittest.TestCase):
         self.assertEqual(len(buffer.items), 1)
 
     def test_batch_failure_leaves_all_rows_pending(self):
-        with self.assertRaises(RuntimeError):
-            self._run(
-                [
-                    "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
-                    "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
-                ],
-                fail=True,
-            )
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            fail=True,
+            swallow_failure=True,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 2)
+        self.assertEqual(buffer.succeeded, [])
+        self.assertEqual(len(buffer.failed), 2)
 
     def test_low_value_only_triage_starts_no_model_call(self):
         result, buffer, provider, _journal = self._run([
