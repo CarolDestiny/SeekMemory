@@ -75,7 +75,11 @@ class BackgroundService:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def flush(
-        self, reason: str, limit: int = 0, max_calls: int = 0
+        self,
+        reason: str,
+        limit: int = 0,
+        max_calls: int = 0,
+        max_tokens: int = 0,
     ) -> tuple[int, int]:
         decision = self.capacity.observe()
         return await self.ingest.flush(
@@ -84,6 +88,7 @@ class BackgroundService:
             batch_cap=self.capacity.batch_cap(decision),
             max_attempts=self.capacity.thresholds.extraction_max_attempts,
             max_calls=max_calls,
+            max_tokens=max_tokens,
         )
 
     def should_flush(self) -> bool:

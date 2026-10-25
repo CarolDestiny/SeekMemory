@@ -283,7 +283,6 @@ def build_block(
             "candidates": 0,
             "artifacts": 0,
             "picked": 0,
-            "matched": 0,
         }
         recall_k = max(0, int(conf("recall_k", 8)))
         threshold = min(2, recall_k)
@@ -305,10 +304,27 @@ def build_block(
                     limit=max_candidates,
                 )
                 source_info["candidates"] = len(hits)
-                source_info["matched"] = len(hits)
                 source_ids = [hit.source_id for hit in hits]
                 if source_ids:
-                    source_arts = artifacts.by_source_ids(source_ids)
+                    rank_by_source = {
+                        source_id: index
+                        for index, source_id in enumerate(source_ids)
+                    }
+                    source_arts = sorted(
+                        artifacts.by_source_ids(source_ids),
+                        key=lambda art: (
+                            min(
+                                (
+                                    rank_by_source[source]
+                                    for source in art.header.lineage.sources
+                                    if source in rank_by_source
+                                ),
+                                default=len(source_ids),
+                            ),
+                            art.header.id,
+                            str(art.header.time.created or ""),
+                        ),
+                    )
                     source_info["artifacts"] = len(source_arts)
                     existing = {art.header.id for art in picked}
                     eligible = []

@@ -293,6 +293,19 @@ class SourceRecallPipelineTest(unittest.TestCase):
         self.assertGreaterEqual(info["source_recall"]["picked"], 1)
         self.assertIn("derived quantum", block)
 
+    def test_source_hit_rank_controls_artifact_when_capacity_is_one(self):
+        self.add_artifact("quantum picked")
+        self.add_source("sA", "quantum alpha top source")
+        self.add_source("sB", "quantum beta source")
+        self.add_artifact("artifact from B", source_ids=("sB",), cache=False)
+        self.add_artifact("artifact from A", source_ids=("sA",), cache=False)
+        block, info = self.recall(
+            "quantum alpha top", recall_k=2
+        )
+        self.assertEqual(info["source_recall"]["picked"], 1)
+        self.assertIn("artifact from A", block)
+        self.assertNotIn("artifact from B", block)
+
     def test_cross_session_source_text_never_reaches_block(self):
         self.add_source("s1", "cross session quantum secret", session="other:session")
         self.add_artifact("cross evidence memory", source_ids=("s1",), cache=False)

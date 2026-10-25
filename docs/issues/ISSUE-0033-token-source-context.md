@@ -91,12 +91,13 @@ enter the query. A Source whose normalized text equals the current query is excl
 `chunk_turns` keeps the original turn-only `MAX_TOPIC_TURNS` behavior. There is no
 `extraction_chunk_tokens` and no `ExtractionBudget`.
 
-`IngestService.flush(..., max_calls=...)` checks before starting each real extraction
+`IngestService.flush(..., max_calls=..., max_tokens=...)` checks the remaining call
+allowance and the actual input+output token delta before starting each real extraction
 call. Unstarted pending rows remain recoverable. `DreamCycle` uses `dream_max_calls`
-(default 12) as the primary budget, passes the remaining call allowance to the flush
-callback, and records budget/usage/stopped in the dream summary. `dream_token_budget`
-remains an optional secondary guard checked before the next batch; it may allow at
-most one-call slack. Maintenance semantics are unchanged.
+(default 12) as the primary budget, passes both remaining budgets to the flush callback,
+and records budget/usage/stopped in the dream summary. `dream_token_budget` is an
+optional secondary guard with at most one-call slack. Maintenance semantics are
+unchanged.
 
 `IngestService` records exact `usage_in`, `usage_cached`, and `usage_out` from each
 `ChatResponse` on `WriteOutcome` and exposes a content-free cumulative

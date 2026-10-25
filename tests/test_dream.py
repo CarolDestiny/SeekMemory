@@ -73,7 +73,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_runs_once_and_is_idempotent(self):
         store, calls, left = FakeStore(), [], {"pending": 1}
 
-        async def flush(_reason, *, max_calls=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0):
             calls.append(1)
             left["pending"] = 0
             return 2, 1
@@ -90,7 +90,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_failure_keeps_pending_for_resume(self):
         store = FakeStore()
 
-        async def boom(_reason, *, max_calls=0):
+        async def boom(_reason, *, max_calls=0, max_tokens=0):
             raise RuntimeError("model down")
 
         dream = DreamCycle(store, conf())
@@ -100,7 +100,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
         # 失败后当天仍可续跑
         self.assertTrue(dream.due(AT))
 
-        async def ok(_reason, *, max_calls=0):
+        async def ok(_reason, *, max_calls=0, max_tokens=0):
             return 1, 1
 
         again = await dream.run(ok, pending=lambda: 0, now=AT)
@@ -109,7 +109,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_max_batches_bound(self):
         store, calls = FakeStore(), []
 
-        async def flush(_reason, *, max_calls=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0):
             calls.append(1)
             return 0, 1
 
@@ -120,7 +120,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_maintain_runs_after_flush(self):
         store, seen = FakeStore(), []
 
-        async def flush(_reason, *, max_calls=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0):
             return 1, 1
 
         async def maintain():
@@ -183,7 +183,7 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         calls = []
         maintained = []
 
-        async def flush(_reason, *, max_calls=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0):
             calls.append(1)
             usage["calls"] += 1
             usage["in"] += 400
@@ -218,7 +218,7 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         calls = []
         maintained = []
 
-        async def flush(_reason, *, max_calls=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0):
             calls.append(max_calls)
             usage["calls"] += 1
             usage["in"] += 10
@@ -249,12 +249,46 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.summary["usage"]["calls"], 2)
         self.assertEqual(result.summary["persona"], True)
 
+    async def test_token_budget_is_passed_to_flush_and_stops_after_one_call(self):
+        store = FakeStore()
+        usage = {"calls": 0, "in": 0, "cached": 0, "out": 0}
+        seen = []
+        maintained = []
+
+        async def flush(_reason, *, max_calls=0, max_tokens=0):
+            seen.append((max_calls, max_tokens))
+            usage["calls"] += 1
+            usage["in"] += 100
+            usage["out"] += 50
+            return 1, 1
+
+        async def maintain():
+            maintained.append(1)
+            return {"persona": True}
+
+        dream = DreamCycle(
+            store,
+            conf(dream_max_calls=10, dream_token_budget=100, dream_max_batches=5),
+        )
+        result = await dream.run(
+            flush,
+            pending=lambda: 10,
+            maintain=maintain,
+            usage=lambda: dict(usage),
+            now=AT,
+        )
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0], (10, 100))
+        self.assertEqual(maintained, [1])
+        self.assertEqual(result.summary["budget"]["stopped"], "token_budget")
+        self.assertEqual(result.summary["budget"]["used"], 150)
+
     async def test_zero_budget_records_usage_without_stopping(self):
         store = FakeStore()
         usage = {"calls": 0, "in": 10, "cached": 0, "out": 5}
         calls = []
 
-        async def flush(_reason, *, max_calls=0):
+        async def flush(_reason, *, max_calls=0, max_tokens=0):
             calls.append(1)
             usage["calls"] += 1
             usage["in"] += 10

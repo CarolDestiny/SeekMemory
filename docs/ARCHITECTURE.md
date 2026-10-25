@@ -117,11 +117,11 @@ turn-only `MAX_TOPIC_TURNS` behavior; there is no chunk token budget.
 `IngestService` records exact `usage_in`/`usage_cached`/`usage_out` from each
 `ChatResponse` on `WriteOutcome` and exposes a content-free cumulative
 `usage_snapshot()`. `dream_max_calls` (default 12) is the primary Dream budget:
-`IngestService.flush(..., max_calls=...)` checks before every real extraction call and
-leaves unstarted pending rows recoverable. `DreamCycle` passes the remaining call budget
-and records budget/usage/stopped in the dream summary. `dream_token_budget` remains a
-simple secondary guard checked before the next batch; it has at most one-call slack.
-Maintenance still runs for committed work.
+`IngestService.flush(..., max_calls=..., max_tokens=...)` checks both the remaining
+call allowance and the actual token delta before every real extraction call, leaving
+unstarted pending rows recoverable. `DreamCycle` passes both remaining budgets and
+records budget/usage/stopped in the dream summary. `dream_token_budget` is a secondary
+guard with at most one-call slack. Maintenance still runs for committed work.
 
 All production writes use `artifacts.commit()` with expected revision, version snapshots,
 evidence links and ledger entries. `ArtifactRepository.upsert()` is a seed/benchmark primitive,

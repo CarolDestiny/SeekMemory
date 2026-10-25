@@ -163,6 +163,7 @@ class IngestService:
         batch_cap: int = 6,
         max_attempts: int = 5,
         max_calls: int = 0,
+        max_tokens: int = 0,
     ) -> tuple[int, int]:
         """Extract ready topics while preserving pending rows on failure."""
         if (
@@ -217,15 +218,31 @@ class IngestService:
                     raise failure
                 return 0, 0
             self.flush_count += 1
+            usage_base = self.usage_snapshot()
             written = 0
             calls = 0
             processed_topics = 0
-            stopped_for_calls = False
+            stopped_for_budget = False
+
+            def token_budget_exhausted() -> bool:
+                if max_tokens <= 0:
+                    return False
+                current = self.usage_snapshot()
+                used = max(
+                    0,
+                    current["in"] + current["out"]
+                    - usage_base["in"] - usage_base["out"],
+                )
+                return used >= max_tokens
+
             for session_id, topic_id, part, provider in ready:
                 topic_started = False
                 for chunk in chunk_turns(part):
-                    if max_calls > 0 and calls >= max_calls:
-                        stopped_for_calls = True
+                    if (
+                        (max_calls > 0 and calls >= max_calls)
+                        or token_budget_exhausted()
+                    ):
+                        stopped_for_budget = True
                         break
                     topic_started = True
                     calls += 1
@@ -270,7 +287,7 @@ class IngestService:
                     )
                 if topic_started:
                     processed_topics += 1
-                if stopped_for_calls:
+                if stopped_for_budget:
                     break
             self.journal.record(
                 "extract",

@@ -152,8 +152,15 @@ class DreamCycle:
             remaining_calls = (
                 max(0, max_calls - used_calls) if max_calls > 0 else 0
             )
+            remaining_tokens = (
+                max(0, budget_tokens - used_tokens) if budget_tokens > 0 else 0
+            )
             try:
-                got, count = await flush_once("梦境", max_calls=remaining_calls)
+                got, count = await flush_once(
+                    "梦境",
+                    max_calls=remaining_calls,
+                    max_tokens=remaining_tokens,
+                )
             except Exception as exc:  # noqa: BLE001 - 保留待处理行，下次续跑
                 errors.append(f"flush: {type(exc).__name__}: {exc}")
                 break
