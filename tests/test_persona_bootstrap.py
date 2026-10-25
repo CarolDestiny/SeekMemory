@@ -132,6 +132,34 @@ class PersonaBootstrapTest(PersonaCase):
         self.assertIn("大肥鱼", block)
         self.assertIn(evolved.header.id, info["final_ids"])
 
+    def test_rollback_persona_creates_new_audited_revision(self) -> None:
+        service = self.service()
+        service.bootstrap_persona(seed_file("第一版"))
+        persona = self.cache.active("persona")[0]
+        service.bootstrap_persona(seed_file("第二版"))
+        current = self.cache.active("persona")[0]
+        self.assertEqual(current.header.revision, 2)
+        result = service.rollback_persona(
+            {
+                "id": persona.header.id,
+                "revision": 1,
+                "reason": "回到第一版",
+                "confirmed": True,
+            }
+        )
+        active = self.cache.active("persona")[0]
+        self.assertEqual(result["id"], persona.header.id)
+        self.assertEqual(result["revision"], 3)
+        self.assertEqual(result["restoredRevision"], 1)
+        self.assertEqual(active.payload["text"], "第一版")
+        self.assertEqual(active.payload["origin"], "seed")
+        self.assertEqual(active.header.lineage.sources, ())
+        self.assertTrue(trusted_self_persona(active))
+        self.assertEqual(
+            [row["payload"]["text"] for row in self.db.artifacts.history(persona.header.id)],
+            ["第一版", "第二版", "第一版"],
+        )
+
     def test_bootstrap_clears_legacy_lineage_and_creates_no_source(self) -> None:
         legacy = self.seed(make(
             "persona",

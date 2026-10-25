@@ -90,26 +90,27 @@ It must not:
 
 ## After bootstrap
 
-The initial seed persona is trusted for recall. Dream may later revise the same
-persona Artifact lineage from memory/impressions:
+The initial seed persona is trusted for recall. Dream may later synthesize the
+same persona Artifact lineage from:
 
 ```text
-seed persona + corpus
-  + Dream memory/impressions
+current active persona text
+  + self-impressions
+  + bounded shared memory summaries
   = new persona Artifact revision on the same id
 ```
 
-The one-time bootstrap revision stores the authored corpus (if supplied).
-Subsequent Dream revisions keep only `corpus_count` and `corpus_hash`; they do
-not duplicate the full corpus. This is intentional: after the initial persona is
-distilled, later revisions use persona text plus memory/impressions. Corpus is
-never injected into every recall prompt, and the deterministic behavior composer
-is not a full style synthesis. A follow-up synthesis step can consume the
-initial corpus reference plus approved impressions if needed.
+This is an incremental revision: the current persona is the authoritative base,
+not a from-scratch rewrite. The synthesis step uses at most one bounded model
+call per eligible Dream cycle. It does not include raw Source text or the full
+corpus. The one-time bootstrap revision stores the authored corpus (if supplied);
+subsequent revisions keep only `corpus_count` and `corpus_hash`.
 
-The previous revision remains in history. Rollback and manual edits must use the
-same persona Artifact lineage. A future implementation may add a one-click
-rollback operation, but it must not create a parallel persona store.
+The default synthesis interval is seven days (`persona_synthesis_interval_days`).
+The previous revision remains in history. Manual edits and rollback use the same
+persona Artifact lineage. `POST manage/rollbackPersona` restores a historical
+revision by creating a new revision with the target payload and header snapshot;
+it never deletes history and never creates a parallel persona store.
 
 ## Trust rules
 

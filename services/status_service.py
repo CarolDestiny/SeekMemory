@@ -80,6 +80,9 @@ class StatusService:
                 "at": str(row.get("at") or ""),
                 "op": str(row.get("op") or ""),
                 "text": str(payload.get("text") or ""),
+                "origin": str(payload.get("origin") or ""),
+                "synthesis": str(payload.get("synthesis") or ""),
+                "changeReason": str(payload.get("change_reason") or ""),
                 "derivedFrom": list(derived_from),
                 "sourceIds": list(source_ids),
             })
@@ -87,6 +90,9 @@ class StatusService:
             "id": current.header.id,
             "revision": int(current.header.revision),
             "text": str(current.payload.get("text") or ""),
+            "origin": str(current.payload.get("origin") or ""),
+            "synthesis": str(current.payload.get("synthesis") or ""),
+            "changeReason": str(current.payload.get("change_reason") or ""),
             "corpusCount": int(
                 current.payload.get("corpus_count")
                 or len(current.payload.get("corpus") or [])

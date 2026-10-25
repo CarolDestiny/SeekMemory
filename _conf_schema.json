@@ -142,6 +142,26 @@
     "hint": "例：{\"pending_saturated_rows\": 150, \"defer_limit\": 300}",
     "default": ""
   },
+  "persona_synthesis_enabled": {
+    "description": "Dream 后自动进行人格增量化更新（同一 persona lineage，失败保留旧版本）",
+    "type": "bool",
+    "default": true
+  },
+  "persona_synthesis_interval_days": {
+    "description": "距上一次人格 revision 至少多少天才允许再次自动演化",
+    "type": "int",
+    "default": 7
+  },
+  "persona_synthesis_evidence_limit": {
+    "description": "一次人格合成最多使用多少条 self-impression/公开记忆摘要",
+    "type": "int",
+    "default": 8
+  },
+  "persona_synthesis_evidence_chars": {
+    "description": "人格合成请求中证据摘要的最大字符数",
+    "type": "int",
+    "default": 2400
+  },
   "dream_enabled": {
     "description": "梦境模式：白天只缓冲，抽取与进化留到每天固定时刻",
     "type": "bool",
