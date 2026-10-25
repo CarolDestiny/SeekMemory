@@ -16,7 +16,7 @@ from core.artifact import Lineage, Strength, TimeSpan, make, revise  # noqa: E40
 from recall.temporal import valid_at  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
-from perceive.absorb import absorb  # noqa: E402
+from tests.absorb_support import absorb  # noqa: E402
 from recall.pipeline import build_block  # noqa: E402
 from recall.retriever import HybridRetriever  # noqa: E402
 from store.cache import Cache  # noqa: E402

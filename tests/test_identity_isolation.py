@@ -17,7 +17,8 @@ from core.graph import Graph  # noqa: E402
 from core.source import make_source_id  # noqa: E402
 from maintain.impression import revise_impression  # noqa: E402
 from maintain.merge import merge_similar  # noqa: E402
-from perceive.absorb import absorb, existing_texts_by_subject  # noqa: E402
+from tests.absorb_support import absorb  # noqa: E402
+from perceive.absorb import existing_texts_by_subject  # noqa: E402
 from perceive.extract import filter_duplicates  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store import open_store  # noqa: E402

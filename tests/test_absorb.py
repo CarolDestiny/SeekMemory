@@ -15,7 +15,8 @@ from app.contracts import DialogueTurn  # noqa: E402
 from core.artifact import content_of  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
-from perceive.absorb import absorb, dialogue_of, owner_of, worth_now  # noqa: E402
+from tests.absorb_support import absorb  # noqa: E402
+from perceive.absorb import dialogue_of, owner_of, worth_now  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import build_prompt, parse_response  # noqa: E402
 from store.cache import Cache  # noqa: E402

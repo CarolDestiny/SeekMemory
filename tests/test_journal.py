@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.contracts import DialogueTurn
-from perceive.absorb import absorb
+from tests.absorb_support import absorb
 from store import open_store
 from webui.jobs import Jobs
 from webui.journal import Journal
@@ -62,13 +62,20 @@ class JournalTests(unittest.IsolatedAsyncioTestCase):
             }
             <= stages
         )
-        self.assertTrue(
-            all(
-                e["source"]["file"] == "perceive/absorb.py"
-                and e["source"]["function"] == "absorb"
-                for e in self.journal.events
-            )
-        )
+        extract_events = [
+            e for e in self.journal.events if e["source"]["file"]
+            in ("services/ingest_service.py", "perceive/absorb.py")
+        ]
+        self.assertTrue(any(
+            e["source"]["file"] == "services/ingest_service.py"
+            and e["source"]["function"] == "extract"
+            for e in extract_events
+        ))
+        self.assertTrue(any(
+            e["source"]["file"] == "perceive/absorb.py"
+            and e["source"]["function"] == "build_plan"
+            for e in extract_events
+        ))
         self.assertNotIn("PRIVATE", self.path.read_text(encoding="utf-8"))
 
     def test_direct_and_callback_locations(self) -> None:

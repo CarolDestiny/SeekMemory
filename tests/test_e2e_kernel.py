@@ -15,7 +15,7 @@ from core.artifact import content_of
 from core.disclosure import DisclosureLevel, RecallScene, decide
 from core.graph import Graph
 from core.source import Source
-from perceive.absorb import absorb
+from tests.absorb_support import absorb
 from store.cache import Cache
 from store import open_store
 

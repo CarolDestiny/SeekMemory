@@ -1,7 +1,6 @@
-"""把缓冲里的对话抽成记忆并落库。
+"""Turn pending dialogue into validated Artifacts without persistence.
 
-一步做完：拼对话 → 调模型 → 解析 JSON → 去重 → 构造 artifact → 校验 → 写库建边。
-任何一步失败都只丢这一批，不影响聊天。
+The IngestService owns model calls and every write side effect.
 """
 
 from __future__ import annotations
@@ -9,17 +8,14 @@ from __future__ import annotations
 import datetime
 import math
 import re
-from dataclasses import replace
-from collections.abc import Callable
+from dataclasses import dataclass
 from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Callable
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
-    from ..core.artifact import Lineage, Strength, TimeSpan, content_of, make, revise, validate
-    from ..core.graph import Graph
-    from ..maintain.impression import revise_impression
-    from ..maintain.link import link_new
+    from ..app.contracts import DialogueTurn, WriteOutcome
+    from ..core.artifact import Artifact, Lineage, Strength, TimeSpan, content_of, make, validate
     from ..perceive.behavior import (
         DEFAULT_BEHAVIOR_CONFIDENCE,
         behavior_boundary,
@@ -34,20 +30,16 @@ try:  # 作为 astrbot 插件包的一部分导入
     )
     from ..perceive.extract import (
         ExtractionParseError,
-        build_prompt,
         filter_duplicates,
         parse_response_checked,
     )
     from ..store.cache import Cache
-    from ..app.ports import ArtifactStore, SourceStore
+    from ..app.ports import SourceStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
-    from core.artifact import Lineage, Strength, TimeSpan, content_of, make, revise, validate
-    from core.graph import Graph
-    from maintain.impression import revise_impression
-    from maintain.link import link_new
+    from app.contracts import DialogueTurn, WriteOutcome
+    from core.artifact import Artifact, Lineage, Strength, TimeSpan, content_of, make, validate
     from store.cache import Cache
-    from app.ports import ArtifactStore, SourceStore
+    from app.ports import SourceStore
 
     from perceive.behavior import (
         DEFAULT_BEHAVIOR_CONFIDENCE,
@@ -63,7 +55,6 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     )
     from perceive.extract import (
         ExtractionParseError,
-        build_prompt,
         filter_duplicates,
         parse_response_checked,
     )
@@ -207,7 +198,7 @@ def dialogue_of(items: list[DialogueTurn]) -> str:
     return "\n".join(lines)
 
 
-def _recover_parents(items: list[DialogueTurn], sources: SourceStore | None) -> list[DialogueTurn]:
+def recover_parents(items: list[DialogueTurn], sources: SourceStore | None) -> list[DialogueTurn]:
     """Recover already-extracted user parents as read-only pairing context.
 
     A chunk boundary or a restart can leave an assistant turn without the user
@@ -299,120 +290,56 @@ def existing_texts_by_subject(cache: Cache | None) -> dict[str, list[str]]:
     return out
 
 
-def _supersede(artifacts: ArtifactStore, cache: Cache, new_art) -> int:
-    """Expire an explicitly superseded old memory without deleting its Source."""
-    payload = new_art.payload if isinstance(new_art.payload, dict) else {}
-    old_text = str(payload.get("supersedes") or "").strip()
-    if not old_text:
-        return 0
-    key = re.sub(r"\s+", "", old_text).lower()
-    cutoff = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
-    changed = 0
-    for old in list(cache.active("memory")):
-        if old.header.id == new_art.header.id:
-            continue
-        if old.header.subject_id != new_art.header.subject_id:
-            continue
-        if old.header.scope != new_art.header.scope:
-            continue
-        body = re.sub(r"\s+", "", content_of(old) or "").lower()
-        if not key or not body or (key not in body and body not in key):
-            continue
-        updated = revise(old, time=replace(old.header.time, valid_to=cutoff))
-        artifacts.commit(updated, expected_revision=old.header.revision, op="revise",
-                  reason="superseded by extraction",
-                  source_ids=tuple(old.header.lineage.sources))
-        cache.put(updated)
-        changed += 1
-    return changed
-
-
 def owner_of(items: list[DialogueTurn]) -> str:
     sessions = {turn.session_id for turn in items if turn.session_id}
     return next(iter(sessions)) if len(sessions) == 1 else ""
 
 
-async def absorb(
+@dataclass(frozen=True)
+class ExtractionPlan:
+    """Pure extraction result ready for the ingest service to persist."""
+    artifacts: tuple[Artifact, ...] = ()
+    skipped: int = 0
+    errors: tuple[str, ...] = ()
+    retryable: bool = False
+    outcome: WriteOutcome | None = None
+
+
+def build_plan(
     items: list[DialogueTurn],
-    artifacts: ArtifactStore,
-    sources: SourceStore,
+    context: list[DialogueTurn],
+    raw: str,
     cache: Cache | None,
-    graph: Graph | None,
-    model: Any,
-    log: Log = lambda _msg: None,
     owner_id: str = "",
+    log: Log = lambda _msg: None,
     *,
     strict: bool = False,
     stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
         nullcontext()
     ),
-) -> WriteOutcome:
-    """抽取并持久化 Artifact，对单条处理失败保持容错。
+) -> ExtractionPlan:
+    """Convert model output into validated Artifacts without side effects.
 
-    Args:
-        items: 缓冲中的对话记录。
-        artifacts/sources: repository ports for writes and pairing lookups.
-        cache: 可选的运行中 Artifact 缓存。
-        graph: 可选的关系图，用于关联新 Artifact。
-        model: 上游 ChatModel 接口或兼容的模型服务。
-        log: 操作警告回调。
-        owner_id: 配置中的主人 ID，用于解析模型的主体归属。
-        strict: 传播模型服务异常，使任务执行器保留待处理输入。
-        stage: 注入的业务阶段上下文管理器；默认不采集阶段日志。
-
-    Returns:
-        上游 WriteOutcome，包含写入数、跳过数、ID 与失败信息。
-
-    Raises:
-        Exception: 启用 strict 时传播的模型服务异常。
+    The function reads the cache for dedupe only. It never commits, caches,
+    links, supersedes or revises anything; those writes belong to IngestService.
     """
-    if not items or artifacts is None or sources is None or model is None:
-        return WriteOutcome(errors=("invalid extraction input",))
-    items = list(items)
     owner = owner_of(items)
-    source_ids = tuple(turn.source_id for turn in items if turn.source_id)
-    # 分块边界或重启后，assistant 行的 user 父行可能已抽走；只读补回配对上下文。
-    try:
-        context = _recover_parents(items, sources)
-    except Exception as exc:
-        if strict:
-            raise
-        log(f"父对话恢复失败： {type(exc).__name__}")
-        return WriteOutcome(errors=(f"parent: {exc}",), retryable=True)
     available = {turn.source_id: turn for turn in context if turn.source_id}
-    try:
-        with stage("provider.call"):
-            if hasattr(model, "complete"):
-                resp = await model.complete(
-                    ChatRequest(
-                        session_id=str(items[0].session_id or ""),
-                        system_prompt=build_prompt([]),
-                        prompt=dialogue_of(context),
-                    )
-                )
-                raw = getattr(resp, "text", "") or ""
-            else:
-                resp = await model.text_chat(
-                    system_prompt=build_prompt([]), prompt=dialogue_of(context)
-                )
-                raw = getattr(resp, "completion_text", "") or ""
-    except Exception as exc:
-        if strict:
-            raise
-        log(f"模型调用失败： {type(exc).__name__}")
-        return WriteOutcome(errors=(f"model: {exc}",), model_failed=True, retryable=True)
-
+    source_ids = tuple(turn.source_id for turn in items if turn.source_id)
     group = ":GroupMessage:" in owner
     scope = "shared" if group or not owner else "private"
     senders = {turn.speaker_id for turn in items if turn.speaker_id}
-    # 默认用户归属只认 user 行（含只读父行）：assistant 不能变成 user 主语。
-    user_senders = {turn.speaker_id for turn in context
-                    if turn.speaker_id and turn.role == "user"}
+    user_senders = {
+        turn.speaker_id for turn in context
+        if turn.speaker_id and turn.role == "user"
+    }
     said_by = "owner"
     if group:
         said_by = next(iter(user_senders)) if len(user_senders) == 1 else "group"
-    default_subject = (next(iter(user_senders)) if len(user_senders) == 1
-                       else owner_id or owner or "")
+    default_subject = (
+        next(iter(user_senders)) if len(user_senders) == 1
+        else owner_id or owner or ""
+    )
 
     def boundary_of(item: dict) -> str:
         base = _boundary(scope, _subject_id(item, owner, default_subject, owner_id))
@@ -420,32 +347,33 @@ async def absorb(
             return base
         return behavior_boundary(base, behavior_of(item), evidence_ids(item))
 
-    with stage("response.parse"):
-        try:
+    try:
+        with stage("response.parse"):
             parsed = parse_response_checked(raw)
-        except ExtractionParseError as exc:
-            if strict:
-                raise
-            return WriteOutcome(errors=(f"parse: {exc}",), model_failed=True,
-                                retryable=True)
-    # 证据必须先校验、后去重：不合法的行为证据要整批可重试，不能被当成重复跳过。
+    except ExtractionParseError as exc:
+        if strict:
+            raise
+        return ExtractionPlan(outcome=WriteOutcome(
+            errors=(f"parse: {exc}",), model_failed=True, retryable=True
+        ))
+
     checked: list[tuple[dict, tuple[str, ...]]] = []
     for item in parsed[:MAX_ITEMS]:
         candidate = {**item, "owner_umo": owner} if owner else dict(item)
         try:
             check_payload(candidate)
-            # 行为条目必须引用本批（含只读父行）里真实的 assistant + user 父行。
             evidence = validate_evidence(candidate, available, session_id=owner)
         except ValueError as exc:
-            log(f"证据校验失败： {type(exc).__name__}")
-            return WriteOutcome(errors=(f"evidence: {exc}",), model_failed=True,
-                                retryable=True)
+            log(f"evidence validation failed: {type(exc).__name__}")
+            return ExtractionPlan(outcome=WriteOutcome(
+                errors=(f"evidence: {exc}",), model_failed=True, retryable=True
+            ))
         checked.append((candidate, evidence))
     evidence_of = {id(item): evidence for item, evidence in checked}
     parsed = [item for item, _ in checked]
+
     with stage("memory.deduplicate"):
         existing = existing_texts_by_subject(cache)
-        # 行为事件按“证据 + 行为值”判重，措辞和证据顺序都不参与。
         repeated = {key for key in existing if is_behavior_key(key)}
         parsed = dedupe_behaviors(
             parsed, existing_keys=repeated, boundary_of=boundary_of
@@ -456,9 +384,9 @@ async def absorb(
             subject_of=boundary_of,
         )
     if not parsed:
-        return WriteOutcome(skipped=len(items))
+        return ExtractionPlan(outcome=WriteOutcome(skipped=len(items)))
 
-    written_ids: list[str] = []
+    artifacts: list[Artifact] = []
     skipped = 0
     errors: list[str] = []
     retryable = False
@@ -490,46 +418,10 @@ async def absorb(
                     ),
                 )
                 validate(art)
+            artifacts.append(art)
         except Exception as exc:
             skipped += 1
             retryable = True
             errors.append(f"construct: {exc}")
-            log(f"记忆校验失败： {type(exc).__name__}")
-            continue
-        try:
-            with stage("artifact.persist"):
-                artifacts.commit(
-                    art,
-                    expected_revision=0,
-                    op="create",
-                    reason="extract",
-                    source_ids=evidence or source_ids,
-                )
-                if cache is not None:
-                    cache.put(art)
-                link_new(art, graph, cache)
-                written_ids.append(art.header.id)
-                try:
-                    _supersede(artifacts, cache, art)
-                except Exception as exc:  # noqa: BLE001 - supersede is best effort
-                    errors.append(f"supersede: {exc}")
-        except Exception as exc:
-            skipped += 1
-            errors.append(f"commit: {exc}")
-            retryable = True
-            log(f"记忆写入失败： {type(exc).__name__}")
-            continue
-        try:
-            if cache is not None and str(payload.get("level") or "") == "impression":
-                with stage("impression.revise"):
-                    revise_impression(artifacts, cache, art)
-        except Exception as exc:
-            errors.append(f"impression: {exc}")
-            log(f"印象修订失败： {type(exc).__name__}")
-    return WriteOutcome(
-        written=len(written_ids),
-        skipped=skipped,
-        ids=tuple(written_ids),
-        errors=tuple(errors),
-        retryable=retryable,
-    )
+            log(f"artifact validation failed: {type(exc).__name__}")
+    return ExtractionPlan(tuple(artifacts), skipped, tuple(errors), retryable)

@@ -36,7 +36,7 @@ async def main():
     from core.graph import Graph
     from store import open_store
     from store.cache import Cache
-    from perceive.absorb import absorb
+    from services.ingest_service import IngestService
     from maintain.self_impression import build_self_impressions
     from maintain.persona import distill_self_persona
     from recall.pipeline import build_block
@@ -65,6 +65,14 @@ async def main():
             session='probe:FriendMessage:71001'
             outcomes=[]
             model=Model()
+            async def _provider_for(_session):
+                return None
+            class _Logger:
+                def info(self,*_a,**_kw): pass
+                def warning(self,*_a,**_kw): pass
+            ingest=IngestService(buffer=None,artifacts=db.artifacts,sources=db.sources,
+                extraction=None,cache=cache,graph=graph,journal=None,config=lambda k,d:d,
+                provider_for=_provider_for,owner_id=lambda:'71001',logger=_Logger())
             for index,(user,assistant) in enumerate(pairs):
                 at=f'2026-10-23T09:{index:02d}:00'
                 uid=f'u_{name}_{repeat}_{index}'; aid=f'a_{name}_{repeat}_{index}'
@@ -81,7 +89,7 @@ async def main():
                     from dataclasses import replace
                     turns=[replace(t,turn_id=uid,reply_to=uid if t.role=='assistant' else '') for t in turns]
                 try:
-                    outcome=await absorb(turns,db.artifacts,db.sources,cache,graph,model,owner_id='71001',strict=True)
+                    outcome=await ingest.extract(turns,model,owner_id='71001',strict=True)
                     outcomes.append({'written':outcome.written,'errors':list(outcome.errors),'retryable':outcome.retryable})
                 except Exception as exc:
                     outcomes.append({'error':type(exc).__name__})
