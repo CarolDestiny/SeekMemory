@@ -116,7 +116,9 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
                     },
                     "queue": {},
                 }),
-                status_service=SimpleNamespace(persona=lambda: None),
+                status_service=SimpleNamespace(
+                    persona=lambda: None, ledger_valid=lambda: True
+                ),
             ),
         )
         self.plugin.hybrid_retriever = HybridRetriever(self.plugin.graph, cache)
