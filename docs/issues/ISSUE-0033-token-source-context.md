@@ -1,4 +1,4 @@
-# ISSUE-0033: Token control and Source-evidence recall
+# ISSUE-0033: Token control, Source-evidence recall and Dream triage
 
 - Status: verified (pending merge)
 - Priority: P1
