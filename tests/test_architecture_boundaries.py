@@ -191,6 +191,7 @@ class LayerDependencyTest(unittest.TestCase):
             [
                 item for item in imports
                 if item.startswith("astrbot") or item.startswith("adapters")
+                or item.startswith("app")
             ]
         )
 
