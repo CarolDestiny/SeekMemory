@@ -1,6 +1,6 @@
 # ISSUE-0033: Token control and Source-backed recent context
 
-- Status: in_progress
+- Status: implemented (pending merge)
 - Priority: P1
 - Owner: application services, with pure policy helpers
 - Related: ISSUE-0024 (BM25), ISSUE-0028 (capacity/Source projection), ISSUE-0031 (request context budget)
@@ -207,28 +207,28 @@ Both remain repository ports; no store import leaks into engines or services.
 
 ## Acceptance criteria
 
-- [ ] `source_context_enabled=false` preserves the pre-change recall block and all
+- [x] `source_context_enabled=false` preserves the pre-change recall block and all
       existing `info` keys for current fixtures; any new source-context counters are
       additive and report disabled/zero.
-- [ ] A query that misses Artifact BM25 can find a recent Source and deliver its
+- [x] A query that misses Artifact BM25 can find a recent Source and deliver its
       derived Artifact through the existing disclosure path.
-- [ ] A cross-session Source is never rendered raw, including same-speaker and
+- [x] A cross-session Source is never rendered raw, including same-speaker and
       same-group fixtures; the negative tests assert the exact source text is absent.
-- [ ] A same-session Source backing a secret/designated/shadow Artifact is not rendered
+- [x] A same-session Source backing a secret/designated/shadow Artifact is not rendered
       raw by the Source fallback.
-- [ ] Same-session recent Source text is rendered only as fallback and only within
+- [x] Same-session recent Source text is rendered only as fallback and only within
       the remaining injection budget.
-- [ ] Total memory block + source context is <= `budget_chars` (and estimated token
+- [x] Total memory block + source context is <= `budget_chars` (and estimated token
       output is reported).
-- [ ] `chunk_turns` respects both turn and token limits, preserves all turns, and does
+- [x] `chunk_turns` respects both turn and token limits, preserves all turns, and does
       not split a user/assistant reply pair.
-- [ ] `IngestService` accumulates exact `usage_in`, `usage_cached`, `usage_out` from
+- [x] `IngestService` accumulates exact `usage_in`, `usage_cached`, `usage_out` from
       `ChatResponse` and preserves failed/retryable extraction semantics.
-- [ ] `dream_token_budget` stops new extraction batches after the configured usage
+- [x] `dream_token_budget` stops new extraction batches after the configured usage
       and writes usage/budget/stopped fields to the dream summary.
-- [ ] Architecture tests still reject store imports from services/engines, aggregate
+- [x] Architecture tests still reject store imports from services/engines, aggregate
       `Store`/`DB` parameters and duplicate recall paths.
-- [ ] Full test suite and package/architecture tests pass with the repository's
+- [x] Full test suite and package/architecture tests pass with the repository's
       Python environment.
 
 ## Tests to add or update
