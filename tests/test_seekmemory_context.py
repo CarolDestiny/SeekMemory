@@ -205,7 +205,7 @@ class FakeMain(main_module.Main):
         )
         self.services = SimpleNamespace(
             runtime=self.runtime,
-            capacity=self.capacity_service,
+            capacity_service=self.capacity_service,
         )
 
     def _may_recall(self, event):
@@ -242,7 +242,7 @@ with tempfile.TemporaryDirectory() as temp:
     ], plugin.calls
     assert event.get_extra("_seekmemory_recall_ids") == ("a1", "2")
     assert req.system_prompt.startswith("base") and "memory block" in req.system_prompt
-    assert plugin.services.capacity.context_chars == len("memory block")
+    assert plugin.services.capacity_service.context_chars == len("memory block")
     trace = plugin.run_traces.snapshot()
     assert trace["events"][0]["event"] == "llm_request"
     assert trace["events"][0]["recall"]["artifact_ids"] == ["a1"]
@@ -267,7 +267,7 @@ with tempfile.TemporaryDirectory() as temp:
     asyncio.run(plugin.inject_memory(empty_event, empty_req))
     assert empty_req.system_prompt == "base"
     assert empty_event.get_extra("_seekmemory_recall_ids") == ("a1",)
-    assert plugin.services.capacity.context_chars == 0
+    assert plugin.services.capacity_service.context_chars == 0
 
     def fail_recall(text, umo="", private=False, speaker=""):
         raise RuntimeError("db path /secret")

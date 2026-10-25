@@ -88,12 +88,12 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
                 get_using_provider_async=AsyncMock(return_value=None)
             ),
             services=SimpleNamespace(
-                background=SimpleNamespace(
+                background_service=SimpleNamespace(
                     tasks=[],
                     nightly=asyncio.Event().wait,
                     weekly=asyncio.Event().wait,
                 ),
-                capacity=SimpleNamespace(status=lambda: {
+                capacity_service=SimpleNamespace(status=lambda: {
                     "state": "normal",
                     "actions": [],
                     "reasons": [],
@@ -112,7 +112,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
                     },
                     "queue": {},
                 }),
-                status=SimpleNamespace(persona=lambda: None),
+                status_service=SimpleNamespace(persona=lambda: None),
             ),
         )
         self.plugin.hybrid_retriever = HybridRetriever(self.plugin.graph, cache)
