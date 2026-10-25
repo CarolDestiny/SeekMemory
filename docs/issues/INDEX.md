@@ -36,7 +36,7 @@
 | [ISSUE-0030](ISSUE-0030.md) | 人格进化应该是「做梦」，不是实时进化 | P1 | merged | 白天只缓冲；dream 一次批量抽取/合并/修订印象/沉淀人格，可重放可续跑。 |
 | [ISSUE-0031](ISSUE-0031.md) | 上下文预算：语料与群聊上下文该有上限 | P2 | merged | 单次调用 15k tokens 中语料占 4.5k；实测 248→166 对质量不变（3.79→3.77）。 |
 | [ISSUE-0032](ISSUE-0032.md) | Agent Run Trace（GitHub #11） | P2 | in_progress | 本地轨迹、时间轴与筛选已实现；待真实宿主验收与审核。 |
-| [ISSUE-0033](ISSUE-0033-token-source-context.md) | Token 控制、Source 证据召回与 Dream 分诊 | P1 | verified | Memory 优先；薄弱时用 Source id 找派生 Artifact；真实调用/token 预算；Dream 夜间隔夜分诊只抽重要 topic。 |
+| [ISSUE-0033](ISSUE-0033-token-source-context.md) | Token 控制、Source 证据召回与 Dream 分诊批处理 | P1 | verified | Memory 优先；Source 只做证据；Dream 分诊 + 同会话批处理；真实调用/token 预算与 usage 台账。 |
 
 ## 关系图（读的顺序）
 
