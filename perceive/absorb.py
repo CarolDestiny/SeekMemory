@@ -319,6 +319,7 @@ def build_plan(
     log: Log = lambda _msg: None,
     *,
     strict: bool = False,
+    require_evidence: bool = False,
     stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
         nullcontext()
     ),
@@ -368,6 +369,8 @@ def build_plan(
         try:
             check_payload(candidate)
             evidence = validate_evidence(candidate, available, session_id=owner)
+            if require_evidence and not evidence:
+                raise ValueError("evidence_source_ids required for multi-topic batch")
         except ValueError as exc:
             log(f"evidence validation failed: {type(exc).__name__}")
             return ExtractionPlan(outcome=WriteOutcome(

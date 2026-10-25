@@ -213,6 +213,14 @@ class PromptTest(unittest.TestCase):
         self.assertIn("supersedes", prompt)
         self.assertIn("2026-10-20T23:14:00", prompt)
 
+    def test_multi_topic_prompt_requires_evidence_without_changing_default(self):
+        default = build_prompt([])
+        required = build_prompt([], require_evidence=True)
+        self.assertNotIn("\u591a\u8bdd\u9898\u6279\u6b21", default)
+        self.assertIn("\u591a\u8bdd\u9898\u6279\u6b21", required)
+        self.assertIn("evidence_source_ids", required)
+        self.assertIn("\u6bcf\u6761\u8bb0\u5fc6\u9879\u90fd\u5fc5\u987b\u586b\u5199", required)
+
     def test_prompt_documents_one_behavior_field_and_evidence(self):
         prompt = build_prompt([])
         self.assertIn("bot_behavior", prompt)
@@ -637,16 +645,19 @@ class IngestCallBudgetTest(unittest.TestCase):
             def __init__(self):
                 self.calls = 0
                 self.prompts = []
+                self.system_prompts = []
 
             async def text_chat(self, system_prompt="", prompt=""):
                 self.calls += 1
                 self.prompts.append(prompt)
+                self.system_prompts.append(system_prompt)
                 if getattr(self, "fail", False):
                     raise RuntimeError("provider down")
+                items = getattr(self, "response_items", None) or [
+                    {"level": "fact", "text": f"memory {self.calls}"}
+                ]
                 return SimpleNamespace(
-                    completion_text=json.dumps([
-                        {"level": "fact", "text": f"memory {self.calls}"}
-                    ]),
+                    completion_text=json.dumps(items),
                     usage=SimpleNamespace(input=10, input_cached=0, output=5),
                 )
 
@@ -727,16 +738,19 @@ class IngestTokenBudgetTest(unittest.TestCase):
             def __init__(self):
                 self.calls = 0
                 self.prompts = []
+                self.system_prompts = []
 
             async def text_chat(self, system_prompt="", prompt=""):
                 self.calls += 1
                 self.prompts.append(prompt)
+                self.system_prompts.append(system_prompt)
                 if getattr(self, "fail", False):
                     raise RuntimeError("provider down")
+                items = getattr(self, "response_items", None) or [
+                    {"level": "fact", "text": f"memory {self.calls}"}
+                ]
                 return SimpleNamespace(
-                    completion_text=json.dumps([
-                        {"level": "fact", "text": f"memory {self.calls}"}
-                    ]),
+                    completion_text=json.dumps(items),
                     usage=SimpleNamespace(input=10, input_cached=0, output=5),
                 )
 
@@ -787,6 +801,8 @@ class IngestTriageTest(unittest.TestCase):
         overrides=None,
         fail=False,
         swallow_failure=False,
+        response_items=None,
+        with_db=False,
     ):
         from contextlib import contextmanager
         from types import SimpleNamespace
@@ -830,16 +846,19 @@ class IngestTriageTest(unittest.TestCase):
             def __init__(self):
                 self.calls = 0
                 self.prompts = []
+                self.system_prompts = []
 
             async def text_chat(self, system_prompt="", prompt=""):
                 self.calls += 1
                 self.prompts.append(prompt)
+                self.system_prompts.append(system_prompt)
                 if getattr(self, "fail", False):
                     raise RuntimeError("provider down")
+                items = getattr(self, "response_items", None) or [
+                    {"level": "fact", "text": f"memory {self.calls}"}
+                ]
                 return SimpleNamespace(
-                    completion_text=json.dumps([
-                        {"level": "fact", "text": f"memory {self.calls}"}
-                    ]),
+                    completion_text=json.dumps(items),
                     usage=SimpleNamespace(input=10, input_cached=0, output=5),
                 )
 
@@ -853,6 +872,7 @@ class IngestTriageTest(unittest.TestCase):
         journal = Journal()
         provider = Provider()
         provider.fail = fail
+        provider.response_items = response_items
 
         async def provider_for(_session):
             return provider
@@ -885,6 +905,8 @@ class IngestTriageTest(unittest.TestCase):
             if not swallow_failure:
                 raise
             result = None
+        if with_db:
+            return result, buffer, provider, journal, db
         return result, buffer, provider, journal
 
     def test_triage_selects_high_value_and_leaves_low_value_pending(self):
@@ -904,10 +926,15 @@ class IngestTriageTest(unittest.TestCase):
         self.assertNotIn("\u8bb0\u4f4f", str(context))
 
     def test_same_session_high_value_topics_share_one_call(self):
-        result, buffer, provider, journal = self._run([
-            "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
-            "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
-        ])
+        result, buffer, provider, journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[
+                {"level": "fact", "text": "memory a", "evidence_source_ids": ["s0"]},
+            ],
+        )
         self.assertEqual(result, (1, 2))
         self.assertEqual(provider.calls, 1)
         self.assertEqual(len(buffer.items), 0)
@@ -917,6 +944,42 @@ class IngestTriageTest(unittest.TestCase):
         self.assertEqual(context["topics"], 2)
         self.assertEqual(context["batches"], 1)
         self.assertEqual(context["calls"], 1)
+
+    def test_multi_topic_missing_evidence_fails_and_keeps_all_pending(self):
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[{"level": "fact", "text": "memory"}],
+            swallow_failure=True,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(provider.calls, 1)
+        self.assertIn("evidence_source_ids", provider.system_prompts[0])
+        self.assertEqual(len(buffer.items), 2)
+        self.assertEqual(buffer.succeeded, [])
+        self.assertEqual(len(buffer.failed), 2)
+
+    def test_multi_topic_valid_evidence_commits_only_cited_lineage(self):
+        result, _buffer, provider, _journal, db = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[{
+                "level": "fact",
+                "text": "memory",
+                "evidence_source_ids": ["s0"],
+            }],
+            with_db=True,
+        )
+        self.assertEqual(result, (1, 2))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(db.artifacts.by_source_ids(["s0"])), 1)
+        self.assertEqual(db.artifacts.by_source_ids(["s1"]), [])
+        art = db.artifacts.by_source_ids(["s0"])[0]
+        self.assertEqual(art.header.lineage.sources, ("s0",))
 
     def test_forced_batch_split_respects_max_calls_and_keeps_pending(self):
         result, buffer, provider, _journal = self._run(

@@ -301,7 +301,9 @@ class IngestService:
                     providers[session_id] = provider
                     for chunk in chunk_turns(part):
                         units.append((session_id, topic_id, chunk))
-                fixed_tokens = estimate_tokens(len(build_prompt([])))
+                fixed_tokens = estimate_tokens(
+                    len(build_prompt([], require_evidence=True))
+                )
                 batch_limit = max(
                     1, int(self.config("dream_batch_tokens", 6000))
                 )
@@ -343,6 +345,7 @@ class IngestService:
                                 strict=True,
                                 stage=partial(self.journal.span, "extract"),
                                 include_topic=len(batch.topics) > 1,
+                                require_evidence=len(batch.topics) > 1,
                             )
                             metrics["written"] = outcome.written
                             metrics["skipped"] = outcome.skipped
@@ -463,6 +466,7 @@ class IngestService:
         log: Callable[[str], None] = lambda _msg: None,
         strict: bool = False,
         include_topic: bool = False,
+        require_evidence: bool = False,
         stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
             nullcontext()
         ),
@@ -491,7 +495,9 @@ class IngestService:
                     response = await model.complete(
                         ChatRequest(
                             session_id=str(items[0].session_id or ""),
-                            system_prompt=build_prompt([]),
+                            system_prompt=build_prompt(
+                                [], require_evidence=require_evidence
+                            ),
                             prompt=dialogue_of(
                                 context, include_topic=include_topic
                             ),
@@ -500,7 +506,9 @@ class IngestService:
                     raw = getattr(response, "text", "") or ""
                 else:
                     response = await model.text_chat(
-                        system_prompt=build_prompt([]),
+                        system_prompt=build_prompt(
+                            [], require_evidence=require_evidence
+                        ),
                         prompt=dialogue_of(
                             context, include_topic=include_topic
                         ),
@@ -517,7 +525,15 @@ class IngestService:
             )
 
         plan = build_plan(
-            items, context, raw, self.cache, owner, log, strict=strict, stage=stage
+            items,
+            context,
+            raw,
+            self.cache,
+            owner,
+            log,
+            strict=strict,
+            require_evidence=require_evidence,
+            stage=stage,
         )
         if plan.outcome is not None:
             return self._with_usage(plan.outcome, usage)
