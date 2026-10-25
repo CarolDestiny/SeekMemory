@@ -228,11 +228,9 @@ class LayerDependencyTest(unittest.TestCase):
                     if isinstance(node, ast.ImportFrom):
                         module = node.module or ""
                         if module in ("store", "..store") or module.endswith("store"):
-                            self.assertNotIn(
-                                "Store",
-                                {alias.name for alias in node.names},
-                                str(path),
-                            )
+                            names = {alias.name for alias in node.names}
+                            self.assertNotIn("Store", names, str(path))
+                            self.assertNotIn("open_store", names, str(path))
 
     def test_engine_and_service_functions_do_not_take_aggregate_db(self) -> None:
         for folder in ("core", "services", "recall", "perceive", "maintain"):
@@ -247,6 +245,7 @@ class LayerDependencyTest(unittest.TestCase):
                         *node.args.kwonlyargs,
                     ]
                     self.assertNotIn("db", {arg.arg for arg in arguments}, str(path))
+                    self.assertNotIn("store", {arg.arg for arg in arguments}, str(path))
 
     def test_services_do_not_import_host_or_adapters(self) -> None:
         imports = self._imports(ROOT / "services")

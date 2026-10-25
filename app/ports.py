@@ -57,14 +57,13 @@ class ArtifactStore(Protocol):
 
 
 @runtime_checkable
-@runtime_checkable
 class MetricsStore(Protocol):
-    def capacity_usage(self) -> dict[str, Any]: ...
+    def capacity_usage(self, now: str = "") -> dict[str, Any]: ...
 
 
 @runtime_checkable
 class LedgerStore(Protocol):
-    def entries(self) -> list[dict]: ...
+    def entries(self) -> list[Any]: ...
 
 
 @runtime_checkable
