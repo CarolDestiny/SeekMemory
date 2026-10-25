@@ -8,13 +8,17 @@ import json
 
 try:
     from ..app.ports import ArtifactCache, ArtifactStore, LedgerStore, SourceStore
-    from ..core.artifact import Artifact, content_of, revise, validate
+    from ..core.artifact import Artifact, Lineage, Strength, content_of, make, revise, validate
+    from ..core.bot_behavior import SELF_SUBJECT
+    from ..core.persona import PERSONA_ORIGIN_SEED, persona_payload_from_file
     from ..core.versioning import VersionError
     from ..recall.scope import owner_of
     from .recall_service import RecallService
 except ImportError:
     from app.ports import ArtifactCache, ArtifactStore, LedgerStore, SourceStore
-    from core.artifact import Artifact, content_of, revise, validate
+    from core.artifact import Artifact, Lineage, Strength, content_of, make, revise, validate
+    from core.bot_behavior import SELF_SUBJECT
+    from core.persona import PERSONA_ORIGIN_SEED, persona_payload_from_file
     from core.versioning import VersionError
     from recall.scope import owner_of
     from services.recall_service import RecallService
@@ -200,6 +204,52 @@ class ManagementService:
             raise ValueError("revision_conflict") from exc
         self.cache.put(replacement)
         return replacement.header.id
+
+    def bootstrap_persona(self, seed_file: dict) -> dict:
+        """Install one authored persona file as the initial persona revision.
+
+        A persona file is authored configuration, not chat evidence.  It creates
+        or revises the one active persona Artifact chain and never creates a
+        Source or enters extraction/Dream.
+        """
+        payload = persona_payload_from_file(seed_file)
+        active = sorted(self.cache.active("persona"), key=lambda art: (
+            art.header.subject_id != SELF_SUBJECT,
+            art.header.time.created,
+            art.header.id,
+        ))
+        base = active[0] if active else None
+        strength = Strength(confidence=1.0)
+        common = dict(
+            subject_id=SELF_SUBJECT,
+            scope="shared",
+            shareable="public",
+            said_by=PERSONA_ORIGIN_SEED,
+            state="active",
+            strength=strength,
+            lineage=Lineage(),
+        )
+        if base is None:
+            persona = make("persona", payload, **common)
+            expected = 0
+        else:
+            persona = revise(base, payload=payload, **common)
+            expected = base.header.revision
+        writes = [(persona, expected, ())]
+        retired = [revise(art, state="merged") for art in active[1:]]
+        writes.extend((art, art.header.revision - 1, ()) for art in retired)
+        self.artifacts.commit_many(
+            writes, op="promote", reason="persona seed bootstrap"
+        )
+        self.cache.put(persona)
+        for art in retired:
+            self.cache.remove(art.header.id)
+        return {
+            "id": persona.header.id,
+            "revision": persona.header.revision,
+            "seedId": str(payload["seed_id"]),
+            "seedVersion": str(payload["seed_version"]),
+        }
 
     def diagnose(self, body: dict) -> dict:
         """按实际规则预演召回，不消耗指定交付状态。

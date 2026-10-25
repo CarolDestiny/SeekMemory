@@ -198,11 +198,15 @@ The six v1 behaviors are responding to emotion, clarifying, admitting uncertaint
 offering choices, protecting privacy and correcting mistakes. Shared text comes
 from fixed generic sentences, never extracted names, places or private facts.
 
-Persona keeps one stable id and append-only revisions. Persona changes and any
-duplicate-head retirement commit atomically. Old unverified persona text remains
-in history but cannot enter chat context. No model/network call is added to chat
-capture or recall; behavior fields use the existing background extraction call.
-The admin timeline shows each revision's own lineage and protected dialogue evidence.
+Persona keeps one stable id and append-only revisions. A persona file is a
+one-time bootstrap into the initial `bot:self` persona revision: it carries
+explicit seed provenance, creates no Source and runs no extraction. After that,
+Dream revises the same persona lineage from self-impression evidence. Persona
+changes and any duplicate-head retirement commit atomically. Old unverified
+persona text remains in history but cannot enter chat context. No model/network
+call is added to chat capture or recall; behavior fields use the existing
+background extraction call. The admin timeline shows each revision's own lineage
+and protected dialogue evidence. See `docs/PERSONA_SEED.md`.
 
 ## Agent Runtime boundary
 

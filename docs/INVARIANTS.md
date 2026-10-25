@@ -79,7 +79,9 @@ a migration plan and a contract or scenario test.
 - At least three high-confidence (>= 0.9) observations form a self-impression.
 - Self-impressions have `about=self`, `subject_id=bot:self`, `level=impression`, `scope=shared`, `said_by=inferred`.
 - Shared self text is restricted to the six generic behavior templates. Private evidence stays in its protected original Sources.
-- Persona comes only from those self-impressions, never from user traits. Both promotion entry points obey this rule.
+- Persona comes only from those self-impressions, never from user traits, after the explicit seed bootstrap. Both promotion entry points obey this rule.
+- A persona file bootstraps one initial `bot:self` persona revision with `origin=seed`, seed provenance and no fabricated Source; it is not a second runtime profile.
+- After bootstrap, Dream may revise the same persona lineage automatically; every revision keeps evidence/audit and remains rollbackable.
 - One active persona has a stable id; content/evidence changes add a revision, identical reruns do not. Consolidation is atomic.
 - Unverified legacy persona cannot be injected; its original versions remain available for authenticated audit.
 - Historical evidence comes from each version's own snapshot; current lineage cannot be substituted into history.
