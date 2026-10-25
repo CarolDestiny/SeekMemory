@@ -7,7 +7,7 @@
 以及此刻说出来是否合适。
 
 <div align="center">
-  <img src="https://img.shields.io/badge/version-0.4.0-blue">
+  <img src="https://img.shields.io/badge/version-0.4.1-blue">
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue">
   <img src="https://img.shields.io/badge/AstrBot-4.x-green">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey">
@@ -273,7 +273,7 @@ SQLite 是主存储。运行时文件与 trace 文件支撑运行时状态和管
 ## 当前版本
 
 ```text
-version: 0.4.0
+version: 0.4.1
 ```
 
 当前主线包括：
