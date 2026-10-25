@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .budget import estimate_messages
 from .contracts import DialogueTurn
 
 BACKLOG_QUIET_SECONDS = 30.0
@@ -26,50 +25,21 @@ def _is_pair(parent: DialogueTurn, reply: DialogueTurn) -> bool:
     return bool(reply.turn_id) and str(reply.turn_id) == str(parent.turn_id)
 
 
-def chunk_turns(
-    items: list[DialogueTurn],
-    limit: int = MAX_TOPIC_TURNS,
-    max_tokens: int = 0,
-) -> list[list[DialogueTurn]]:
-    """Split one topic by turn and estimated-token limits.
+def chunk_turns(items: list[DialogueTurn], limit: int = MAX_TOPIC_TURNS) -> list[list[DialogueTurn]]:
+    """Split one oversized topic without dropping its tail or splitting a pair.
 
-    Adjacent user/assistant reply pairs are treated as indivisible units. A unit
-    that alone exceeds a limit is retained as one oversized chunk rather than
-    being split or dropped. ``max_tokens=0`` keeps the legacy turn-only behavior.
+    A user turn and the assistant reply that references it stay in the same
+    chunk when there is room. ``limit=1`` still returns every turn exactly once.
     """
     size = max(1, int(limit))
-    token_cap = max(0, int(max_tokens))
-    units: list[list[DialogueTurn]] = []
-    index = 0
-    while index < len(items):
-        if index + 1 < len(items) and _is_pair(items[index], items[index + 1]):
-            units.append(items[index:index + 2])
-            index += 2
-        else:
-            units.append([items[index]])
-            index += 1
-
     chunks: list[list[DialogueTurn]] = []
-    current: list[DialogueTurn] = []
-    current_tokens = 0
-    for unit in units:
-        unit_tokens = estimate_messages([turn.text for turn in unit])
-        exceeds_turns = bool(current) and len(current) + len(unit) > size
-        exceeds_tokens = (
-            token_cap > 0 and bool(current) and current_tokens + unit_tokens > token_cap
-        )
-        if current and (exceeds_turns or exceeds_tokens):
-            chunks.append(current)
-            current = []
-            current_tokens = 0
-        current.extend(unit)
-        current_tokens += unit_tokens
-        if len(current) >= size or (token_cap > 0 and current_tokens >= token_cap):
-            chunks.append(current)
-            current = []
-            current_tokens = 0
-    if current:
-        chunks.append(current)
+    index, total = 0, len(items)
+    while index < total:
+        end = min(total, index + size)
+        if end < total and end - index > 1 and _is_pair(items[end - 1], items[end]):
+            end -= 1
+        chunks.append(items[index:end])
+        index = end
     return chunks
 
 

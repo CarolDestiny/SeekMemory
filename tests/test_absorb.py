@@ -594,3 +594,86 @@ class ExtractionUsageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IngestCallBudgetTest(unittest.TestCase):
+    def test_flush_stops_before_starting_extra_model_call(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+
+        class Journal:
+            @contextmanager
+            def span(self, *_args, **_kwargs):
+                yield {}
+
+            def record(self, *_args, **_kwargs):
+                pass
+
+        class Buffer:
+            items = [
+                DialogueTurn("s", "u1", "user", "first", "2026-10-25T10:00:00",
+                             "s1", "t1"),
+                DialogueTurn("s", "u1", "user", "second", "2026-10-25T10:01:00",
+                             "s2", "t2"),
+            ]
+            succeeded = []
+            failed = []
+
+            def mark_succeeded(self, chunk):
+                self.succeeded.extend(chunk)
+                self.items = [item for item in self.items if item not in chunk]
+
+            def mark_failed(self, chunk, *_args, **_kwargs):
+                self.failed.extend(chunk)
+
+        class Extraction:
+            def ready_extraction_ids(self):
+                return {"s1", "s2"}
+
+        class Provider:
+            def __init__(self):
+                self.calls = 0
+
+            async def text_chat(self, system_prompt="", prompt=""):
+                self.calls += 1
+                return SimpleNamespace(completion_text=json.dumps([
+                    {"level": "fact", "text": f"memory {self.calls}"}
+                ]))
+
+        class Logger:
+            def info(self, *_args, **_kwargs):
+                pass
+
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        provider = Provider()
+
+        async def provider_for(_session):
+            return provider
+
+        buffer = Buffer()
+        service = IngestService(
+            buffer=buffer,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            extraction=Extraction(),
+            cache=cache,
+            graph=graph,
+            journal=Journal(),
+            config=lambda _key, default: default,
+            provider_for=provider_for,
+            owner_id=lambda: "u1",
+            logger=Logger(),
+        )
+        written, topics = asyncio.run(
+            service.flush("test", max_calls=1, batch_cap=2)
+        )
+        self.assertEqual(written, 1)
+        self.assertEqual(topics, 1)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 1)
+        self.assertEqual(len(buffer.failed), 0)

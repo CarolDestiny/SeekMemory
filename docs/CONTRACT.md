@@ -418,7 +418,6 @@ class RecallScene:
 
 def decide(art: Artifact, scene: RecallScene, relevance: float,
            origin_sessions: Iterable[str] = ()) -> DisclosureDecision: ...
-def decide_source(source: Source, scene: RecallScene) -> DisclosureDecision: ...
 def safe_text(art: Artifact, level: DisclosureLevel) -> str: ...
 ```
 
@@ -525,48 +524,39 @@ When an impression is reinforced or reworded, `lineage.sources` is the union of 
 `lineage.derived_from` records the incoming abstraction; it never records the artifact's own id.
 A cache removal follows a successful retirement commit; a failed commit leaves the active cache entry intact.
 
-## Source-backed recall fallback
+## Source evidence recall
 
-`RecallService.build()` still composes one recall path. The normal Artifact path runs
-first. Only when its assembled block is empty may it call
-`SourceStore.recent_sources(since=..., limit=...)`, rank the returned immutable Sources
-with local character-bigram BM25 plus recency/session/speaker signals, and resolve
-active derived Artifacts through `ArtifactStore.by_source_ids()`. Those Artifacts pass
-the existing visibility, deliverability and disclosure gates before assembly.
+`RecallService.build()` remains the only recall composition path. Memory is first:
+the normal Artifact retrieval and selection run before Source evidence is considered.
+Only when the selected Artifact count is below `min(2, recall_k)` and
+`intent_of(text) != "none"` may the pipeline issue exactly one
+`SourceStore.recent_sources(since=..., limit=...)` query and one
+`ArtifactStore.by_source_ids()` batch. Source candidates may cross sessions; the
+permission gate remains `AccessService`, and the output privacy remains the existing
+Artifact visibility/disclosure decision. Source ids are internal evidence only: Source
+text is never rendered into the block, info, logs or assembly. Discovered Artifacts are
+deduplicated against selected Artifacts, filtered by visible/deliverable/valid/window
+rules, and appended only up to remaining `recall_k` capacity before the single final
+disclosure/assembly pass. Pinned persona/impression never gates this query.
 
-Raw Source text is rendered only for the current session, never for another session.
-A same-session Source that backs an active secret, designated or shadow Artifact is
-excluded from raw rendering. Normalized text equal to the current query is excluded.
-Raw Source context uses only the remaining injection chars, capped by
-`source_context_tokens` converted through `int(tokens * CHARS_PER_TOKEN)`; the final
-block never exceeds `budget_chars`. Clock, greeting and empty queries do not trigger the
-fallback. `source_context_enabled=false` preserves the prior behavior and info shape.
+The query results are content-free counters such as `enabled`, `candidates`,
+`artifacts`, `picked` and `matched`. `source_recall_enabled=false` restores the legacy
+empty-recall info shape. The fallback never writes Source, delivery state or
+reinforcement; only assembled Artifact ids can be marked delivered as before.
 
-The fallback never writes Source, delivery state or reinforcement; only assembled
-Artifact ids can be marked delivered as before. `info["source_context"]` contains
-content-free enabled/candidate/artifact/raw/char/token/protected counters.
+## Extraction call budget and usage
 
-## Extraction token budget and usage
+`chunk_turns()` keeps the original turn-only `MAX_TOPIC_TURNS` behavior. `IngestService`
+records exact `usage_in`/`usage_cached`/`usage_out` from each `ChatResponse` on
+`WriteOutcome` and exposes a content-free cumulative `usage_snapshot()`.
 
-`ExtractionBudget` supplies `extraction_chunk_tokens` and `dream_token_budget`.
-`chunk_turns(items, limit=..., max_tokens=...)` keeps adjacent user/assistant replies in
-one unit, respects both caps when possible, retains an oversized unit as one chunk, and
-never drops a turn. `IngestService` estimates each chunk, records exact
-`usage_in`/`usage_cached`/`usage_out` from each `ChatResponse` on `WriteOutcome`, and
-exposes a content-free cumulative `usage_snapshot()`.
-
-`DreamCycle.run(..., usage=...)` captures a baseline before the first flush and stops
-before the next batch after cumulative input+output reaches `dream_token_budget`.
-Maintenance still runs for committed work. The dream summary receives:
-
-```json
-{
-  "budget": {"tokens": 60000, "used": 53120, "stopped": "token_budget"},
-  "usage": {"calls": 12, "in": 42100, "cached": 2000, "out": 11020}
-}
-```
-
-A budget of 0 disables only the hard stop; usage is still recorded.
+`dream_max_calls` (default 12) is the primary Dream budget. `IngestService.flush(...,
+max_calls=...)` checks before every real extraction call, so unstarted pending rows stay
+recoverable. `DreamCycle` passes the remaining call budget and records
+budget/usage/stopped in its summary. `dream_token_budget` remains an optional secondary
+guard checked before the next batch; it can allow at most one-call slack. Maintenance
+still runs for committed work. A budget of 0 disables only the hard stop where
+applicable; usage is still recorded.
 
 ## Temporal validity and query windows
 

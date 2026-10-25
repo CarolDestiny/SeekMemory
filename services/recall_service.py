@@ -67,11 +67,9 @@ class RecallService:
             recall_k = max(1, recall_k // 2)
 
         source_fields = {
-            "source_context_enabled",
-            "source_context_hours",
-            "source_context_max_sources",
-            "source_context_tokens",
-            "source_context_min_free_tokens",
+            "source_recall_enabled",
+            "source_recall_hours",
+            "source_recall_max_candidates",
         }
 
         def conf(key: str, default):

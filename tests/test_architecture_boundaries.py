@@ -262,6 +262,14 @@ class LayerDependencyTest(unittest.TestCase):
                     callers.append(path)
         self.assertEqual(callers, [ROOT / "services" / "ingest_service.py"])
 
+    def test_no_raw_source_render_path(self) -> None:
+        self.assertFalse((ROOT / "recall" / "source_context.py").exists())
+        for folder in ("app", "core", "recall", "services"):
+            for path in (ROOT / folder).rglob("*.py"):
+                source = path.read_text(encoding="utf-8")
+                self.assertNotIn("render_same_session", source, str(path))
+                self.assertNotIn("decide_source", source, str(path))
+
     def test_conversion_module_has_no_persistence(self) -> None:
         source = (ROOT / "perceive" / "absorb.py").read_text(encoding="utf-8")
         self.assertNotIn("async def absorb(", source)

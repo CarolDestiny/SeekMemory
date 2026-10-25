@@ -36,30 +36,20 @@
     "type": "int",
     "default": 600
   },
-  "source_context_enabled": {
-    "description": "Enable bounded recent Source fallback when Artifact recall is empty.",
+  "source_recall_enabled": {
+    "description": "Enable bounded recent Source evidence discovery when Artifact recall is weak.",
     "type": "bool",
     "default": true
   },
-  "source_context_hours": {
-    "description": "Recent Source lookback window in hours.",
+  "source_recall_hours": {
+    "description": "Recent Source evidence lookback window in hours.",
     "type": "int",
     "default": 12
   },
-  "source_context_max_sources": {
-    "description": "Maximum recent Sources considered by the recall fallback.",
+  "source_recall_max_candidates": {
+    "description": "Maximum recent Sources considered by one Source evidence query.",
     "type": "int",
     "default": 80
-  },
-  "source_context_tokens": {
-    "description": "Maximum estimated token budget for raw same-session Source context.",
-    "type": "int",
-    "default": 150
-  },
-  "source_context_min_free_tokens": {
-    "description": "Minimum remaining injection tokens required before Source context is used.",
-    "type": "int",
-    "default": 60
   },
   "recall_k": {
     "description": "每轮最多注入几条记忆",
@@ -167,10 +157,10 @@
     "type": "int",
     "default": 12
   },
-  "extraction_chunk_tokens": {
-    "description": "Estimated token cap per extraction chunk; 0 keeps the legacy turn-only cap.",
+  "dream_max_calls": {
+    "description": "Maximum real extraction model calls per dream run.",
     "type": "int",
-    "default": 2400
+    "default": 12
   },
   "dream_token_budget": {
     "description": "Total dream extraction input+output token budget; 0 disables the hard stop.",

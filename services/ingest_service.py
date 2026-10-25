@@ -10,7 +10,6 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Awaitable, Callable
 
 try:
-    from ..app.budget import extraction_budget_from_config
     from ..app.contracts import ChatRequest, WriteOutcome
     from ..app.flush_policy import chunk_turns, decide_flush, select_topic_batches
     from ..app.ports import ArtifactStore, ExtractionStore, SourceStore
@@ -22,7 +21,6 @@ try:
     from ..perceive.extract import build_prompt
     from ..perceive.model import ProviderChatModel
 except ImportError:
-    from app.budget import extraction_budget_from_config
     from app.contracts import ChatRequest, WriteOutcome
     from app.flush_policy import chunk_turns, decide_flush, select_topic_batches
     from app.ports import ArtifactStore, ExtractionStore, SourceStore
@@ -67,7 +65,6 @@ class IngestService:
         self.flushing = False
         self.flush_day = ""
         self.flush_count = 0
-        self.extraction_budget = extraction_budget_from_config(config)
         self._usage_calls = 0
         self._usage_in = 0
         self._usage_cached = 0
@@ -165,6 +162,7 @@ class IngestService:
         limit: int = 0,
         batch_cap: int = 6,
         max_attempts: int = 5,
+        max_calls: int = 0,
     ) -> tuple[int, int]:
         """Extract ready topics while preserving pending rows on failure."""
         if (
@@ -220,10 +218,17 @@ class IngestService:
                 return 0, 0
             self.flush_count += 1
             written = 0
+            calls = 0
+            processed_topics = 0
+            stopped_for_calls = False
             for session_id, topic_id, part, provider in ready:
-                for chunk in chunk_turns(
-                    part, max_tokens=self.extraction_budget.extraction_chunk_tokens
-                ):
+                topic_started = False
+                for chunk in chunk_turns(part):
+                    if max_calls > 0 and calls >= max_calls:
+                        stopped_for_calls = True
+                        break
+                    topic_started = True
+                    calls += 1
                     try:
                         with self.journal.span(
                             "extract",
@@ -263,16 +268,20 @@ class IngestService:
                         f"{session_id or 'unknown'}: topic {topic_id}, "
                         f"{len(chunk)} turns, {outcome.written} written"
                     )
+                if topic_started:
+                    processed_topics += 1
+                if stopped_for_calls:
+                    break
             self.journal.record(
                 "extract",
                 "info",
-                f"tried {len(ready)} topics, wrote {written} memories",
-                context={"topics": len(ready), "written": written},
+                f"tried {processed_topics} topics, wrote {written} memories",
+                context={"topics": processed_topics, "written": written},
                 stage="batch.complete",
             )
             if failure is not None:
                 raise failure
-            return written, len(ready)
+            return written, processed_topics
         finally:
             self.flushing = False
 

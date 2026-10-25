@@ -72,11 +72,11 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | No continuous extraction-to-recall correction case | covered by `tests/test_continuity.py` |
 | Explicit plan/fact replacement did not expire the old row | covered by `tests/test_continuity.py` |
 | Batch merge left partial state after a member failure | covered by `tests/test_maintain.py` |
-| Recent Source fallback leaked raw text across sessions or protected Artifacts | covered by `tests/test_source_context.py`, `tests/test_recall_pipeline.py` |
-| Source fallback exceeded the injection budget or ran on clock/empty queries | covered by `tests/test_source_context.py`, `tests/test_recall_pipeline.py` |
-| Token-aware extraction split a reply pair or dropped an oversized turn | covered by `tests/test_dream.py` |
+| Source evidence recall leaked Source text into the prompt | covered by `tests/test_source_query.py`, `tests/test_recall_pipeline.py` |
+| Memory-sufficient recall still queried Source | covered by `tests/test_recall_pipeline.py` |
+| Source evidence bypassed revision-scoped `by_source_ids` lookup | covered by `tests/test_source_query.py` |
 | Extraction usage was lost on parse failure or not cumulative | covered by `tests/test_absorb.py` |
-| Dream token budget kept dispatching batches after the cap | covered by `tests/test_dream.py` |
+| Dream call budget kept starting model calls after the cap | covered by `tests/test_absorb.py`, `tests/test_dream.py` |
 | Lifecycle expiry left partial forgotten state | covered by `tests/test_lifecycle.py` |
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
 | AgentRuntime policy was coupled to AstrBot | covered by `tests/test_agent_runtime.py` |

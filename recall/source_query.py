@@ -1,4 +1,9 @@
-"""Pure Source ranking and safe recent-context projection."""
+"""Pure recent-Source ranking for evidence discovery.
+
+Sources are internal evidence only. This module never returns or renders Source
+text; callers use source ids to look up derived Artifacts through the existing
+Artifact visibility/disclosure path.
+"""
 
 from __future__ import annotations
 
@@ -10,14 +15,10 @@ from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 try:
-    from ..app.budget import clamp_chars
-    from ..core.disclosure import DisclosureLevel, RecallScene, decide_source
     from ..core.source import Source
     from .intent import intent_of
     from .tokenizer import tokenize
 except ImportError:
-    from app.budget import clamp_chars
-    from core.disclosure import DisclosureLevel, RecallScene, decide_source
     from core.source import Source
     from recall.intent import intent_of
     from recall.tokenizer import tokenize
@@ -25,12 +26,13 @@ except ImportError:
 K1 = 1.2
 B = 0.75
 CALIBRATION = 8.0
-RECENT_PREFIX = "\u6700\u8fd1\u5bf9\u8bdd\uff1a"
 
 
 @dataclass(frozen=True)
-class RankedSource:
-    source: Source
+class SourceHit:
+    """Content-free ranking result used only for Artifact discovery."""
+
+    source_id: str
     score: float
     lexical: float
     same_session: bool
@@ -81,7 +83,7 @@ def _lexical_scores(query: str, sources: Sequence[Source]) -> dict[str, float]:
     }
 
 
-def rank_recent(
+def query_recent(
     query: str,
     sources: Iterable[Source],
     *,
@@ -89,12 +91,14 @@ def rank_recent(
     speaker: str = "",
     limit: int = 0,
     now: datetime.datetime | None = None,
-) -> list[RankedSource]:
-    """Rank recent Sources with local BM25 plus recency/context signals.
+) -> list[SourceHit]:
+    """Rank Source evidence with local BM25 plus recency/context signals.
 
-    Explicit recall intent may use recent sources even with weak lexical overlap;
-    ordinary queries require a positive lexical match. Clock/greeting/empty
-    intent never enters the Source fallback.
+    Sources may come from any session. The caller may use the returned ids to
+    discover derived Artifacts; no Source text crosses the privacy boundary.
+    Explicit recall intent may use recent Sources with weak lexical overlap;
+    ordinary queries require a positive lexical match. Clock, greeting and
+    empty queries never start Source evidence discovery.
     """
     text = str(query or "").strip()
     mode = intent_of(text)
@@ -108,7 +112,7 @@ def rank_recent(
     lexical = _lexical_scores(text, rows)
     explicit = mode == "loose"
     moment = now or datetime.datetime.now()
-    ranked: list[RankedSource] = []
+    ranked: list[SourceHit] = []
     for source in rows:
         value = float(lexical.get(source.id, 0.0))
         if value <= 0 and not explicit:
@@ -130,50 +134,10 @@ def rank_recent(
             score += 0.3
         if same_speaker:
             score += 0.1
-        ranked.append(RankedSource(source, score, value, same_session))
-    ranked.sort(key=lambda row: (-row.score, -row.same_session, row.source.id))
+        ranked.append(
+            SourceHit(str(source.id), score, value, same_session)
+        )
+    ranked.sort(key=lambda row: (-row.score, -row.same_session, row.source_id))
     if limit and limit > 0:
         ranked = ranked[: int(limit)]
     return ranked
-
-
-def render_same_session(
-    candidates: Iterable[RankedSource],
-    scene: RecallScene,
-    *,
-    budget_chars: int,
-    protected_source_ids: Iterable[str] = (),
-) -> tuple[str, tuple[str, ...]]:
-    """Render only raw Source text allowed by the Source disclosure decision.
-
-    Cross-session sources never render raw text. Sources that back protected
-    Artifacts are skipped by the caller-supplied protected id set.
-    """
-    budget = max(0, int(budget_chars))
-    if budget <= 0:
-        return "", ()
-    protected = {str(value) for value in protected_source_ids if value}
-    parts: list[str] = []
-    seen: set[str] = set()
-    used: list[str] = []
-    for candidate in candidates:
-        source = candidate.source
-        if source.id in protected:
-            continue
-        if decide_source(source, scene).level is not DisclosureLevel.FULL:
-            continue
-        body = " ".join(str(source.text or "").split())
-        if not body or _normalise(body) in seen:
-            continue
-        prefix = "" if not parts else "\n"
-        prefix = RECENT_PREFIX if not parts else prefix
-        remaining = budget - len("".join(parts))
-        if remaining <= 0:
-            break
-        piece, _ = clamp_chars(prefix + body, remaining)
-        if not piece:
-            break
-        parts.append(piece)
-        seen.add(_normalise(body))
-        used.append(str(source.id))
-    return "".join(parts), tuple(used)

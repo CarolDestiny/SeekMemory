@@ -5,7 +5,6 @@ from enum import Enum
 from typing import Iterable
 
 from .artifact import Artifact, content_of
-from .source import Source
 
 FULL_MIN = 0.55
 PARAPHRASE_MIN = 0.18
@@ -119,31 +118,6 @@ def decide(art: Artifact, scene: RecallScene, relevance: float,
     if score >= HINT_MIN:
         return DisclosureDecision(DisclosureLevel.HINT, score, "low exposure")
     return DisclosureDecision(DisclosureLevel.SILENCE, score, "no exposure")
-
-
-def decide_source(source: Source, scene: RecallScene) -> DisclosureDecision:
-    """Decide whether a Source may contribute raw text or only discovery.
-
-    Raw Source text is origin-scoped: only the exact current session may render
-    it. Cross-session user Sources from the current speaker may still lead to
-    derived Artifacts but contribute no raw text.
-    """
-    same_session = bool(
-        scene.session_id
-        and source.session_id
-        and str(source.session_id) == str(scene.session_id)
-    )
-    if same_session:
-        return DisclosureDecision(DisclosureLevel.FULL, 1.0, "same session source")
-    if (
-        str(source.role or "") == "user"
-        and source.speaker_id
-        and str(source.speaker_id) == str(scene.speaker_id)
-    ):
-        return DisclosureDecision(
-            DisclosureLevel.HINT, HINT_MIN, "cross-session same-speaker source"
-        )
-    return DisclosureDecision(DisclosureLevel.SILENCE, 0.0, "source origin isolated")
 
 
 def safe_text(art: Artifact, level: DisclosureLevel) -> str:

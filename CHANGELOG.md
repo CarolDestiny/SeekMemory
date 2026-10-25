@@ -16,14 +16,13 @@
 
 ## 未发布
 
-- Added bounded Source-backed recall fallback: recent Sources are ranked locally, can discover
-  derived Artifacts through the existing disclosure path, and raw Source text is limited to the
-  current session and remaining injection budget. Cross-session and protected-source raw text is
-  excluded; `source_context_enabled=false` restores the old path.
-- Added `ContextBudget` Source fields and `ExtractionBudget`; extraction chunks now respect turn
-  and estimated-token limits while preserving user/assistant pairs. `WriteOutcome` and
-  `IngestService.usage_snapshot()` expose content-free model usage, and dream runs stop dispatching
-  new batches at `dream_token_budget` while still maintaining committed work.
+- Added memory-first Source evidence recall: when Artifact selection is weak, one bounded recent
+  Source query can discover derived Artifacts through the existing disclosure path. Source text is
+  internal evidence only and never enters the prompt; `source_recall_enabled=false` restores the
+  old path.
+- Added exact extraction `WriteOutcome`/`usage_snapshot()` accounting and `dream_max_calls` as the
+  primary Dream call budget. `dream_token_budget` remains an optional secondary guard; turn-only
+  extraction chunking and committed-work maintenance are preserved.
 
 - Invariant hardening: scoped identity dedupe, source identity, failure recovery, oversized topics,
   privacy output, reinforcement truth, lineage/cache consistency, temporal validity, migration and continuity.

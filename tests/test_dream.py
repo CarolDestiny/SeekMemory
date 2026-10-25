@@ -11,15 +11,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.budget import (  # noqa: E402
     ContextBudget,
-    ExtractionBudget,
     budget_from_config,
     clamp_chars,
     estimate_tokens,
-    extraction_budget_from_config,
 )
-from app.contracts import DialogueTurn  # noqa: E402
 from app.dream import DreamCycle  # noqa: E402
-from app.flush_policy import chunk_turns, decide_flush  # noqa: E402
+from app.flush_policy import decide_flush  # noqa: E402
 
 
 class FakeStore:
@@ -76,7 +73,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_runs_once_and_is_idempotent(self):
         store, calls, left = FakeStore(), [], {"pending": 1}
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0):
             calls.append(1)
             left["pending"] = 0
             return 2, 1
@@ -93,7 +90,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_failure_keeps_pending_for_resume(self):
         store = FakeStore()
 
-        async def boom(_reason):
+        async def boom(_reason, *, max_calls=0):
             raise RuntimeError("model down")
 
         dream = DreamCycle(store, conf())
@@ -103,7 +100,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
         # 失败后当天仍可续跑
         self.assertTrue(dream.due(AT))
 
-        async def ok(_reason):
+        async def ok(_reason, *, max_calls=0):
             return 1, 1
 
         again = await dream.run(ok, pending=lambda: 0, now=AT)
@@ -112,7 +109,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_max_batches_bound(self):
         store, calls = FakeStore(), []
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0):
             calls.append(1)
             return 0, 1
 
@@ -123,7 +120,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_maintain_runs_after_flush(self):
         store, seen = FakeStore(), []
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0):
             return 1, 1
 
         async def maintain():
@@ -166,51 +163,17 @@ class BudgetTest(unittest.TestCase):
     def test_default_budget(self):
         self.assertGreater(ContextBudget().estimate_tokens, 1000)
 
-    def test_source_and_extraction_budgets_parse_zero_values(self):
+    def test_source_recall_budget_parses_config(self):
         budget = budget_from_config(
             conf(
-                source_context_enabled="false",
-                source_context_tokens=0,
-                source_context_min_free_tokens=0,
+                source_recall_enabled="false",
+                source_recall_hours=3,
+                source_recall_max_candidates=5,
             )
         )
-        self.assertFalse(budget.source_context_enabled)
-        self.assertEqual(budget.source_context_chars, 0)
-        self.assertEqual(budget.source_context_min_free_chars, 0)
-        extraction = extraction_budget_from_config(
-            conf(extraction_chunk_tokens=0, dream_token_budget=0)
-        )
-        self.assertEqual(extraction.extraction_chunk_tokens, 0)
-        self.assertEqual(extraction.dream_token_budget, 0)
-        self.assertEqual(ExtractionBudget().extraction_chunk_tokens, 2400)
-
-
-class TokenChunkTest(unittest.TestCase):
-    def test_chunks_respect_turn_and_token_limits_and_keep_pairs(self):
-        parent = DialogueTurn("s", "u1", "user", "user " * 30, "", "s_user",
-                              "", "t1")
-        reply = DialogueTurn("s", "bot", "assistant", "reply " * 30, "",
-                             "s_reply", "", "t1", "s_user")
-        others = [
-            DialogueTurn("s", "u1", "user", "other " * 30, "", f"o{index}",
-                         "", f"ot{index}")
-            for index in range(4)
-        ]
-        rows = [parent, reply, *others]
-        chunks = chunk_turns(rows, limit=2, max_tokens=35)
-        self.assertEqual([turn for chunk in chunks for turn in chunk], rows)
-        self.assertTrue(all(len(chunk) <= 2 for chunk in chunks))
-        pair_chunk = next(chunk for chunk in chunks if parent in chunk)
-        self.assertIn(reply, pair_chunk)
-
-    def test_token_chunks_never_drop_an_oversized_turn(self):
-        rows = [
-            DialogueTurn("s", "u1", "user", "oversized " * 100, "", "s1"),
-            DialogueTurn("s", "u1", "user", "small", "", "s2"),
-        ]
-        chunks = chunk_turns(rows, limit=10, max_tokens=10)
-        self.assertEqual([turn for chunk in chunks for turn in chunk], rows)
-        self.assertIn(rows[0], chunks[0])
+        self.assertFalse(budget.source_recall_enabled)
+        self.assertEqual(budget.source_recall_hours, 3)
+        self.assertEqual(budget.source_recall_max_candidates, 5)
 
 
 class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
@@ -220,7 +183,7 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         calls = []
         maintained = []
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0):
             calls.append(1)
             usage["calls"] += 1
             usage["in"] += 400
@@ -249,12 +212,49 @@ class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.summary["usage"]["calls"], 2)
         self.assertEqual(result.summary["persona"], True)
 
+    async def test_call_budget_stops_before_next_flush_and_still_maintains(self):
+        store = FakeStore()
+        usage = {"calls": 0, "in": 0, "cached": 0, "out": 0}
+        calls = []
+        maintained = []
+
+        async def flush(_reason, *, max_calls=0):
+            calls.append(max_calls)
+            usage["calls"] += 1
+            usage["in"] += 10
+            usage["out"] += 5
+            return 1, 1
+
+        async def maintain():
+            maintained.append(1)
+            return {"persona": True}
+
+        dream = DreamCycle(
+            store,
+            conf(dream_max_calls=2, dream_token_budget=0, dream_max_batches=5),
+        )
+        result = await dream.run(
+            flush,
+            pending=lambda: 10,
+            maintain=maintain,
+            usage=lambda: dict(usage),
+            now=AT,
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls, [2, 1])
+        self.assertEqual(maintained, [1])
+        self.assertEqual(result.summary["budget"]["calls"], 2)
+        self.assertEqual(result.summary["budget"]["calls_used"], 2)
+        self.assertEqual(result.summary["budget"]["stopped"], "call_budget")
+        self.assertEqual(result.summary["usage"]["calls"], 2)
+        self.assertEqual(result.summary["persona"], True)
+
     async def test_zero_budget_records_usage_without_stopping(self):
         store = FakeStore()
         usage = {"calls": 0, "in": 10, "cached": 0, "out": 5}
         calls = []
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0):
             calls.append(1)
             usage["calls"] += 1
             usage["in"] += 10
