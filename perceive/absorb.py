@@ -402,21 +402,21 @@ def build_plan(
                 strength["confidence"] = min(
                     float(strength.get("confidence", 1.0)), 0.5
                 )
-            art = make(
-                "memory",
-                payload,
-                strength=strength,
-                scope=scope,
-                said_by=said_by,
-                subject_id=_subject_id(item, owner, default_subject, owner_id),
-                lineage=Lineage(sources=evidence or source_ids),
-                time=TimeSpan(
-                    created=_event_at(item, context),
-                    valid_from=_date_or_none(item.get("valid_from")),
-                    valid_to=_date_or_none(item.get("valid_to")),
-                ),
-            )
             with stage("artifact.validate"):
+                art = make(
+                    "memory",
+                    payload,
+                    strength=strength,
+                    scope=scope,
+                    said_by=said_by,
+                    subject_id=_subject_id(item, owner, default_subject, owner_id),
+                    lineage=Lineage(sources=evidence or source_ids),
+                    time=TimeSpan(
+                        created=_event_at(item, context),
+                        valid_from=_date_or_none(item.get("valid_from")),
+                        valid_to=_date_or_none(item.get("valid_to")),
+                    ),
+                )
                 validate(art)
             artifacts.append(art)
         except Exception as exc:
