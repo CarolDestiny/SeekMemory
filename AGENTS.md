@@ -15,6 +15,7 @@ This file is normative. If it conflicts with a casual instruction, stop and ask 
 - `docs/INTERFACES.md`
 - `docs/DEV-SETUP.md`
 - `docs/issues/INDEX.md`
+- `skills/seekmemory-architecture/SKILL.md`
 
 `docs/DESIGN.md` and `docs/BUGS.md` are historical context, not current contracts.
 
@@ -22,10 +23,10 @@ This file is normative. If it conflicts with a casual instruction, stop and ask 
 
 1. **Source is the only immutable truth.** User and assistant messages are Source rows.
 2. **Artifact is a derived, revisable interpretation.** It is never the raw truth.
-3. **Every production write goes through `db.artifacts.commit()`** with expected revision, version snapshot,
+3. **Every production write goes through `ArtifactStore.commit()`** with expected revision, version snapshot,
    evidence links and ledger entry. `ArtifactRepository.upsert()` is seed/benchmark-only.
 4. **SQL lives only in `store/`.** `store/__init__.py` is composition only; repositories own their SQL.
-5. **Dependency direction:** adapters -> app -> core. `core/` imports no storage, SDK, plugin or app code.
+5. **Dependency direction:** adapters -> services -> app/runtime + pure engines -> repository ports -> store. `core/` imports no storage, SDK, plugin or app code.
 6. **External calls use ports.** LLM calls go through `ChatModel`; AstrBot, SQLite and files stay at edges.
 7. **Recall has no hidden writes.** Delivery, reinforcement and checkpoint are explicit write use cases.
 8. **Privacy before expression.** Never inject raw cross-session text when disclosure says paraphrase,
