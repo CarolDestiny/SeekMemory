@@ -36,7 +36,6 @@ class PersonaEvidence:
     kind: str
     text: str
     source_ids: tuple[str, ...] = ()
-    weight: float = 1.0
 
 
 def _bounded_text(value: Any, maximum: int) -> str:

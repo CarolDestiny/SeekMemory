@@ -205,7 +205,7 @@ no Source and runs no extraction. The initial revision may store the corpus for
 authoring/audit; later Dream revisions keep only its count/hash. The corpus is
 never injected into recall. After bootstrap, Dream synthesis may make an
 incremental revision from the active persona text plus bounded self-impressions
-and public/shared memory summaries. It is one optional model call per eligible
+and shared memory summaries. It is one optional model call per eligible
 Dream cycle (default seven-day interval), with evidence lineage on the same
 persona id. Persona
 changes and any duplicate-head retirement commit atomically. Old unverified

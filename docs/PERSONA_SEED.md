@@ -96,7 +96,7 @@ same persona Artifact lineage from:
 ```text
 current active persona text
   + self-impressions
-  + bounded public/shared memory summaries
+  + bounded shared memory summaries
   = new persona Artifact revision on the same id
 ```
 
@@ -107,9 +107,10 @@ corpus. The one-time bootstrap revision stores the authored corpus (if supplied)
 subsequent revisions keep only `corpus_count` and `corpus_hash`.
 
 The default synthesis interval is seven days (`persona_synthesis_interval_days`).
-The previous revision remains in history. Rollback and manual edits must use the
-same persona Artifact lineage. A future implementation may add a one-click
-rollback operation, but it must not create a parallel persona store.
+The previous revision remains in history. Manual edits and rollback use the same
+persona Artifact lineage. `POST manage/rollbackPersona` restores a historical
+revision by creating a new revision with the target payload and header snapshot;
+it never deletes history and never creates a parallel persona store.
 
 ## Trust rules
 

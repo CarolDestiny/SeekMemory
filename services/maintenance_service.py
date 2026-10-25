@@ -242,7 +242,6 @@ class MaintenanceService:
                     kind=kind,
                     text=text,
                     source_ids=tuple(art.header.lineage.sources),
-                    weight=float(art.header.strength.weight or 0),
                 )
             )
             seen.add(art.header.id)
@@ -250,24 +249,27 @@ class MaintenanceService:
         for art in promote_self_candidates(self.cache, self.sources):
             add(art, "self_impression")
 
-        public_memories = []
+        shared_memories = []
         for art in self.cache.active():
             if art.header.family != "memory":
                 continue
-            if art.header.scope != "shared" or art.header.shareable != "public":
+            # Shared scope is the existing global-visibility boundary. Do not
+            # use private memories for a persona that will be injected into
+            # every conversation.
+            if art.header.scope != "shared" or art.header.shareable == "secret":
                 continue
             level = str(art.payload.get("level") or "")
             if level not in ("scene", "detail", "fact", "impression"):
                 continue
-            public_memories.append(art)
-        public_memories.sort(
+            shared_memories.append(art)
+        shared_memories.sort(
             key=lambda art: (
                 -float(art.header.strength.weight or 0),
                 str(art.header.time.updated or ""),
                 art.header.id,
             )
         )
-        for art in public_memories:
+        for art in shared_memories:
             add(art, f"memory:{art.payload.get('level')}")
         return out
 

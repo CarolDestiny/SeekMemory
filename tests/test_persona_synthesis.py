@@ -17,6 +17,7 @@ from core.artifact import Lineage, Strength, TimeSpan, make
 from core.bot_behavior import trusted_self_persona
 from services.maintenance_service import MaintenanceService
 from services.management_service import ManagementService
+from services.status_service import StatusService
 
 
 class _Journal:
@@ -28,8 +29,24 @@ class _Journal:
         return None
 
 
-def _direct_seed() -> dict:
-    return {
+def _corpus() -> list[dict[str, str]]:
+    return [
+        {
+            "user": (
+                f"第{i}个场景：我今天有点累，想和你说说心里话。"
+                "工作上的压力和生活中的琐事都挤在一起，我现在只想安静一会儿。"
+            ),
+            "assistant": (
+                f"先缓一缓，我在听。第{i}次也会陪着你，不用一个人扛着。"
+                "你可以慢慢讲，不想说也没关系，我会在这里等你。"
+            ),
+        }
+        for i in range(12)
+    ]
+
+
+def _direct_seed(with_corpus: bool = False) -> dict:
+    data = {
         "id": "big_fish",
         "version": "1.0.0",
         "name": "大肥鱼",
@@ -38,6 +55,9 @@ def _direct_seed() -> dict:
         "boundaries": ["不伪造用户经历"],
         "license": "CC0-1.0",
     }
+    if with_corpus:
+        data["corpus"] = _corpus()
+    return data
 
 
 def _config(values: dict):
@@ -135,13 +155,13 @@ class PersonaSynthesisServiceTest(PersonaCase):
             logger=SimpleNamespace(info=lambda *_a: None, warning=lambda *_a: None),
             config=_config(defaults),
             persona_model=factory,
-            clock=lambda: datetime.datetime(2026, 10, 25, 12, 0, 0),
+            clock=datetime.datetime.now,
         )
 
-    def bootstrap(self) -> None:
+    def bootstrap(self, with_corpus: bool = False) -> None:
         ManagementService(
             self.db.artifacts, self.db.sources, self.db.ledger, self.cache, None
-        ).bootstrap_persona(_direct_seed())
+        ).bootstrap_persona(_direct_seed(with_corpus))
 
     def add_public_memory(self) -> None:
         now = "2026-10-25T11:59:00"
@@ -149,7 +169,6 @@ class PersonaSynthesisServiceTest(PersonaCase):
             "memory",
             {"text": "他最近喜欢在晚上散步", "level": "scene", "about": "other"},
             scope="shared",
-            shareable="public",
             said_by="owner",
             strength=Strength(weight=2.0, confidence=1.0),
             lineage=Lineage(sources=("s1", "s2")),
@@ -161,8 +180,9 @@ class PersonaSynthesisServiceTest(PersonaCase):
         self.cache.put(art)
 
     def test_weekly_writes_one_new_revision_on_same_lineage(self) -> None:
-        self.bootstrap()
+        self.bootstrap(with_corpus=True)
         initial = self.cache.active("persona")[0]
+        self.assertIn("corpus", initial.payload)
         self.add_public_memory()
         fake = _FakeModel(
             json.dumps(
@@ -186,10 +206,19 @@ class PersonaSynthesisServiceTest(PersonaCase):
         self.assertEqual(active.payload["origin"], "dream")
         self.assertEqual(active.payload["synthesis"], "persona.v1")
         self.assertNotIn("corpus", active.payload)
+        self.assertEqual(active.payload["corpus_count"], 12)
+        self.assertEqual(active.payload["corpus_hash"], initial.payload["corpus_hash"])
         self.assertTrue(active.header.lineage.sources)
         self.assertTrue(active.header.lineage.derived_from)
         self.assertTrue(trusted_self_persona(active))
         self.assertIn("散步", fake.request.prompt)
+        timeline = StatusService(
+            artifacts=self.db.artifacts, ledger=self.db.ledger
+        ).persona()
+        self.assertEqual(timeline["origin"], "dream")
+        self.assertEqual(timeline["synthesis"], "persona.v1")
+        self.assertEqual(timeline["changeReason"], "加入最近散步的陪伴方式")
+        self.assertEqual(timeline["revisions"][-1]["origin"], "dream")
 
     def test_rollback_restores_seed_and_synthesized_revisions(self) -> None:
         self.bootstrap()
