@@ -22,12 +22,12 @@ from .status_service import StatusService
 
 @dataclass(frozen=True)
 class ServiceCollection:
-    access: AccessService
-    recall: RecallService
-    ingest: IngestService
-    capacity: CapacityService
-    maintenance: MaintenanceService
-    status: StatusService
-    background: BackgroundService
+    access_service: AccessService
+    recall_service: RecallService
+    ingest_service: IngestService
+    capacity_service: CapacityService
+    maintenance_service: MaintenanceService
+    status_service: StatusService
+    background_service: BackgroundService
     runtime: AgentRuntime
     runtime_worker: RuntimeWorker

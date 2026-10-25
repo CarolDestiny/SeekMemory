@@ -233,7 +233,7 @@ class AstrBotPlugin(AstrBotHooks):
             logger=logger,
         )
         self.services = ServiceCollection(
-            access=AccessService(
+            access_service=AccessService(
                 AccessPolicy(
                     mode=str(self._c("open_to", "owner_only")),
                     owner_umo=self.owner_umo,
@@ -241,12 +241,12 @@ class AstrBotPlugin(AstrBotHooks):
                     observe_groups=bool(self._c("observe_groups", True)),
                 )
             ),
-            recall=recall,
-            ingest=ingest,
-            capacity=capacity,
-            maintenance=maintenance,
-            status=status,
-            background=background,
+            recall_service=recall,
+            ingest_service=ingest,
+            capacity_service=capacity,
+            maintenance_service=maintenance,
+            status_service=status,
+            background_service=background,
             runtime=runtime,
             runtime_worker=runtime_worker,
         )
@@ -282,7 +282,7 @@ class AstrBotPlugin(AstrBotHooks):
         return load_thresholds(values)
 
     def _admit_deferred(self) -> bool:
-        return self.services.capacity.admit_deferred()
+        return self.services.capacity_service.admit_deferred()
 
     @property
     def owner_umo(self) -> str:
@@ -348,12 +348,12 @@ class AstrBotPlugin(AstrBotHooks):
     def _recall_block(
         self, text: str, umo: str = "", private: bool = False, speaker: str = ""
     ) -> tuple[str, dict]:
-        return self.services.recall.build(
+        return self.services.recall_service.build(
             text,
             umo,
             private,
             speaker,
-            degraded=self.services.capacity.degrade_recall,
+            degraded=self.services.capacity_service.degrade_recall,
         )
 
     async def stop(self) -> None:
@@ -361,7 +361,7 @@ class AstrBotPlugin(AstrBotHooks):
             return
         self.ready = False
         if self.services is not None:
-            await self.services.background.stop()
+            await self.services.background_service.stop()
         if self.jobs is not None:
             await self.jobs.close()
         if self.web is not None:

@@ -26,6 +26,7 @@ v0.3.1 + WebUI branch
 | docs/ | Architecture, contracts and issues | docs/issues/INDEX.md |
 | docs/INTERFACES.md | Public protocols, DTOs and contract tests | docs/INTERFACES.md |
 | docs/README.md | Documentation entry point and status legend | docs/README.md |
+| docs/refactor/STEP-01-services.md | Services/lifecycle acceptance record | docs/refactor/STEP-01-services.md |
 | docs/INVARIANTS.md | Non-negotiable identity, privacy, recovery and reinforcement rules | docs/INVARIANTS.md |
 | docs/TESTING.md | Test layers, commands and known coverage gaps | docs/TESTING.md |
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |

@@ -117,14 +117,14 @@ class WebRoutes:
                 "topicTtlSeconds": plugin._c("topic_ttl_seconds", 86400.0),
                 "maxTopicsPerBatch": max(1, plugin._c("max_sessions_per_flush", 6)),
             },
-            "capacity": plugin.services.capacity.status(),
-            "persona": plugin.services.status.persona(),
+            "capacity": plugin.services.capacity_service.status(),
+            "persona": plugin.services.status_service.persona(),
             "dream": plugin.dream.status() if getattr(plugin, "dream", None) else None,
             "budget": plugin.budget.as_dict() if getattr(plugin, "budget", None) else None,
             "checkpointPending": plugin.checkpoint.pending()
             if plugin.checkpoint
             else None,
-            "schedulerCount": sum(not task.done() for task in plugin.services.background.tasks),
+            "schedulerCount": sum(not task.done() for task in plugin.services.background_service.tasks),
             "config": {
                 key: plugin.cfg.get(key)
                 for key in (
@@ -246,7 +246,7 @@ class WebRoutes:
             kind = body.get("kind")
             if not isinstance(kind, str) or kind not in {"extract", "weekly"}:
                 raise ValueError("未知任务类型")
-            operation = plugin.services.background.nightly if kind == "extract" else plugin.services.background.weekly
+            operation = plugin.services.background_service.nightly if kind == "extract" else plugin.services.background_service.weekly
             return json_response({"id": plugin.jobs.submit(kind, operation)})
         except LookupError:
             return error_response("记忆不存在，请刷新列表", status_code=404)

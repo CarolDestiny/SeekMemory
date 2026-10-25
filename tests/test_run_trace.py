@@ -241,7 +241,7 @@ class RunTraceTests(unittest.TestCase):
                     plugin._runtime_memory_context
                 ),
             ),
-            capacity=SimpleNamespace(set_context_chars=lambda _value: None),
+            capacity_service=SimpleNamespace(set_context_chars=lambda _value: None),
         )
         event = Event()
         event.message_str = "PRIVATE QUESTION"

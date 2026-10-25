@@ -156,9 +156,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         await self.plugin.initialize()
         await self.plugin.start_jobs()
-        expected_schedulers = 5 if self.plugin.services.background.dream_enabled else 6
-        self.assertEqual(len(self.plugin.services.background.tasks), expected_schedulers)
-        tasks = list(self.plugin.services.background.tasks)
+        expected_schedulers = 5 if self.plugin.services.background_service.dream_enabled else 6
+        self.assertEqual(len(self.plugin.services.background_service.tasks), expected_schedulers)
+        tasks = list(self.plugin.services.background_service.tasks)
         await self.plugin.terminate()
         self.assertTrue(all(task.done() for task in tasks))
         self.assertEqual(self.context.registered_web_apis, [])
@@ -172,15 +172,15 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.context.provider = Provider()
         self.plugin.buffer.add("bot:FriendMessage:alice", "Remember this plan", "alice")
         with self.assertRaises(ValueError):
-            await self.plugin.services.background.nightly()
+            await self.plugin.services.background_service.nightly()
         self.assertEqual(len(self.plugin.buffer.items), 1)
         # DB-backed pending lives in Source + extraction_state, not pending.json.
         self.assertEqual(len(self.plugin.db.extraction.pending_extractions()), 1)
 
     async def test_missing_provider_preserves_daily_quota_and_messages(self) -> None:
         self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
-        await self.plugin.services.background.nightly()
-        self.assertEqual(self.plugin.services.ingest.flush_count, 0)
+        await self.plugin.services.background_service.nightly()
+        self.assertEqual(self.plugin.services.ingest_service.flush_count, 0)
         self.assertEqual(len(self.plugin.buffer.items), 1)
 
     async def test_failed_session_does_not_block_other_ready_sessions(self) -> None:
@@ -195,9 +195,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
         self.plugin.buffer.add("bot:FriendMessage:bob", "Plan B", "bob")
         with self.assertRaises(ValueError):
-            await self.plugin.services.background.nightly()
+            await self.plugin.services.background_service.nightly()
         self.assertEqual([row.text for row in self.plugin.buffer.items], ["Plan A"])
-        self.assertEqual(self.plugin.services.ingest.flush_count, 1)
+        self.assertEqual(self.plugin.services.ingest_service.flush_count, 1)
 
     async def test_cancellation_preserves_inflight_and_new_messages(self) -> None:
         started = asyncio.Event()
@@ -211,14 +211,14 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
 
         self.context.provider = Provider()
         plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
-        task = asyncio.create_task(plugin.services.background.nightly())
+        task = asyncio.create_task(plugin.services.background_service.nightly())
         await started.wait()
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
         rows = self.plugin.db.extraction.pending_extractions()
         self.assertEqual(sorted(row["text"] for row in rows), ["New plan", "Plan A"])
-        self.assertFalse(plugin.services.ingest.flushing)
+        self.assertFalse(plugin.services.ingest_service.flushing)
 
     async def test_runtime_observe_is_default_and_gate_is_opt_in(self) -> None:
         class Event:
@@ -268,7 +268,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.plugin.db.artifacts.commit(first, expected_revision=0, op="promote")
         second = artifact.revise(first, payload={"text": "second persona"})
         self.plugin.db.artifacts.commit(second, expected_revision=1, op="promote")
-        timeline = self.plugin.services.status.persona()
+        timeline = self.plugin.services.status_service.persona()
         self.assertIsNotNone(timeline)
         self.assertEqual(timeline["id"], first.header.id)
         self.assertEqual(timeline["text"], "second persona")
@@ -282,12 +282,12 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         second = artifact.revise(first, payload={"text": "second"},
                                   lineage=artifact.Lineage(sources=("s1", "s2"), derived_from=("i1", "i2")))
         self.plugin.db.artifacts.commit(second, expected_revision=1, op="promote")
-        timeline = self.plugin.services.status.persona()
+        timeline = self.plugin.services.status_service.persona()
         self.assertEqual(timeline["revisions"][0]["sourceIds"], ["s1"])
         self.assertEqual(timeline["revisions"][1]["sourceIds"], ["s1", "s2"])
         self.assertEqual(timeline["revisions"][0]["derivedFrom"], ["i1"])
-        self.assertEqual(self.plugin.services.status.header_evidence("invalid"), ([], []))
-        self.assertEqual(self.plugin.services.status.header_evidence({}), ([], []))
+        self.assertEqual(self.plugin.services.status_service.header_evidence("invalid"), ([], []))
+        self.assertEqual(self.plugin.services.status_service.header_evidence({}), ([], []))
         self.assertNotIn("sources", timeline)
 
     async def test_capture_to_extraction_to_weekly_persona_uses_real_pairs(self) -> None:
@@ -327,9 +327,9 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
                 return SimpleNamespace(completion_text=json.dumps(results))
         self.context.provider = Provider()
         while self.plugin.buffer.items:
-            await self.plugin.services.background.flush("test")
+            await self.plugin.services.background_service.flush("test")
         calls = len(self.context.provider_sessions)
-        await self.plugin.services.background.weekly()
+        await self.plugin.services.background_service.weekly()
         self.assertEqual(len(self.context.provider_sessions), calls)
         persona, = self.plugin.cache.active("persona")
         self.assertEqual(persona.header.subject_id, "bot:self")
@@ -380,7 +380,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event.get_extra("_seekmemory_recall_ids"), ("a1", "2"))
         self.assertTrue(req.system_prompt.startswith("base"))
         self.assertIn("memory block", req.system_prompt)
-        self.assertEqual(self.plugin.services.capacity.context_chars, len("memory block"))
+        self.assertEqual(self.plugin.services.capacity_service.context_chars, len("memory block"))
         journal_event = next(
             row for row in reversed(self.plugin.journal.events)
             if row["kind"] == "recall" and row["stage"] == "assemble"
@@ -412,7 +412,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         await self.plugin.inject_memory(empty_event, empty_req)
         self.assertEqual(empty_req.system_prompt, "base")
         self.assertEqual(empty_event.get_extra("_seekmemory_recall_ids"), ("a1",))
-        self.assertEqual(self.plugin.services.capacity.context_chars, 0)
+        self.assertEqual(self.plugin.services.capacity_service.context_chars, 0)
 
     async def test_inject_memory_fails_open_without_leaking_error_detail(self) -> None:
         class Event:
@@ -890,7 +890,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             json.loads(response.body)["pending"],
             [{"session": "bot:FriendMessage:alice", "count": 2}],
         )
-        await self.plugin.services.background.nightly()
+        await self.plugin.services.background_service.nightly()
         self.assertEqual(len(prompts), 2)
         self.assertTrue(
             all(
@@ -916,7 +916,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.context.provider = Provider()
         plugin.buffer.add("bot:FriendMessage:alice", "Plan A", "alice")
         plugin.buffer.add("bot:FriendMessage:bob", "Plan B", "bob")
-        await plugin.services.background.nightly()
+        await plugin.services.background_service.nightly()
         self.assertEqual(self.context.provider_sessions, ["bot:FriendMessage:alice"])
         self.assertEqual(
             [row.text for row in plugin.buffer.items],

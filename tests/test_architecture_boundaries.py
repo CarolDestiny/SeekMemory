@@ -80,8 +80,9 @@ class MainOwnershipTest(unittest.TestCase):
         self.assertEqual(
             names,
             {
-                "access", "recall", "ingest", "capacity", "maintenance",
-                "status", "background", "runtime", "runtime_worker",
+                "access_service", "recall_service", "ingest_service",
+                "capacity_service", "maintenance_service", "status_service",
+                "background_service", "runtime", "runtime_worker",
             },
         )
 

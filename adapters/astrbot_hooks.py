@@ -39,7 +39,7 @@ class AstrBotHooks:
     def _may_observe(self, event: AstrMessageEvent) -> bool:
         if self.services is None:
             return False
-        return self.services.access.may_observe(
+        return self.services.access_service.may_observe(
             str(getattr(event, "unified_msg_origin", "") or ""),
             str(event.get_sender_id()),
         )
@@ -47,7 +47,7 @@ class AstrBotHooks:
     def _may_recall(self, event: AstrMessageEvent) -> bool:
         if self.services is None:
             return False
-        return self.services.access.may_recall(
+        return self.services.access_service.may_recall(
             str(getattr(event, "unified_msg_origin", "") or ""),
             str(event.get_sender_id()),
         )
@@ -87,7 +87,7 @@ class AstrBotHooks:
             )
             context = self.services.runtime.build_context(runtime_input)
             block, info = context.text, context.info
-            self.services.capacity.set_context_chars(len(block))
+            self.services.capacity_service.set_context_chars(len(block))
             log_call(self._calls_path(), umo, info)
             AstrBotRuntimeAdapter.set_recall_ids(
                 event, info.get("final_ids", ())
@@ -278,11 +278,11 @@ class AstrBotHooks:
         if (
             not self.ready
             or self.services is None
-            or self.services.background.jobs.closed
-            or self.services.background.tasks
+            or self.services.background_service.jobs.closed
+            or self.services.background_service.tasks
         ):
             return
-        self.services.background.start()
+        self.services.background_service.start()
 
 
 def _register(main_module: str, name: str, decorator):
