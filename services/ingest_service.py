@@ -10,8 +10,14 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Awaitable, Callable
 
 try:
-    from ..app.contracts import ChatRequest, WriteOutcome
-    from ..app.flush_policy import chunk_turns, decide_flush, select_topic_batches
+    from ..app.budget import estimate_tokens
+    from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
+    from ..app.flush_policy import (
+        chunk_turns,
+        decide_flush,
+        pack_same_session_batches,
+        select_topic_batches,
+    )
     from ..app.ports import ArtifactStore, ExtractionStore, SourceStore
     from ..core.artifact import content_of, revise
     from ..core.capacity import PROTECTIVE, SATURATED
@@ -19,10 +25,23 @@ try:
     from ..maintain.link import link_new
     from ..perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
     from ..perceive.extract import build_prompt
+    from ..perceive.importance import (
+        MIN_IMPORTANCE_SCORE,
+        TopicImportance,
+        rank_topics,
+        select_important_topics,
+        select_ranked_topics,
+    )
     from ..perceive.model import ProviderChatModel
 except ImportError:
-    from app.contracts import ChatRequest, WriteOutcome
-    from app.flush_policy import chunk_turns, decide_flush, select_topic_batches
+    from app.budget import estimate_tokens
+    from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
+    from app.flush_policy import (
+        chunk_turns,
+        decide_flush,
+        pack_same_session_batches,
+        select_topic_batches,
+    )
     from app.ports import ArtifactStore, ExtractionStore, SourceStore
     from core.artifact import content_of, revise
     from core.capacity import PROTECTIVE, SATURATED
@@ -30,6 +49,13 @@ except ImportError:
     from maintain.link import link_new
     from perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
     from perceive.extract import build_prompt
+    from perceive.importance import (
+        MIN_IMPORTANCE_SCORE,
+        TopicImportance,
+        rank_topics,
+        select_important_topics,
+        select_ranked_topics,
+    )
     from perceive.model import ProviderChatModel
 
 
@@ -65,6 +91,55 @@ class IngestService:
         self.flushing = False
         self.flush_day = ""
         self.flush_count = 0
+        self._usage_calls = 0
+        self._usage_in = 0
+        self._usage_cached = 0
+        self._usage_out = 0
+
+    def usage_snapshot(self) -> dict[str, int]:
+        """Return cumulative content-free extraction usage counters."""
+        return {
+            "calls": int(self._usage_calls),
+            "in": int(self._usage_in),
+            "cached": int(self._usage_cached),
+            "out": int(self._usage_out),
+        }
+
+    @staticmethod
+    def _response_usage(response: Any) -> tuple[int, int, int]:
+        def number(value: Any) -> int:
+            try:
+                return max(0, int(value or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return (
+                number(getattr(response, "usage_in", 0)),
+                number(getattr(response, "usage_cached", 0)),
+                number(getattr(response, "usage_out", 0)),
+            )
+        return (
+            number(getattr(usage, "input", 0)),
+            number(getattr(usage, "input_cached", 0)),
+            number(getattr(usage, "output", 0)),
+        )
+
+    def _record_usage(self, usage: tuple[int, int, int]) -> None:
+        self._usage_calls += 1
+        self._usage_in += max(0, int(usage[0]))
+        self._usage_cached += max(0, int(usage[1]))
+        self._usage_out += max(0, int(usage[2]))
+
+    @staticmethod
+    def _with_usage(outcome: WriteOutcome, usage: tuple[int, int, int]) -> WriteOutcome:
+        return replace(
+            outcome,
+            usage_in=max(0, int(usage[0])),
+            usage_cached=max(0, int(usage[1])),
+            usage_out=max(0, int(usage[2])),
+        )
 
     def should_flush(
         self,
@@ -100,11 +175,19 @@ class IngestService:
             and "schedule_extraction" in set(capacity_actions)
         )
 
-    def split_topics(self, items, cap: int | None = None):
-        return select_topic_batches(
-            items,
-            int(cap or self.config("max_sessions_per_flush", 6)),
-        )
+    def split_topics(
+        self,
+        items: list[DialogueTurn],
+        cap: int | None = None,
+        triage: bool = False,
+        ranked: list[TopicImportance] | None = None,
+    ) -> list[tuple[str, str, list[DialogueTurn]]]:
+        limit = int(cap or self.config("max_sessions_per_flush", 6))
+        if triage:
+            if ranked is None:
+                return select_important_topics(items, limit)
+            return select_ranked_topics(ranked, limit)
+        return select_topic_batches(items, limit)
 
     async def flush(
         self,
@@ -113,6 +196,9 @@ class IngestService:
         limit: int = 0,
         batch_cap: int = 6,
         max_attempts: int = 5,
+        max_calls: int = 0,
+        max_tokens: int = 0,
+        triage: bool = False,
     ) -> tuple[int, int]:
         """Extract ready topics while preserving pending rows on failure."""
         if (
@@ -124,10 +210,26 @@ class IngestService:
             return 0, 0
         self.flushing = True
         try:
+            pending = list(self.buffer.items)
+            ranked = rank_topics(pending) if triage else None
             topics = self.split_topics(
-                list(self.buffer.items),
+                pending,
                 cap=limit or batch_cap,
+                triage=triage,
+                ranked=ranked,
             )
+            triage_metrics: dict[str, int] = {}
+            if triage:
+                eligible = sum(
+                    1 for item in ranked
+                    if item.score >= MIN_IMPORTANCE_SCORE
+                )
+                triage_metrics = {
+                    "candidates": len(ranked),
+                    "eligible": eligible,
+                    "selected": len(topics),
+                    "skipped_low_value": len(ranked) - eligible,
+                }
             ready_ids = self.extraction.ready_extraction_ids()
             ready = []
             failure: Exception | None = None
@@ -165,11 +267,138 @@ class IngestService:
             if not ready:
                 if failure is not None:
                     raise failure
+                if triage_metrics:
+                    self.journal.record(
+                        "extract",
+                        "info",
+                        "triage selected no extractable topics",
+                        context=triage_metrics,
+                        stage="triage",
+                    )
                 return 0, 0
             self.flush_count += 1
+            usage_base = self.usage_snapshot()
             written = 0
+            calls = 0
+            processed_topics = 0
+            stopped_for_budget = False
+
+            def token_budget_exhausted() -> bool:
+                if max_tokens <= 0:
+                    return False
+                current = self.usage_snapshot()
+                used = max(
+                    0,
+                    current["in"] + current["out"]
+                    - usage_base["in"] - usage_base["out"],
+                )
+                return used >= max_tokens
+
+            if triage:
+                units = []
+                providers = {}
+                for session_id, topic_id, part, provider in ready:
+                    providers[session_id] = provider
+                    for chunk in chunk_turns(part):
+                        units.append((session_id, topic_id, chunk))
+                fixed_tokens = estimate_tokens(
+                    len(build_prompt([], require_evidence=True))
+                )
+                batch_limit = max(
+                    1, int(self.config("dream_batch_tokens", 6000))
+                )
+                batches = pack_same_session_batches(
+                    units,
+                    token_limit=batch_limit,
+                    fixed_tokens=fixed_tokens,
+                )
+                attempted_topics: set[tuple[str, str]] = set()
+                batch_count = 0
+                for batch in batches:
+                    if (
+                        (max_calls > 0 and calls >= max_calls)
+                        or token_budget_exhausted()
+                    ):
+                        stopped_for_budget = True
+                        break
+                    keys = {
+                        (batch.session_id, topic_id)
+                        for topic_id in batch.topics
+                    }
+                    attempted_topics.update(keys)
+                    calls += 1
+                    batch_count += 1
+                    try:
+                        with self.journal.span(
+                            "extract",
+                            "topic.extract",
+                            session=batch.session_id,
+                            topics=len(keys),
+                            messages=len(batch.rows),
+                        ) as metrics:
+                            outcome = await self.extract(
+                                batch.rows,
+                                ProviderChatModel(providers[batch.session_id]),
+                                log=partial(
+                                    self.journal.record, "extract", "warning"
+                                ),
+                                strict=True,
+                                stage=partial(self.journal.span, "extract"),
+                                include_topic=len(batch.topics) > 1,
+                                require_evidence=len(batch.topics) > 1,
+                            )
+                            metrics["written"] = outcome.written
+                            metrics["skipped"] = outcome.skipped
+                            metrics["usage_in"] = outcome.usage_in
+                            metrics["usage_cached"] = outcome.usage_cached
+                            metrics["usage_out"] = outcome.usage_out
+                            if outcome.model_failed or outcome.retryable:
+                                raise RuntimeError(
+                                    "extraction failed; keep pending input"
+                                )
+                    except Exception as exc:
+                        self.buffer.mark_failed(
+                            batch.rows,
+                            type(exc).__name__,
+                            max_attempts=max_attempts,
+                        )
+                        failure = failure or exc
+                        break
+                    self.buffer.mark_succeeded(batch.rows)
+                    written += outcome.written
+                    self.logger.info(
+                        f"[seekmemory] {reason} extract "
+                        f"{batch.session_id or 'unknown'}: "
+                        f"{len(batch.topics)} topics in {len(batch.rows)} turns, "
+                        f"{outcome.written} written"
+                    )
+                processed_topics = len(attempted_topics)
+                triage_metrics["batches"] = batch_count
+                triage_metrics["calls"] = calls
+                context = {"topics": processed_topics, "written": written}
+                context.update(triage_metrics)
+                self.journal.record(
+                    "extract",
+                    "info",
+                    f"tried {processed_topics} topics, wrote {written} memories",
+                    context=context,
+                    stage="batch.complete",
+                )
+                if failure is not None:
+                    raise failure
+                return written, processed_topics
+
             for session_id, topic_id, part, provider in ready:
+                topic_started = False
                 for chunk in chunk_turns(part):
+                    if (
+                        (max_calls > 0 and calls >= max_calls)
+                        or token_budget_exhausted()
+                    ):
+                        stopped_for_budget = True
+                        break
+                    topic_started = True
+                    calls += 1
                     try:
                         with self.journal.span(
                             "extract",
@@ -187,6 +416,9 @@ class IngestService:
                             )
                             metrics["written"] = outcome.written
                             metrics["skipped"] = outcome.skipped
+                            metrics["usage_in"] = outcome.usage_in
+                            metrics["usage_cached"] = outcome.usage_cached
+                            metrics["usage_out"] = outcome.usage_out
                             if outcome.model_failed or outcome.retryable:
                                 raise RuntimeError(
                                     "extraction failed; keep pending input"
@@ -206,16 +438,22 @@ class IngestService:
                         f"{session_id or 'unknown'}: topic {topic_id}, "
                         f"{len(chunk)} turns, {outcome.written} written"
                     )
+                if topic_started:
+                    processed_topics += 1
+                if stopped_for_budget:
+                    break
+            context = {"topics": processed_topics, "written": written}
+            context.update(triage_metrics)
             self.journal.record(
                 "extract",
                 "info",
-                f"tried {len(ready)} topics, wrote {written} memories",
-                context={"topics": len(ready), "written": written},
+                f"tried {processed_topics} topics, wrote {written} memories",
+                context=context,
                 stage="batch.complete",
             )
             if failure is not None:
                 raise failure
-            return written, len(ready)
+            return written, processed_topics
         finally:
             self.flushing = False
 
@@ -227,6 +465,8 @@ class IngestService:
         owner_id: str | None = None,
         log: Callable[[str], None] = lambda _msg: None,
         strict: bool = False,
+        include_topic: bool = False,
+        require_evidence: bool = False,
         stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
             nullcontext()
         ),
@@ -255,17 +495,27 @@ class IngestService:
                     response = await model.complete(
                         ChatRequest(
                             session_id=str(items[0].session_id or ""),
-                            system_prompt=build_prompt([]),
-                            prompt=dialogue_of(context),
+                            system_prompt=build_prompt(
+                                [], require_evidence=require_evidence
+                            ),
+                            prompt=dialogue_of(
+                                context, include_topic=include_topic
+                            ),
                         )
                     )
                     raw = getattr(response, "text", "") or ""
                 else:
                     response = await model.text_chat(
-                        system_prompt=build_prompt([]),
-                        prompt=dialogue_of(context),
+                        system_prompt=build_prompt(
+                            [], require_evidence=require_evidence
+                        ),
+                        prompt=dialogue_of(
+                            context, include_topic=include_topic
+                        ),
                     )
                     raw = getattr(response, "completion_text", "") or ""
+            usage = self._response_usage(response)
+            self._record_usage(usage)
         except Exception as exc:
             if strict:
                 raise
@@ -275,17 +525,27 @@ class IngestService:
             )
 
         plan = build_plan(
-            items, context, raw, self.cache, owner, log, strict=strict, stage=stage
+            items,
+            context,
+            raw,
+            self.cache,
+            owner,
+            log,
+            strict=strict,
+            require_evidence=require_evidence,
+            stage=stage,
         )
         if plan.outcome is not None:
-            return plan.outcome
-        return self._persist_plan(plan, stage, log)
+            return self._with_usage(plan.outcome, usage)
+        return self._persist_plan(plan, stage, log, usage=usage)
 
     def _persist_plan(
         self,
         plan: ExtractionPlan,
         stage: Callable[[str], AbstractContextManager[object]],
         log: Callable[[str], None],
+        *,
+        usage: tuple[int, int, int] = (0, 0, 0),
     ) -> WriteOutcome:
         written_ids: list[str] = []
         skipped = plan.skipped
@@ -325,12 +585,15 @@ class IngestService:
             except Exception as exc:
                 errors.append(f"impression: {exc}")
                 log(f"impression revision failed: {type(exc).__name__}")
-        return WriteOutcome(
-            written=len(written_ids),
-            skipped=skipped,
-            ids=tuple(written_ids),
-            errors=tuple(errors),
-            retryable=retryable,
+        return self._with_usage(
+            WriteOutcome(
+                written=len(written_ids),
+                skipped=skipped,
+                ids=tuple(written_ids),
+                errors=tuple(errors),
+                retryable=retryable,
+            ),
+            usage,
         )
 
     def _supersede(self, new_art) -> int:

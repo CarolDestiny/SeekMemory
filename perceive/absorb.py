@@ -182,8 +182,14 @@ def _dialog_rows(items: list[DialogueTurn]) -> list[DialogueTurn]:
     return list(items)
 
 
-def dialogue_of(items: list[DialogueTurn]) -> str:
-    """Render lines with explicit source labels so evidence ids can be cited."""
+def dialogue_of(
+    items: list[DialogueTurn], *, include_topic: bool = False
+) -> str:
+    """Render lines with explicit source labels so evidence ids can be cited.
+
+    Topic labels are opt-in for multi-topic batches; the default rendering is
+    unchanged for existing extraction and tests.
+    """
     lines = []
     for turn in _dialog_rows(items):
         who = f"{turn.role}({turn.speaker_id})" if turn.speaker_id else turn.role
@@ -192,7 +198,8 @@ def dialogue_of(items: list[DialogueTurn]) -> str:
         if turn.role == "assistant" and turn.reply_to:
             who += f" reply_to={turn.reply_to}"
         prefix = f"[{turn.at}] " if turn.at else ""
-        lines.append(f"{prefix}{who}: {turn.text}")
+        topic = f"topic={turn.topic_id} " if include_topic and turn.topic_id else ""
+        lines.append(f"{prefix}{topic}{who}: {turn.text}")
     return "\n".join(lines)
 
 
@@ -312,6 +319,7 @@ def build_plan(
     log: Log = lambda _msg: None,
     *,
     strict: bool = False,
+    require_evidence: bool = False,
     stage: Callable[[str], AbstractContextManager[object]] = lambda _name: (
         nullcontext()
     ),
@@ -361,6 +369,20 @@ def build_plan(
         try:
             check_payload(candidate)
             evidence = validate_evidence(candidate, available, session_id=owner)
+            if require_evidence:
+                if not evidence:
+                    raise ValueError(
+                        "evidence_source_ids required for multi-topic batch"
+                    )
+                evidence_topics = {
+                    str(getattr(available[value], "topic_id", "") or "").strip()
+                    for value in evidence
+                }
+                evidence_topics.discard("")
+                if len(evidence_topics) > 1:
+                    raise ValueError(
+                        "evidence_source_ids cross topics in multi-topic batch"
+                    )
         except ValueError as exc:
             log(f"evidence validation failed: {type(exc).__name__}")
             return ExtractionPlan(outcome=WriteOutcome(

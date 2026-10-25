@@ -74,13 +74,23 @@ class BackgroundService:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def flush(self, reason: str, limit: int = 0) -> tuple[int, int]:
+    async def flush(
+        self,
+        reason: str,
+        limit: int = 0,
+        max_calls: int = 0,
+        max_tokens: int = 0,
+        triage: bool = False,
+    ) -> tuple[int, int]:
         decision = self.capacity.observe()
         return await self.ingest.flush(
             reason,
             limit=limit,
             batch_cap=self.capacity.batch_cap(decision),
             max_attempts=self.capacity.thresholds.extraction_max_attempts,
+            max_calls=max_calls,
+            max_tokens=max_tokens,
+            triage=triage,
         )
 
     def should_flush(self) -> bool:
@@ -110,6 +120,7 @@ class BackgroundService:
             flush_once=self.flush,
             pending=lambda: len(self.buffer.items),
             maintain=self.dream_maintain,
+            usage=getattr(self.ingest, "usage_snapshot", None),
         )
         self.journal.record(
             "dream",
@@ -122,6 +133,8 @@ class BackgroundService:
                 "batches": result.batches,
                 "written": result.written,
                 "errors": list(result.errors),
+                "budget": result.summary.get("budget"),
+                "usage": result.summary.get("usage"),
             },
         )
 

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable
 from typing import Any
 
@@ -31,6 +32,7 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.scope import visible
     from ..recall.temporal import filter_valid, in_window, query_window
     from ..recall.score import select
+    from ..recall.source_query import query_recent
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from app.ports import ArtifactCache, ArtifactStore, Retriever, SourceStore
     from core.disclosure import (
@@ -54,8 +56,16 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from recall.scope import visible
     from recall.temporal import filter_valid, in_window, query_window
     from recall.score import select
+    from recall.source_query import query_recent
 
 Conf = Callable[[str, Any], Any]
+
+
+def _conf_bool(conf: Conf, key: str, default: bool) -> bool:
+    value = conf(key, default)
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "0", "false", "no", "off")
+    return bool(value)
 
 
 def subject_of(speaker: str, owner_umo: str) -> str:
@@ -154,7 +164,8 @@ def build_block(
             art for art in pool
             if art.header.family != "memory" or in_window(art, window)
         ]
-    if not pool and not pinned_arts:
+    source_enabled = _conf_bool(conf, "source_recall_enabled", True)
+    if not pool and not pinned_arts and not source_enabled:
         return "", {
             "mode": "none",
             "picked": 0,
@@ -265,6 +276,83 @@ def build_block(
                 continue
         return safe_arts
 
+    source_info = None
+    if source_enabled:
+        source_info = {
+            "enabled": True,
+            "candidates": 0,
+            "artifacts": 0,
+            "picked": 0,
+        }
+        recall_k = max(0, int(conf("recall_k", 8)))
+        threshold = min(2, recall_k)
+        if len(picked) < threshold and mode != "none":
+            try:
+                hours = max(1, int(conf("source_recall_hours", 12)))
+                max_candidates = max(1, int(conf("source_recall_max_candidates", 80)))
+                since = (
+                    datetime.datetime.now() - datetime.timedelta(hours=hours)
+                ).isoformat(timespec="seconds")
+                recent = sources.recent_sources(
+                    since=since, limit=max_candidates
+                )
+                hits = query_recent(
+                    text,
+                    recent,
+                    session_id=umo,
+                    speaker=speaker,
+                    limit=max_candidates,
+                )
+                source_info["candidates"] = len(hits)
+                source_ids = [hit.source_id for hit in hits]
+                if source_ids:
+                    rank_by_source = {
+                        source_id: index
+                        for index, source_id in enumerate(source_ids)
+                    }
+                    source_arts = sorted(
+                        artifacts.by_source_ids(source_ids),
+                        key=lambda art: (
+                            min(
+                                (
+                                    rank_by_source[source]
+                                    for source in art.header.lineage.sources
+                                    if source in rank_by_source
+                                ),
+                                default=len(source_ids),
+                            ),
+                            art.header.id,
+                            str(art.header.time.created or ""),
+                        ),
+                    )
+                    source_info["artifacts"] = len(source_arts)
+                    existing = {art.header.id for art in picked}
+                    eligible = []
+                    for art in source_arts:
+                        if art.header.id in existing:
+                            continue
+                        if not visible([art], umo, owner_umo, lookup):
+                            continue
+                        if not deliverable(art, text, private):
+                            continue
+                        if not filter_valid([art]):
+                            continue
+                        if (
+                            window is not None
+                            and art.header.family == "memory"
+                            and not in_window(art, window)
+                        ):
+                            continue
+                        existing.add(art.header.id)
+                        eligible.append(art)
+                    capacity = max(0, recall_k - len(picked))
+                    selected = eligible[:capacity]
+                    picked.extend(selected)
+                    source_info["picked"] = len(selected)
+            except Exception as exc:  # noqa: BLE001 - Source evidence is optional
+                log(f"source recall failed: {type(exc).__name__}")
+                source_info["error"] = type(exc).__name__
+
     safe_pinned = apply_disclosure(pinned_arts, 1.0)
     safe_designated = apply_disclosure(designated, 1.0)
     safe_picked = apply_disclosure(
@@ -307,4 +395,6 @@ def build_block(
         "candidates": len(candidates),
         "gate": gate_info,
     }
+    if source_info is not None:
+        info["source_recall"] = source_info
     return block, info

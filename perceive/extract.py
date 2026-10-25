@@ -58,14 +58,19 @@ evidence_source_ids 原样引用消息编号，不带方括号，不允许生成
 [2026-10-20T23:14:10] assistant(bot)[a1]: 你希望空出一天还是两天？有没有已经约好的事？
 输出：[{"level":"scene","text":"她先询问空闲天数和已有安排","tags":"周末 安排 澄清 条件","about":"relation","subject_kind":"self","subject_id":"self","event_at":"2026-10-20T23:14:10","valid_from":null,"valid_to":null,"confidence":0.95,"arousal":0.2,"valence":0,"funny":0,"first":true,"bot_behavior":"clarify_question","bot_action":"询问具体条件","evidence_source_ids":["u1","a1"]}]
 只输出 JSON 数组，不要解释，不要额外输出第二个数组。"""
+_REQUIRE_EVIDENCE = """
+
+【多话题批次】
+输入包含多个话题。每条记忆项都必须填写非空的 evidence_source_ids，且只引用支持该条目的消息编号；不得省略，也不得用整个批次的消息编号代替，更不得跨话题引用证据。"""
 
 
-def build_prompt(messages: list[str]) -> str:
+def build_prompt(messages: list[str], *, require_evidence: bool = False) -> str:
     """生成抽取印象的提示词；messages 为空时只返回规则部分。"""
+    prompt = _PROMPT + (_REQUIRE_EVIDENCE if require_evidence else "")
     lines = [str(message).strip() for message in messages if str(message).strip()]
     if not lines:
-        return _PROMPT
-    return _PROMPT + "\n\n【今天的对话】\n" + "\n".join(lines) + "\n\n现在输出 JSON 数组："
+        return prompt
+    return prompt + "\n\n【今天的对话】\n" + "\n".join(lines) + "\n\n现在输出 JSON 数组："
 
 
 def _fenced_blocks(text: str) -> list[str]:

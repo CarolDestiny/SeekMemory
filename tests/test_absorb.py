@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.contracts import DialogueTurn  # noqa: E402
+from app.contracts import ChatResponse, DialogueTurn  # noqa: E402
 from core.artifact import content_of  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
@@ -19,6 +19,7 @@ from tests.absorb_support import absorb  # noqa: E402
 from perceive.absorb import dialogue_of, owner_of, worth_now  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import build_prompt, parse_response  # noqa: E402
+from services.ingest_service import IngestService  # noqa: E402
 from store.cache import Cache  # noqa: E402
 from store import open_store  # noqa: E402
 
@@ -211,6 +212,15 @@ class PromptTest(unittest.TestCase):
         self.assertIn("event_at", prompt)
         self.assertIn("supersedes", prompt)
         self.assertIn("2026-10-20T23:14:00", prompt)
+
+    def test_multi_topic_prompt_requires_evidence_without_changing_default(self):
+        default = build_prompt([])
+        required = build_prompt([], require_evidence=True)
+        self.assertNotIn("\u591a\u8bdd\u9898\u6279\u6b21", default)
+        self.assertIn("\u591a\u8bdd\u9898\u6279\u6b21", required)
+        self.assertIn("evidence_source_ids", required)
+        self.assertIn("\u6bcf\u6761\u8bb0\u5fc6\u9879\u90fd\u5fc5\u987b\u586b\u5199", required)
+        self.assertIn("\u4e0d\u5f97\u8de8\u8bdd\u9898", required)
 
     def test_prompt_documents_one_behavior_field_and_evidence(self):
         prompt = build_prompt([])
@@ -536,5 +546,596 @@ class DialogueWindowTest(unittest.TestCase):
         self.assertEqual(provider.seen, "")
 
 
+class UsageModel:
+    def __init__(self, text: str, usage=(11, 2, 7)) -> None:
+        self.text = text
+        self.usage = usage
+
+    async def complete(self, _request):
+        return ChatResponse(
+            text=self.text,
+            usage_in=self.usage[0],
+            usage_cached=self.usage[1],
+            usage_out=self.usage[2],
+        )
+
+
+class ExtractionUsageTest(unittest.TestCase):
+    def test_usage_is_returned_and_cumulative_across_parse_failure(self):
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+
+        async def provider_for(_session):
+            return None
+
+        class Logger:
+            def info(self, *_args, **_kwargs):
+                pass
+
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        service = IngestService(
+            buffer=None,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            extraction=None,
+            cache=cache,
+            graph=graph,
+            journal=None,
+            config=lambda key, default: (overrides or {}).get(key, default),
+            provider_for=provider_for,
+            owner_id=lambda: "10001",
+            logger=Logger(),
+        )
+        ok = asyncio.run(service.extract([_turn("hello")], UsageModel(GOOD)))
+        self.assertEqual((ok.usage_in, ok.usage_cached, ok.usage_out), (11, 2, 7))
+        bad = asyncio.run(
+            service.extract([_turn("hello")], UsageModel("not json", (3, 4, 5)))
+        )
+        self.assertTrue(bad.model_failed)
+        self.assertEqual((bad.usage_in, bad.usage_cached, bad.usage_out), (3, 4, 5))
+        self.assertEqual(
+            service.usage_snapshot(),
+            {"calls": 2, "in": 14, "cached": 6, "out": 12},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class IngestCallBudgetTest(unittest.TestCase):
+    def test_flush_stops_before_starting_extra_model_call(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+
+        class Journal:
+            @contextmanager
+            def span(self, *_args, **_kwargs):
+                yield {}
+
+            def record(self, *_args, **_kwargs):
+                pass
+
+        class Buffer:
+            items = [
+                DialogueTurn("s", "u1", "user", "first", "2026-10-25T10:00:00",
+                             "s1", "t1"),
+                DialogueTurn("s", "u1", "user", "second", "2026-10-25T10:01:00",
+                             "s2", "t2"),
+            ]
+            succeeded = []
+            failed = []
+
+            def mark_succeeded(self, chunk):
+                self.succeeded.extend(chunk)
+                self.items = [item for item in self.items if item not in chunk]
+
+            def mark_failed(self, chunk, *_args, **_kwargs):
+                self.failed.extend(chunk)
+
+        class Extraction:
+            def ready_extraction_ids(self):
+                return {"s1", "s2"}
+
+        class Provider:
+            def __init__(self):
+                self.calls = 0
+                self.prompts = []
+                self.system_prompts = []
+
+            async def text_chat(self, system_prompt="", prompt=""):
+                self.calls += 1
+                self.prompts.append(prompt)
+                self.system_prompts.append(system_prompt)
+                if getattr(self, "fail", False):
+                    raise RuntimeError("provider down")
+                items = getattr(self, "response_items", None) or [
+                    {"level": "fact", "text": f"memory {self.calls}"}
+                ]
+                return SimpleNamespace(
+                    completion_text=json.dumps(items),
+                    usage=SimpleNamespace(input=10, input_cached=0, output=5),
+                )
+
+        class Logger:
+            def info(self, *_args, **_kwargs):
+                pass
+
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        provider = Provider()
+
+        async def provider_for(_session):
+            return provider
+
+        buffer = Buffer()
+        service = IngestService(
+            buffer=buffer,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            extraction=Extraction(),
+            cache=cache,
+            graph=graph,
+            journal=Journal(),
+            config=lambda key, default: (overrides or {}).get(key, default),
+            provider_for=provider_for,
+            owner_id=lambda: "u1",
+            logger=Logger(),
+        )
+        written, topics = asyncio.run(
+            service.flush("test", max_calls=1, batch_cap=2)
+        )
+        self.assertEqual(written, 1)
+        self.assertEqual(topics, 1)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 1)
+        self.assertEqual(len(buffer.failed), 0)
+
+
+class IngestTokenBudgetTest(unittest.TestCase):
+    def test_flush_stops_before_second_call_when_token_budget_is_exhausted(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+
+        class Journal:
+            @contextmanager
+            def span(self, *_args, **_kwargs):
+                yield {}
+
+            def record(self, *_args, **_kwargs):
+                pass
+
+        class Buffer:
+            items = [
+                DialogueTurn("s", "u1", "user", "first", "2026-10-25T10:00:00",
+                             "s1", "t1"),
+                DialogueTurn("s", "u1", "user", "second", "2026-10-25T10:01:00",
+                             "s2", "t2"),
+            ]
+            succeeded = []
+            failed = []
+
+            def mark_succeeded(self, chunk):
+                self.succeeded.extend(chunk)
+                self.items = [item for item in self.items if item not in chunk]
+
+            def mark_failed(self, chunk, *_args, **_kwargs):
+                self.failed.extend(chunk)
+
+        class Extraction:
+            def ready_extraction_ids(self):
+                return {"s1", "s2"}
+
+        class Provider:
+            def __init__(self):
+                self.calls = 0
+                self.prompts = []
+                self.system_prompts = []
+
+            async def text_chat(self, system_prompt="", prompt=""):
+                self.calls += 1
+                self.prompts.append(prompt)
+                self.system_prompts.append(system_prompt)
+                if getattr(self, "fail", False):
+                    raise RuntimeError("provider down")
+                items = getattr(self, "response_items", None) or [
+                    {"level": "fact", "text": f"memory {self.calls}"}
+                ]
+                return SimpleNamespace(
+                    completion_text=json.dumps(items),
+                    usage=SimpleNamespace(input=10, input_cached=0, output=5),
+                )
+
+        class Logger:
+            def info(self, *_args, **_kwargs):
+                pass
+
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        provider = Provider()
+
+        async def provider_for(_session):
+            return provider
+
+        buffer = Buffer()
+        service = IngestService(
+            buffer=buffer,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            extraction=Extraction(),
+            cache=cache,
+            graph=graph,
+            journal=Journal(),
+            config=lambda key, default: (overrides or {}).get(key, default),
+            provider_for=provider_for,
+            owner_id=lambda: "u1",
+            logger=Logger(),
+        )
+        written, topics = asyncio.run(
+            service.flush("test", max_tokens=1, batch_cap=2)
+        )
+        self.assertEqual(written, 1)
+        self.assertEqual(topics, 1)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 1)
+        self.assertEqual(len(buffer.failed), 0)
+
+
+class IngestTriageTest(unittest.TestCase):
+    def _run(
+        self,
+        texts,
+        triage=True,
+        *,
+        max_calls=0,
+        max_tokens=0,
+        overrides=None,
+        fail=False,
+        swallow_failure=False,
+        response_items=None,
+        rows=None,
+        with_db=False,
+    ):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        db, cache, graph = make_db()
+        self.addCleanup(db.close)
+
+        class Journal:
+            def __init__(self):
+                self.events = []
+
+            @contextmanager
+            def span(self, *_args, **_kwargs):
+                yield {}
+
+            def record(self, *args, **kwargs):
+                self.events.append((args, kwargs))
+
+        class Buffer:
+            def __init__(self, values):
+                self.items = (
+                    list(rows)
+                    if rows is not None
+                    else [
+                        DialogueTurn(
+                            "s", "u1", "user", text, "2026-10-25T10:00:00",
+                            f"s{index}", f"t{index}",
+                        )
+                        for index, text in enumerate(values)
+                    ]
+                )
+                self.succeeded = []
+                self.failed = []
+
+            def mark_succeeded(self, chunk):
+                self.succeeded.extend(chunk)
+                self.items = [item for item in self.items if item not in chunk]
+
+            def mark_failed(self, chunk, *_args, **_kwargs):
+                self.failed.extend(chunk)
+
+        class Extraction:
+            def ready_extraction_ids(self):
+                return {f"s{index}" for index in range(len(texts))}
+
+        class Provider:
+            def __init__(self):
+                self.calls = 0
+                self.prompts = []
+                self.system_prompts = []
+
+            async def text_chat(self, system_prompt="", prompt=""):
+                self.calls += 1
+                self.prompts.append(prompt)
+                self.system_prompts.append(system_prompt)
+                if getattr(self, "fail", False):
+                    raise RuntimeError("provider down")
+                items = getattr(self, "response_items", None) or [
+                    {"level": "fact", "text": f"memory {self.calls}"}
+                ]
+                return SimpleNamespace(
+                    completion_text=json.dumps(items),
+                    usage=SimpleNamespace(input=10, input_cached=0, output=5),
+                )
+
+        class Logger:
+            def info(self, *_args, **_kwargs):
+                pass
+
+            def warning(self, *_args, **_kwargs):
+                pass
+
+        journal = Journal()
+        provider = Provider()
+        provider.fail = fail
+        provider.response_items = response_items
+
+        async def provider_for(_session):
+            return provider
+
+        buffer = Buffer(texts)
+        service = IngestService(
+            buffer=buffer,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            extraction=Extraction(),
+            cache=cache,
+            graph=graph,
+            journal=journal,
+            config=lambda key, default: (overrides or {}).get(key, default),
+            provider_for=provider_for,
+            owner_id=lambda: "u1",
+            logger=Logger(),
+        )
+        try:
+            result = asyncio.run(
+                service.flush(
+                    "test",
+                    triage=triage,
+                    batch_cap=10,
+                    max_calls=max_calls,
+                    max_tokens=max_tokens,
+                )
+            )
+        except Exception:
+            if not swallow_failure:
+                raise
+            result = None
+        if with_db:
+            return result, buffer, provider, journal, db
+        return result, buffer, provider, journal
+
+    def test_triage_selects_high_value_and_leaves_low_value_pending(self):
+        result, buffer, provider, journal = self._run([
+            "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+            "\u65e9\u5b89",
+            "\u597d\u7684",
+        ])
+        self.assertEqual(result[0], 1)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 2)
+        context = journal.events[-1][1]["context"]
+        self.assertEqual(context["candidates"], 3)
+        self.assertEqual(context["eligible"], 1)
+        self.assertEqual(context["selected"], 1)
+        self.assertEqual(context["skipped_low_value"], 2)
+        self.assertNotIn("\u8bb0\u4f4f", str(context))
+
+    def test_same_session_high_value_topics_share_one_call(self):
+        result, buffer, provider, journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[
+                {"level": "fact", "text": "memory a", "evidence_source_ids": ["s0"]},
+            ],
+        )
+        self.assertEqual(result, (1, 2))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 0)
+        self.assertIn("topic=t0", provider.prompts[0])
+        self.assertIn("topic=t1", provider.prompts[0])
+        context = journal.events[-1][1]["context"]
+        self.assertEqual(context["topics"], 2)
+        self.assertEqual(context["batches"], 1)
+        self.assertEqual(context["calls"], 1)
+
+    def test_multi_topic_missing_evidence_fails_and_keeps_all_pending(self):
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[{"level": "fact", "text": "memory"}],
+            swallow_failure=True,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(provider.calls, 1)
+        self.assertIn("evidence_source_ids", provider.system_prompts[0])
+        self.assertEqual(len(buffer.items), 2)
+        self.assertEqual(buffer.succeeded, [])
+        self.assertEqual(len(buffer.failed), 2)
+
+    def test_multi_topic_valid_evidence_commits_only_cited_lineage(self):
+        result, _buffer, provider, _journal, db = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[{
+                "level": "fact",
+                "text": "memory",
+                "evidence_source_ids": ["s0"],
+            }],
+            with_db=True,
+        )
+        self.assertEqual(result, (1, 2))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(db.artifacts.by_source_ids(["s0"])), 1)
+        self.assertEqual(db.artifacts.by_source_ids(["s1"]), [])
+        art = db.artifacts.by_source_ids(["s0"])[0]
+        self.assertEqual(art.header.lineage.sources, ("s0",))
+
+    def test_multi_topic_cross_topic_evidence_fails_without_artifact(self):
+        result, buffer, provider, _journal, db = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[{
+                "level": "fact",
+                "text": "memory",
+                "evidence_source_ids": ["s0", "s1"],
+            }],
+            swallow_failure=True,
+            with_db=True,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 2)
+        self.assertEqual(buffer.succeeded, [])
+        self.assertEqual(len(buffer.failed), 2)
+        self.assertEqual(db.artifacts.by_source_ids(["s0"]), [])
+        self.assertEqual(db.artifacts.by_source_ids(["s1"]), [])
+
+    def test_triaged_behavior_topic_commits_bot_behavior_lineage(self):
+        rows = [
+            DialogueTurn(
+                "s", "u1", "user", "\u6211\u8981\u6491\u4e0d\u4f4f",
+                "2026-10-25T10:00:00", "s0", "t0", "turn0",
+            ),
+            DialogueTurn(
+                "s", "bot", "assistant", "\u6211\u5728\uff0c\u522b\u96be\u8fc7",
+                "2026-10-25T10:00:01", "s1", "t0", "turn1", "s0",
+            ),
+        ]
+        behavior = {
+            "level": "scene",
+            "bot_behavior": "respond_emotion",
+            "text": "\u5979\u5728\u4ed6\u6491\u4e0d\u4f4f\u65f6\u5148\u63a5\u4f4f\u60c5\u7eea",
+            "tags": "\u60c5\u7eea \u5b89\u6170",
+            "about": "relation",
+            "subject_kind": "self",
+            "subject_id": "self",
+            "bot_action": "\u5148\u56de\u5e94\u60c5\u7eea",
+            "evidence_source_ids": ["s0", "s1"],
+        }
+        result, buffer, provider, _journal, db = self._run(
+            ["behavior", "behavior"],
+            rows=rows,
+            response_items=[behavior],
+            with_db=True,
+        )
+        self.assertEqual(result, (1, 1))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(buffer.items, [])
+        art = db.artifacts.by_source_ids(["s0"])[0]
+        self.assertEqual(art.payload["bot_behavior"], "respond_emotion")
+        self.assertEqual(set(art.header.lineage.sources), {"s0", "s1"})
+        self.assertEqual(len(db.artifacts.by_source_ids(["s1"])), 1)
+
+    def test_forced_batch_split_respects_max_calls_and_keeps_pending(self):
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            max_calls=1,
+            overrides={"dream_batch_tokens": 1},
+        )
+        self.assertEqual(result, (1, 1))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 1)
+
+    def test_batched_calls_still_respect_token_budget(self):
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            max_tokens=1,
+            overrides={"dream_batch_tokens": 1},
+        )
+        self.assertEqual(result, (1, 1))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 1)
+
+    def test_batch_failure_leaves_all_rows_pending(self):
+        result, buffer, provider, _journal = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            fail=True,
+            swallow_failure=True,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 2)
+        self.assertEqual(buffer.succeeded, [])
+        self.assertEqual(len(buffer.failed), 2)
+
+    def test_low_value_only_triage_starts_no_model_call(self):
+        result, buffer, provider, _journal = self._run([
+            "\u65e9\u5b89",
+            "\u597d\u7684",
+        ])
+        self.assertEqual(result, (0, 0))
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(len(buffer.items), 2)
+
+    def test_triage_ranks_pending_topics_once_per_flush(self):
+        from unittest.mock import patch
+        from perceive.importance import rank_topics as real_rank_topics
+
+        with patch(
+            "services.ingest_service.rank_topics", wraps=real_rank_topics
+        ) as ranked:
+            self._run([
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u65e9\u5b89",
+            ])
+        self.assertEqual(ranked.call_count, 1)
+
+    def test_non_dream_split_keeps_fifo_selection(self):
+        from app.flush_policy import select_topic_batches
+
+        db, _cache, _graph = make_db()
+        self.addCleanup(db.close)
+        items = [
+            DialogueTurn("s", "u1", "user", "\u65e9\u5b89", "2026-10-25T10:00:00",
+                         "s0", "t0"),
+            DialogueTurn("s", "u1", "user", "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                         "2026-10-25T10:01:00", "s1", "t1"),
+        ]
+        class _Service:
+            config = staticmethod(lambda _key, default: default)
+        got = IngestService.split_topics(_Service(), items, cap=10, triage=False)
+        expected = select_topic_batches(items, 10)
+        self.assertEqual([(s, t) for s, t, _ in got],
+                         [(s, t) for s, t, _ in expected])
+
+
+class DialogueTopicLabelTest(unittest.TestCase):
+    def test_topic_labels_are_opt_in(self):
+        rows = [
+            DialogueTurn("s", "u1", "user", "alpha", "", "s1", "t1"),
+            DialogueTurn("s", "u1", "user", "beta", "", "s2", "t2"),
+        ]
+        self.assertNotIn("topic=", dialogue_of(rows))
+        labelled = dialogue_of(rows, include_topic=True)
+        self.assertIn("topic=t1", labelled)
+        self.assertIn("topic=t2", labelled)

@@ -36,6 +36,21 @@
     "type": "int",
     "default": 600
   },
+  "source_recall_enabled": {
+    "description": "Enable bounded recent Source evidence discovery when Artifact recall is weak.",
+    "type": "bool",
+    "default": true
+  },
+  "source_recall_hours": {
+    "description": "Recent Source evidence lookback window in hours.",
+    "type": "int",
+    "default": 12
+  },
+  "source_recall_max_candidates": {
+    "description": "Maximum recent Sources considered by one Source evidence query.",
+    "type": "int",
+    "default": 80
+  },
   "recall_k": {
     "description": "每轮最多注入几条记忆",
     "type": "int",
@@ -141,6 +156,21 @@
     "description": "一次梦境最多处理多少个话题批次",
     "type": "int",
     "default": 12
+  },
+  "dream_max_calls": {
+    "description": "Maximum real extraction model calls per dream run.",
+    "type": "int",
+    "default": 12
+  },
+  "dream_batch_tokens": {
+    "description": "Estimated token cap for packing same-session Dream topics into one extraction call; a single topic chunk is never split further.",
+    "type": "int",
+    "default": 6000
+  },
+  "dream_token_budget": {
+    "description": "Total dream extraction input+output token budget; 0 disables the hard stop.",
+    "type": "int",
+    "default": 60000
   },
   "context_system_chars": {
     "description": "系统提示词预算（字）",

@@ -16,6 +16,24 @@
 
 ## 未发布
 
+- Added memory-first Source evidence recall: when Artifact selection is weak, one bounded recent
+  Source query can discover derived Artifacts through the existing disclosure path. Source text is
+  internal evidence only and never enters the prompt; `source_recall_enabled=false` restores the
+  old path.
+- Added exact extraction `WriteOutcome`/`usage_snapshot()` accounting and `dream_max_calls` as the
+  primary Dream call budget. `dream_token_budget` remains an optional secondary guard; turn-only
+  extraction chunking and committed-work maintenance are preserved.
+- Added deterministic Dream-only importance triage before provider resolution. High-value topics
+  are selected locally; low-value topics remain pending and unmarked. Normal nightly/idle FIFO
+  selection is unchanged. The known tradeoff is narrower self-impression coverage.
+- Dream triage now packs same-session prepared topic chunks into one extraction call within
+  `dream_batch_tokens` (default 6000); cross-session batching remains out of scope.
+- Multi-topic Dream batches now require evidence IDs from one topic on every extracted
+  item so lineage stays scoped to cited Sources; single-topic legacy fallback is unchanged.
+- Dream triage now scores user corrections and behavior-relevant paired assistant replies,
+  allowing bot behavior scenes to feed the existing self-impression path without converting
+  generic or assistant-only messages.
+
 - Invariant hardening: scoped identity dedupe, source identity, failure recovery, oversized topics,
   privacy output, reinforcement truth, lineage/cache consistency, temporal validity, migration and continuity.
 - Assistant replies now enter the extraction projection; repeated bot behavior creates self-impressions and

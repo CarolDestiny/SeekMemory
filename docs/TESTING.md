@@ -72,6 +72,21 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | No continuous extraction-to-recall correction case | covered by `tests/test_continuity.py` |
 | Explicit plan/fact replacement did not expire the old row | covered by `tests/test_continuity.py` |
 | Batch merge left partial state after a member failure | covered by `tests/test_maintain.py` |
+| Source evidence recall leaked Source text into the prompt | covered by `tests/test_source_query.py`, `tests/test_recall_pipeline.py` |
+| Memory-sufficient recall still queried Source | covered by `tests/test_recall_pipeline.py` |
+| Source evidence bypassed revision-scoped `by_source_ids` lookup | covered by `tests/test_source_query.py` |
+| Extraction usage was lost on parse failure or not cumulative | covered by `tests/test_absorb.py` |
+| Dream call budget kept starting model calls after the cap | covered by `tests/test_absorb.py`, `tests/test_dream.py` |
+| Low-value Dream topics started model calls instead of staying pending | covered by `tests/test_importance.py`, `tests/test_absorb.py` |
+| Dream triage counted bare dates, work terms or retrieval questions as memories | covered by `tests/test_importance.py` |
+| Dream triage ranked the same pending topics twice per flush | covered by `tests/test_absorb.py` |
+| Dream triage changed nightly FIFO selection | covered by `tests/test_absorb.py` |
+| Dream triage ignored behavior-relevant paired bot replies or scored assistant-only topics | covered by `tests/test_importance.py` |
+| Triaged behavior topic failed to reach bot_behavior lineage/self-impression path | covered by `tests/test_absorb.py` |
+| Dream batching crossed sessions or split a topic chunk | covered by `tests/test_flush_batches.py` |
+| Batched Dream calls bypassed call/token budgets or left inconsistent pending rows | covered by `tests/test_absorb.py` |
+| Multi-topic batch evidence omission widened lineage to all batch sources | covered by `tests/test_absorb.py` |
+| Multi-topic batch evidence cited Sources from more than one topic | covered by `tests/test_absorb.py` |
 | Lifecycle expiry left partial forgotten state | covered by `tests/test_lifecycle.py` |
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
 | AgentRuntime policy was coupled to AstrBot | covered by `tests/test_agent_runtime.py` |

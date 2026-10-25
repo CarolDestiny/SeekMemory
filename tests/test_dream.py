@@ -9,7 +9,12 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.budget import ContextBudget, budget_from_config, clamp_chars, estimate_tokens  # noqa: E402
+from app.budget import (  # noqa: E402
+    ContextBudget,
+    budget_from_config,
+    clamp_chars,
+    estimate_tokens,
+)
 from app.dream import DreamCycle  # noqa: E402
 from app.flush_policy import decide_flush  # noqa: E402
 
@@ -68,7 +73,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_runs_once_and_is_idempotent(self):
         store, calls, left = FakeStore(), [], {"pending": 1}
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             calls.append(1)
             left["pending"] = 0
             return 2, 1
@@ -85,7 +90,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_failure_keeps_pending_for_resume(self):
         store = FakeStore()
 
-        async def boom(_reason):
+        async def boom(_reason, *, max_calls=0, max_tokens=0, triage=False):
             raise RuntimeError("model down")
 
         dream = DreamCycle(store, conf())
@@ -95,7 +100,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
         # 失败后当天仍可续跑
         self.assertTrue(dream.due(AT))
 
-        async def ok(_reason):
+        async def ok(_reason, *, max_calls=0, max_tokens=0, triage=False):
             return 1, 1
 
         again = await dream.run(ok, pending=lambda: 0, now=AT)
@@ -104,7 +109,7 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
     async def test_max_batches_bound(self):
         store, calls = FakeStore(), []
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             calls.append(1)
             return 0, 1
 
@@ -112,10 +117,21 @@ class DreamRunTest(unittest.IsolatedAsyncioTestCase):
         await dream.run(flush, pending=lambda: 99, now=AT)
         self.assertEqual(len(calls), 2)
 
+    async def test_dream_passes_triage_true_to_flush(self):
+        store, seen = FakeStore(), []
+
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
+            seen.append(triage)
+            return 0, 0
+
+        dream = DreamCycle(store, conf())
+        await dream.run(flush, pending=lambda: 1, now=AT)
+        self.assertEqual(seen, [True])
+
     async def test_maintain_runs_after_flush(self):
         store, seen = FakeStore(), []
 
-        async def flush(_reason):
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
             return 1, 1
 
         async def maintain():
@@ -157,6 +173,153 @@ class BudgetTest(unittest.TestCase):
 
     def test_default_budget(self):
         self.assertGreater(ContextBudget().estimate_tokens, 1000)
+
+    def test_source_recall_budget_parses_config(self):
+        budget = budget_from_config(
+            conf(
+                source_recall_enabled="false",
+                source_recall_hours=3,
+                source_recall_max_candidates=5,
+            )
+        )
+        self.assertFalse(budget.source_recall_enabled)
+        self.assertEqual(budget.source_recall_hours, 3)
+        self.assertEqual(budget.source_recall_max_candidates, 5)
+
+
+class DreamBudgetTest(unittest.IsolatedAsyncioTestCase):
+    async def test_token_budget_stops_before_next_flush_and_still_maintains(self):
+        store = FakeStore()
+        usage = {"calls": 0, "in": 0, "cached": 0, "out": 0}
+        calls = []
+        maintained = []
+
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
+            calls.append(1)
+            usage["calls"] += 1
+            usage["in"] += 400
+            usage["out"] += 200
+            return 1, 1
+
+        async def maintain():
+            maintained.append(1)
+            return {"persona": True}
+
+        dream = DreamCycle(
+            store,
+            conf(dream_token_budget=1000, dream_max_batches=5),
+        )
+        result = await dream.run(
+            flush,
+            pending=lambda: 10,
+            maintain=maintain,
+            usage=lambda: dict(usage),
+            now=AT,
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(maintained, [1])
+        self.assertEqual(result.summary["budget"]["used"], 1200)
+        self.assertEqual(result.summary["budget"]["stopped"], "token_budget")
+        self.assertEqual(result.summary["usage"]["calls"], 2)
+        self.assertEqual(result.summary["persona"], True)
+
+    async def test_call_budget_stops_before_next_flush_and_still_maintains(self):
+        store = FakeStore()
+        usage = {"calls": 0, "in": 0, "cached": 0, "out": 0}
+        calls = []
+        maintained = []
+
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
+            calls.append(max_calls)
+            usage["calls"] += 1
+            usage["in"] += 10
+            usage["out"] += 5
+            return 1, 1
+
+        async def maintain():
+            maintained.append(1)
+            return {"persona": True}
+
+        dream = DreamCycle(
+            store,
+            conf(dream_max_calls=2, dream_token_budget=0, dream_max_batches=5),
+        )
+        result = await dream.run(
+            flush,
+            pending=lambda: 10,
+            maintain=maintain,
+            usage=lambda: dict(usage),
+            now=AT,
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls, [2, 1])
+        self.assertEqual(maintained, [1])
+        self.assertEqual(result.summary["budget"]["calls"], 2)
+        self.assertEqual(result.summary["budget"]["calls_used"], 2)
+        self.assertEqual(result.summary["budget"]["stopped"], "call_budget")
+        self.assertEqual(result.summary["usage"]["calls"], 2)
+        self.assertEqual(result.summary["persona"], True)
+
+    async def test_token_budget_is_passed_to_flush_and_stops_after_one_call(self):
+        store = FakeStore()
+        usage = {"calls": 0, "in": 0, "cached": 0, "out": 0}
+        seen = []
+        maintained = []
+
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
+            seen.append((max_calls, max_tokens))
+            usage["calls"] += 1
+            usage["in"] += 100
+            usage["out"] += 50
+            return 1, 1
+
+        async def maintain():
+            maintained.append(1)
+            return {"persona": True}
+
+        dream = DreamCycle(
+            store,
+            conf(dream_max_calls=10, dream_token_budget=100, dream_max_batches=5),
+        )
+        result = await dream.run(
+            flush,
+            pending=lambda: 10,
+            maintain=maintain,
+            usage=lambda: dict(usage),
+            now=AT,
+        )
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0], (10, 100))
+        self.assertEqual(maintained, [1])
+        self.assertEqual(result.summary["budget"]["stopped"], "token_budget")
+        self.assertEqual(result.summary["budget"]["used"], 150)
+
+    async def test_zero_budget_records_usage_without_stopping(self):
+        store = FakeStore()
+        usage = {"calls": 0, "in": 10, "cached": 0, "out": 5}
+        calls = []
+
+        async def flush(_reason, *, max_calls=0, max_tokens=0, triage=False):
+            calls.append(1)
+            usage["calls"] += 1
+            usage["in"] += 10
+            usage["out"] += 5
+            return 1, 1
+
+        dream = DreamCycle(
+            store,
+            conf(dream_token_budget=0, dream_max_batches=2),
+        )
+        result = await dream.run(
+            flush,
+            pending=lambda: 10,
+            usage=lambda: dict(usage),
+            now=AT,
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result.summary["budget"]["stopped"], "")
+        self.assertEqual(result.summary["usage"]["in"], 20)
+        self.assertEqual(result.summary["usage"]["out"], 10)
 
 
 if __name__ == "__main__":

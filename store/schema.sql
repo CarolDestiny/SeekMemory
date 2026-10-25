@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS evidence (
 );
 
 CREATE INDEX IF NOT EXISTS idx_nodes_family_state ON nodes(family, state);
+CREATE INDEX IF NOT EXISTS idx_sources_at ON sources(at);
 CREATE INDEX IF NOT EXISTS idx_nodes_level ON nodes(level);
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent);
 CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src);
@@ -110,6 +111,7 @@ CREATE TABLE IF NOT EXISTS artifact_evidence (
     PRIMARY KEY (entity, revision, source)
 );
 CREATE INDEX IF NOT EXISTS idx_artifact_evidence_entity ON artifact_evidence(entity, revision);
+CREATE INDEX IF NOT EXISTS idx_artifact_evidence_source ON artifact_evidence(source);
 
 -- Pending extraction is a projection over immutable Source plus this state table.
 -- Content is deliberately not duplicated here; queued rows are rebuilt by join.

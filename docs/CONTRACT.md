@@ -383,10 +383,12 @@ class ArtifactRepository:
     def commit(self, art: Artifact, *, expected_revision: int, op: str,
                reason: str = "", source_ids: tuple[str, ...] = (),
                state_events: tuple[StateEvent, ...] = ()) -> None: ...
+    def by_source_ids(self, source_ids: list[str]) -> list[Artifact]: ...
     def history(self, node_id: str) -> list[dict]: ...
 
 class SourceRepository:
     def append_sources(self, sources: list[Source]) -> int: ...
+    def recent_sources(self, *, since: str, limit: int) -> list[Source]: ...
     def source_umos(self, source_ids: list[str]) -> dict[str, str]: ...
 ```
 
@@ -521,6 +523,40 @@ overrides. Source deletion is never a capacity action.
 When an impression is reinforced or reworded, `lineage.sources` is the union of the old and incoming evidence.
 `lineage.derived_from` records the incoming abstraction; it never records the artifact's own id.
 A cache removal follows a successful retirement commit; a failed commit leaves the active cache entry intact.
+
+## Source evidence recall
+
+`RecallService.build()` remains the only recall composition path. Memory is first:
+the normal Artifact retrieval and selection run before Source evidence is considered.
+Only when the selected Artifact count is below `min(2, recall_k)` and
+`intent_of(text) != "none"` may the pipeline issue exactly one
+`SourceStore.recent_sources(since=..., limit=...)` query and one
+`ArtifactStore.by_source_ids()` batch. Source candidates may cross sessions; the
+permission gate remains `AccessService`, and the output privacy remains the existing
+Artifact visibility/disclosure decision. Source ids are internal evidence only: Source
+text is never rendered into the block, info, logs or assembly. Discovered Artifacts are
+deduplicated against selected Artifacts, filtered by visible/deliverable/valid/window
+rules, and appended only up to remaining `recall_k` capacity before the single final
+disclosure/assembly pass. Pinned persona/impression never gates this query.
+
+The query results are content-free counters such as `enabled`, `candidates`,
+`artifacts`, `picked` and `matched`. `source_recall_enabled=false` restores the legacy
+empty-recall info shape. The fallback never writes Source, delivery state or
+reinforcement; only assembled Artifact ids can be marked delivered as before.
+
+## Extraction call budget and usage
+
+`chunk_turns()` keeps the original turn-only `MAX_TOPIC_TURNS` behavior. `IngestService`
+records exact `usage_in`/`usage_cached`/`usage_out` from each `ChatResponse` on
+`WriteOutcome` and exposes a content-free cumulative `usage_snapshot()`.
+
+`dream_max_calls` (default 12) is the primary Dream budget. `IngestService.flush(...,
+max_calls=...)` checks before every real extraction call, so unstarted pending rows stay
+recoverable. `DreamCycle` passes the remaining call budget and records
+budget/usage/stopped in its summary. `dream_token_budget` remains an optional secondary
+guard checked before the next batch; it can allow at most one-call slack. Maintenance
+still runs for committed work. A budget of 0 disables only the hard stop where
+applicable; usage is still recorded.
 
 ## Temporal validity and query windows
 

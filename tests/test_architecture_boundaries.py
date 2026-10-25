@@ -262,6 +262,31 @@ class LayerDependencyTest(unittest.TestCase):
                     callers.append(path)
         self.assertEqual(callers, [ROOT / "services" / "ingest_service.py"])
 
+    def test_importance_triage_is_pure_and_local(self) -> None:
+        path = ROOT / "perceive" / "importance.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        modules = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                modules.append(node.module)
+            elif isinstance(node, ast.Import):
+                modules.extend(alias.name for alias in node.names)
+        self.assertFalse([
+            module for module in modules
+            if module.startswith(("store", "adapters", "astrbot", "services"))
+        ])
+        for fragment in ("ChatRequest(", "complete(", "text_chat(", ".commit("):
+            self.assertNotIn(fragment, source, str(path))
+
+    def test_no_raw_source_render_path(self) -> None:
+        self.assertFalse((ROOT / "recall" / "source_context.py").exists())
+        for folder in ("app", "core", "recall", "services"):
+            for path in (ROOT / folder).rglob("*.py"):
+                source = path.read_text(encoding="utf-8")
+                self.assertNotIn("render_same_session", source, str(path))
+                self.assertNotIn("decide_source", source, str(path))
+
     def test_conversion_module_has_no_persistence(self) -> None:
         source = (ROOT / "perceive" / "absorb.py").read_text(encoding="utf-8")
         self.assertNotIn("async def absorb(", source)

@@ -23,6 +23,9 @@ class ContextBudget:
     system_chars: int = 1600        # 人格提示词 + 系统说明
     group_context_messages: int = 20  # 群聊流水最多注入多少条
     history_messages: int = 24      # 会话历史保留条数
+    source_recall_enabled: bool = True
+    source_recall_hours: int = 12
+    source_recall_max_candidates: int = 80
 
     @property
     def estimate_tokens(self) -> int:
@@ -50,12 +53,21 @@ def budget_from_config(conf: Callable[[str, object], object]) -> ContextBudget:
     """从插件配置读取预算；缺省值就是默认策略。"""
     default = ContextBudget()
 
-    def _num(key: str, fallback: int) -> int:
+    def _num(key: str, fallback: int, minimum: int = 1) -> int:
+        raw = conf(key, fallback)
+        if raw is None or raw == "":
+            raw = fallback
         try:
-            value = int(conf(key, fallback) or fallback)  # type: ignore[arg-type]
+            value = int(raw)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return fallback
-        return max(1, value)
+        return max(minimum, value)
+
+    def _bool(key: str, fallback: bool) -> bool:
+        value = conf(key, fallback)
+        if isinstance(value, str):
+            return value.strip().lower() not in ("", "0", "false", "no", "off")
+        return bool(value)
 
     return ContextBudget(
         injection_chars=_num("budget_chars", default.injection_chars),
@@ -64,6 +76,15 @@ def budget_from_config(conf: Callable[[str, object], object]) -> ContextBudget:
             "group_context_messages", default.group_context_messages
         ),
         history_messages=_num("history_messages", default.history_messages),
+        source_recall_enabled=_bool(
+            "source_recall_enabled", default.source_recall_enabled
+        ),
+        source_recall_hours=_num(
+            "source_recall_hours", default.source_recall_hours
+        ),
+        source_recall_max_candidates=_num(
+            "source_recall_max_candidates", default.source_recall_max_candidates
+        ),
     )
 
 

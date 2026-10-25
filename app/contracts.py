@@ -58,6 +58,9 @@ class WriteOutcome:
     errors: tuple[str, ...] = ()
     model_failed: bool = False
     retryable: bool = False
+    usage_in: int = 0
+    usage_cached: int = 0
+    usage_out: int = 0
 
 
 @dataclass(frozen=True)

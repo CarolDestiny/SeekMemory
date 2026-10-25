@@ -46,6 +46,8 @@ class ProtocolSurfaceTest(unittest.TestCase):
         self.assertIsInstance(self.db.extraction, ExtractionStore)
         self.assertIsInstance(self.db.metrics, MetricsStore)
         self.assertIsInstance(self.db.ledger, LedgerStore)
+        self.assertTrue(callable(self.db.sources.recent_sources))
+        self.assertTrue(callable(self.db.artifacts.by_source_ids))
 
     def test_builtin_retriever_and_chat_model_satisfy_public_protocols(self):
         self.assertIsInstance(HybridRetriever(self.cache, self.cache), Retriever)
@@ -76,6 +78,9 @@ class ContractDataclassTest(unittest.TestCase):
         self.assertEqual(out.written, 0)
         self.assertEqual(out.errors, ())
         self.assertFalse(out.model_failed)
+        self.assertEqual(out.usage_in, 0)
+        self.assertEqual(out.usage_cached, 0)
+        self.assertEqual(out.usage_out, 0)
 
     def test_dialogue_turn_optional_fields(self):
         turn = DialogueTurn("umo", "speaker", "user", "hello")

@@ -69,9 +69,21 @@ exposure = context_affinity * subject_fit * scope_prior * topic_fit * (1 - sensi
 Levels: full >= 0.55, paraphrase >= 0.18, hint >= 0.03, otherwise silence.
 Paraphrase uses a generic safe sentence, never raw content or extractor tags. Scope is a continuous prior, not a visibility gate. Cross-session text is only injected as a direct quote when context/subject affinity is high enough.
 
+Recall is memory-first. The normal Artifact retrieval/selection runs first. Only when
+the selected Artifact count is below `min(2, recall_k)` and the query has recall intent
+may `RecallService` run one bounded Source evidence query. It reads a recent global
+Source window, ranks locally by character-bigram BM25 plus recency/session/speaker
+signals, and uses Source ids only to discover active Artifacts through
+`ArtifactStore.by_source_ids()`. Source ids are internal evidence; Source text is never
+rendered, logged or assembled. The discovered Artifacts pass the existing visibility and
+disclosure path and fill only the remaining recall capacity. Pinned persona/impression
+does not gate Source evidence discovery. Cross-session Source text is never copied raw.
+Clock/greeting/empty queries do not trigger the query.
+
 ## I/O targets
 
-- Recall: zero SQL reads after warmup; use cache indexes by family, level and subject.
+- Recall: zero SQL reads after warmup for the Artifact path; weak Artifact recall may
+  use one bounded Source query and one `by_source_ids` batch.
 - One user turn: append user and assistant Source rows; extraction commits a batch.
 - Reinforcement: state_events in memory; checkpoint once per 30 minutes.
 - SQLite is the first store; repository ports allow a later PostgreSQL adapter.
@@ -93,6 +105,48 @@ BM25 使用标准库字符 bigram 倒排索引，不调用模型或网络。正�
 `bm25_enabled=true`，新配置 `bm25_weight=1.0`；select 函数默认权重 2.0 保留旧调用兼容。
 BM25 本身无 SQL，现有 graph/source/history 路径仍可能查询 SQLite。
 本次不包含本地向量实现，不新增 semantic 字段或依赖；后续边界记录在 ISSUE-0024。
+
+## Token and call budgets
+
+`app.budget.ContextBudget` owns the request-side injection budget and the Source
+evidence recall switches. Defaults are `source_recall_enabled=true`,
+`source_recall_hours=12`, and `source_recall_max_candidates=80`; the final assembled
+block stays within `budget_chars`. `app.flush_policy.chunk_turns()` retains the original
+turn-only `MAX_TOPIC_TURNS` behavior; there is no chunk token budget.
+
+`IngestService` records exact `usage_in`/`usage_cached`/`usage_out` from each
+`ChatResponse` on `WriteOutcome` and exposes a content-free cumulative
+`usage_snapshot()`. `dream_max_calls` (default 12) is the primary Dream budget:
+`IngestService.flush(..., max_calls=..., max_tokens=...)` checks both the remaining
+call allowance and the actual token delta before every real extraction call, leaving
+unstarted pending rows recoverable. `DreamCycle` passes both remaining budgets and
+records budget/usage/stopped in the dream summary. `dream_token_budget` is a secondary
+guard with at most one-call slack. Maintenance still runs for committed work.
+
+Dream triage batches prepared topic chunks only within one session, using
+`dream_batch_tokens` (default 6000) plus a reserved prompt estimate. The same-session
+batching is a packing optimization: one batch is one real extraction call, a single
+topic chunk is never split further, and cross-session batching is intentionally out of
+scope because extraction evidence validation assumes one session. Multi-topic batches
+add topic labels to the dialogue rendering and require every extracted item to cite
+non-empty evidence IDs from a single topic; missing, invalid or cross-topic evidence is
+retryable and lineage is never widened to every batch source. Single-topic batches keep
+the original prompt format and legacy no-evidence fallback.
+
+Dream extraction also runs deterministic, purely local importance triage before provider
+resolution and model calls. Topics are grouped by session/topic and scored from user
+memory signals plus behavior-relevant assistant replies only when a user turn is present,
+using distinct category labels, then selected high-to-low at or above a fixed threshold.
+First-person/possessive forms, personal date+action contexts and an assistance
+command guard prevent bare date words, generic work terms, retrieval questions and
+unrelated single-character family/pet mentions from spending calls. Low-value topics
+remain pending and unmarked. Only Dream uses triage; normal nightly/idle extraction keeps
+FIFO topic selection. Ranking happens once per flush. Paired user+assistant topics can
+also score for bot behavior, and user corrections score directly, so behavior-relevant
+replies can reach the existing self-impression path. Assistant-only topics and generic
+courtesy remain low value; only behavior-relevant paired replies are converted, not every
+bot message. The known tradeoff is narrower self-impression coverage because selection is
+driven by user-memory value.
 
 All production writes use `artifacts.commit()` with expected revision, version snapshots,
 evidence links and ledger entries. `ArtifactRepository.upsert()` is a seed/benchmark primitive,
@@ -124,7 +178,7 @@ The extractor returns `subject_kind`, `subject_id`, `event_at` and validity date
   but their extraction state is parked as `deferred`, and `release_deferred()`
   promotes them back once the governor returns to `normal`. Failed extractions
   back off and end in the terminal `dead` state instead of retrying forever.
-- Extraction batches rotate one topic per session. The scheduler keeps its own
+- Non-Dream extraction batches rotate one topic per session. The scheduler keeps its own
   bounded `webui/trace.py` ring for capacity samples, separate from the
   business Journal event log.
 - Not implemented yet: local vector retrieval, general reflection signals and full RBAC.

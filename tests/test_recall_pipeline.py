@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.budget import ContextBudget
 from core.artifact import Lineage, make
 from core.graph import Graph
 from core.source import Source
@@ -186,3 +187,174 @@ class OptionalBM25PipelineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+
+class CountingSources:
+    def __init__(self, repo):
+        self.repo = repo
+        self.recent_calls = 0
+
+    def recent_sources(self, *, since, limit):
+        self.recent_calls += 1
+        return self.repo.recent_sources(since=since, limit=limit)
+
+    def __getattr__(self, name):
+        return getattr(self.repo, name)
+
+
+class SourceRecallPipelineTest(unittest.TestCase):
+    def setUp(self):
+        self.db = open_store(":memory:")
+        self.addCleanup(self.db.close)
+        self.cache = Cache(self.db.artifacts)
+        self.graph = Graph(self.db.artifacts)
+        self.session = "bot:FriendMessage:u1"
+        self.sources = CountingSources(self.db.sources)
+        self.conf = {
+            "bm25_enabled": True,
+            "recall_k": 8,
+            "budget_chars": 600,
+            "source_recall_enabled": True,
+            "source_recall_hours": 12,
+            "source_recall_max_candidates": 80,
+        }
+        self.by_source_calls = 0
+        original = self.db.artifacts.by_source_ids
+        def counted(source_ids):
+            self.by_source_calls += 1
+            return original(source_ids)
+        self.db.artifacts.by_source_ids = counted
+
+    def add_source(self, source_id, text, *, session=None, speaker="u1"):
+        import datetime
+        at = datetime.datetime.now().isoformat(timespec="seconds")
+        self.db.sources.append_sources([
+            Source(source_id, "turn-" + source_id, session or self.session,
+                   speaker, "user", text, at)
+        ])
+
+    def add_artifact(self, text, *, source_ids=(), cache=True, scope="shared"):
+        art = make(
+            "memory", {"text": text, "level": "fact"},
+            scope=scope, subject_id="u1",
+            lineage=Lineage(sources=tuple(source_ids)),
+        )
+        self.db.artifacts.commit(
+            art, expected_revision=0, op="create", source_ids=tuple(source_ids)
+        )
+        if cache:
+            self.cache.put(art)
+        return art
+
+    def recall(self, query, **changes):
+        conf = {**self.conf, **changes}
+        return build_block(
+            self.cache, self.graph, self.db.artifacts, self.sources,
+            self.session, query, True, conf.get, self.session, "u1",
+            dry_run=True,
+        )
+
+    def test_memory_sufficient_does_not_query_sources(self):
+        self.add_artifact("quantum trading alpha")
+        self.add_artifact("quantum trading beta")
+        block, info = self.recall("quantum trading")
+        self.assertTrue(block)
+        self.assertEqual(self.sources.recent_calls, 0)
+        self.assertEqual(self.by_source_calls, 0)
+        self.assertEqual(info["source_recall"]["candidates"], 0)
+
+    def test_weak_memory_uses_one_source_query_and_one_batch_lookup(self):
+        self.add_artifact("quantum trading picked")
+        self.add_source("s1", "quantum trading source note")
+        self.add_artifact("derived quantum one", source_ids=("s1",), cache=False)
+        self.add_artifact("derived quantum two", source_ids=("s1",), cache=False)
+        block, info = self.recall("quantum trading")
+        self.assertEqual(self.sources.recent_calls, 1)
+        self.assertEqual(self.by_source_calls, 1)
+        self.assertEqual(info["source_recall"]["candidates"], 1)
+        self.assertEqual(info["source_recall"]["artifacts"], 2)
+        self.assertEqual(info["source_recall"]["picked"], 2)
+        self.assertIn("derived quantum one", block)
+        self.assertNotIn("quantum trading source note", block)
+
+    def test_pinned_persona_does_not_gate_source_evidence(self):
+        persona = make(
+            "persona", {"text": "stable persona", "traits": []},
+            scope="shared", subject_id="u1",
+        )
+        self.db.artifacts.commit(persona, expected_revision=0, op="create")
+        self.cache.put(persona)
+        self.add_source("s1", "quantum trading source note")
+        self.add_artifact("derived quantum", source_ids=("s1",), cache=False)
+        block, info = self.recall("quantum trading")
+        self.assertEqual(self.sources.recent_calls, 1)
+        self.assertGreaterEqual(info["source_recall"]["picked"], 1)
+        self.assertIn("derived quantum", block)
+
+    def test_source_hit_rank_controls_artifact_when_capacity_is_one(self):
+        self.add_artifact("quantum picked")
+        self.add_source("sA", "quantum alpha top source")
+        self.add_source("sB", "quantum beta source")
+        self.add_artifact("artifact from B", source_ids=("sB",), cache=False)
+        self.add_artifact("artifact from A", source_ids=("sA",), cache=False)
+        block, info = self.recall(
+            "quantum alpha top", recall_k=2
+        )
+        self.assertEqual(info["source_recall"]["picked"], 1)
+        self.assertIn("artifact from A", block)
+        self.assertNotIn("artifact from B", block)
+
+    def test_cross_session_source_text_never_reaches_block(self):
+        self.add_source("s1", "cross session quantum secret", session="other:session")
+        self.add_artifact("cross evidence memory", source_ids=("s1",), cache=False)
+        block, info = self.recall("quantum trading")
+        self.assertEqual(self.sources.recent_calls, 1)
+        self.assertEqual(info["source_recall"]["candidates"], 1)
+        self.assertNotIn("cross session quantum secret", block)
+
+    def test_source_recall_disabled_preserves_legacy_empty_info_shape(self):
+        self.add_source("s1", "disabled quantum source")
+        conf = {**self.conf, "source_recall_enabled": False}
+        block, info = build_block(
+            self.cache, self.graph, self.db.artifacts, self.sources,
+            self.session, "quantum trading", True, conf.get, self.session, "u1",
+            dry_run=True,
+        )
+        self.assertEqual(block, "")
+        self.assertNotIn("source_recall", info)
+        self.assertEqual(
+            set(info),
+            {"mode", "picked", "pinned", "chars", "picked_ids", "pinned_ids",
+             "disclosure", "fallback", "candidates", "gate"},
+        )
+
+
+class SourceRecallBudgetTest(unittest.TestCase):
+    def test_context_budget_disables_source_recall_without_config_key(self):
+        db = open_store(":memory:")
+        self.addCleanup(db.close)
+        cache = Cache(db.artifacts)
+        graph = Graph(db.artifacts)
+        session = "bot:FriendMessage:u1"
+        import datetime
+        db.sources.append_sources([
+            Source("s1", "turn-s1", session, "u1", "user",
+                   "quantum trading source", datetime.datetime.now().isoformat(
+                       timespec="seconds"))
+        ])
+        service = RecallService(
+            cache=cache,
+            graph=graph,
+            artifacts=db.artifacts,
+            sources=db.sources,
+            budget=ContextBudget(
+                injection_chars=600, source_recall_enabled=False
+            ),
+            config={}.get,
+            owner_umo=lambda: session,
+        )
+        result = service.preview("quantum trading", session, True, "u1")
+        self.assertEqual(result["block"], "")
+        self.assertNotIn("source_recall", result["info"])
