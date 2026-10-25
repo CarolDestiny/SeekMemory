@@ -84,6 +84,7 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Dream batching crossed sessions or split a topic chunk | covered by `tests/test_flush_batches.py` |
 | Batched Dream calls bypassed call/token budgets or left inconsistent pending rows | covered by `tests/test_absorb.py` |
 | Multi-topic batch evidence omission widened lineage to all batch sources | covered by `tests/test_absorb.py` |
+| Multi-topic batch evidence cited Sources from more than one topic | covered by `tests/test_absorb.py` |
 | Lifecycle expiry left partial forgotten state | covered by `tests/test_lifecycle.py` |
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |
 | AgentRuntime policy was coupled to AstrBot | covered by `tests/test_agent_runtime.py` |

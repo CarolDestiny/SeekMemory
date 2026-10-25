@@ -220,6 +220,7 @@ class PromptTest(unittest.TestCase):
         self.assertIn("\u591a\u8bdd\u9898\u6279\u6b21", required)
         self.assertIn("evidence_source_ids", required)
         self.assertIn("\u6bcf\u6761\u8bb0\u5fc6\u9879\u90fd\u5fc5\u987b\u586b\u5199", required)
+        self.assertIn("\u4e0d\u5f97\u8de8\u8bdd\u9898", required)
 
     def test_prompt_documents_one_behavior_field_and_evidence(self):
         prompt = build_prompt([])
@@ -980,6 +981,28 @@ class IngestTriageTest(unittest.TestCase):
         self.assertEqual(db.artifacts.by_source_ids(["s1"]), [])
         art = db.artifacts.by_source_ids(["s0"])[0]
         self.assertEqual(art.header.lineage.sources, ("s0",))
+
+    def test_multi_topic_cross_topic_evidence_fails_without_artifact(self):
+        result, buffer, provider, _journal, db = self._run(
+            [
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u8bb0\u4f4f\u6211\u4e0b\u5468\u53bb\u51fa\u5dee",
+            ],
+            response_items=[{
+                "level": "fact",
+                "text": "memory",
+                "evidence_source_ids": ["s0", "s1"],
+            }],
+            swallow_failure=True,
+            with_db=True,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(len(buffer.items), 2)
+        self.assertEqual(buffer.succeeded, [])
+        self.assertEqual(len(buffer.failed), 2)
+        self.assertEqual(db.artifacts.by_source_ids(["s0"]), [])
+        self.assertEqual(db.artifacts.by_source_ids(["s1"]), [])
 
     def test_forced_batch_split_respects_max_calls_and_keeps_pending(self):
         result, buffer, provider, _journal = self._run(

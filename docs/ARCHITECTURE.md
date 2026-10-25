@@ -129,9 +129,9 @@ batching is a packing optimization: one batch is one real extraction call, a sin
 topic chunk is never split further, and cross-session batching is intentionally out of
 scope because extraction evidence validation assumes one session. Multi-topic batches
 add topic labels to the dialogue rendering and require every extracted item to cite
-non-empty evidence IDs; missing/invalid evidence is retryable and lineage is never
-widened to every batch source. Single-topic batches keep the original prompt format and
-legacy no-evidence fallback.
+non-empty evidence IDs from a single topic; missing, invalid or cross-topic evidence is
+retryable and lineage is never widened to every batch source. Single-topic batches keep
+the original prompt format and legacy no-evidence fallback.
 
 Dream extraction also runs deterministic, purely local importance triage before provider
 resolution and model calls. Topics are grouped by session/topic, scored from user turns

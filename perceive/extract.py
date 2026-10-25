@@ -61,7 +61,7 @@ evidence_source_ids 原样引用消息编号，不带方括号，不允许生成
 _REQUIRE_EVIDENCE = """
 
 【多话题批次】
-输入包含多个话题。每条记忆项都必须填写非空的 evidence_source_ids，且只引用支持该条目的消息编号；不得省略，也不得用整个批次的消息编号代替。"""
+输入包含多个话题。每条记忆项都必须填写非空的 evidence_source_ids，且只引用支持该条目的消息编号；不得省略，也不得用整个批次的消息编号代替，更不得跨话题引用证据。"""
 
 
 def build_prompt(messages: list[str], *, require_evidence: bool = False) -> str:

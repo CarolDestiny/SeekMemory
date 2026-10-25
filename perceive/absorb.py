@@ -369,8 +369,20 @@ def build_plan(
         try:
             check_payload(candidate)
             evidence = validate_evidence(candidate, available, session_id=owner)
-            if require_evidence and not evidence:
-                raise ValueError("evidence_source_ids required for multi-topic batch")
+            if require_evidence:
+                if not evidence:
+                    raise ValueError(
+                        "evidence_source_ids required for multi-topic batch"
+                    )
+                evidence_topics = {
+                    str(getattr(available[value], "topic_id", "") or "").strip()
+                    for value in evidence
+                }
+                evidence_topics.discard("")
+                if len(evidence_topics) > 1:
+                    raise ValueError(
+                        "evidence_source_ids cross topics in multi-topic batch"
+                    )
         except ValueError as exc:
             log(f"evidence validation failed: {type(exc).__name__}")
             return ExtractionPlan(outcome=WriteOutcome(

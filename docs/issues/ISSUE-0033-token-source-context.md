@@ -127,8 +127,9 @@ the `dream_batch_tokens` budget (default 6000) plus a reserved prompt estimate. 
 is one real extraction call; a single topic chunk is never split further. Cross-session
 batching is out of scope because extraction/evidence validation assumes one session.
 Multi-topic batches add topic labels and require every extracted item to cite non-empty
-evidence IDs; missing/invalid evidence is retryable and lineage is never widened to all
-batch sources. Single-topic batches retain default rendering and legacy fallback.
+evidence IDs from one topic; missing, invalid or cross-topic evidence is retryable and
+lineage is never widened to all batch sources. Single-topic batches retain default
+rendering and legacy fallback.
 Low-value topics remain pending unchanged; there is no skipped state and no Source
 deletion. Only `DreamCycle` passes `triage=True`; nightly/idle extraction keeps FIFO
 selection. Journal metadata is category/count only (`candidates`, `eligible`,

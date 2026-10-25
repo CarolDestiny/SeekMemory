@@ -28,8 +28,8 @@
   selection is unchanged. The known tradeoff is narrower self-impression coverage.
 - Dream triage now packs same-session prepared topic chunks into one extraction call within
   `dream_batch_tokens` (default 6000); cross-session batching remains out of scope.
-- Multi-topic Dream batches now require evidence IDs on every extracted item so lineage
-  stays scoped to cited Sources; single-topic legacy fallback is unchanged.
+- Multi-topic Dream batches now require evidence IDs from one topic on every extracted
+  item so lineage stays scoped to cited Sources; single-topic legacy fallback is unchanged.
 
 - Invariant hardening: scoped identity dedupe, source identity, failure recovery, oversized topics,
   privacy output, reinforcement truth, lineage/cache consistency, temporal validity, migration and continuity.
