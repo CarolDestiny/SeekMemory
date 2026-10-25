@@ -89,6 +89,7 @@ class AstrBotPlugin(AstrBotHooks):
         self.capacity: CapacityGovernor | None = None
         self._last_runtime_prune_at = 0.0
         self._started = False
+        self.web = None
 
     async def start(self) -> None:
         if self._started:
@@ -360,7 +361,8 @@ class AstrBotPlugin(AstrBotHooks):
             await self.services.background.stop()
         if self.jobs is not None:
             await self.jobs.close()
-        self.web.close()
+        if self.web is not None:
+            self.web.close()
         if self.buffer is not None:
             self.buffer.save()
         if self.checkpoint is not None:

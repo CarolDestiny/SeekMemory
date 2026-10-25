@@ -274,7 +274,13 @@ class AstrBotHooks:
         )
 
     async def start_jobs(self) -> None:
-        if not self.ready or self.services is None or self.services.background.jobs.closed or self.services.background.tasks:
+        await self.start()
+        if (
+            not self.ready
+            or self.services is None
+            or self.services.background.jobs.closed
+            or self.services.background.tasks
+        ):
             return
         self.services.background.start()
 

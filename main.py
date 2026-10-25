@@ -25,7 +25,7 @@ class Main(AstrBotPlugin, star.Star):
         super().__init__(context, config)
 
     async def initialize(self) -> None:
-        await self.start()
+        await self.start_jobs()
 
     async def terminate(self) -> None:
         await self.stop()
