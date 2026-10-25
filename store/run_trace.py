@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from ..app.runtime.trace_data import FILTERS, clean_event, project_runs
+    from ..core.trace import FILTERS, clean_event, project_runs
 except ImportError:  # Standalone tests use the repository as the import root.
-    from app.runtime.trace_data import FILTERS, clean_event, project_runs
+    from core.trace import FILTERS, clean_event, project_runs
 
 
 class TraceStore:

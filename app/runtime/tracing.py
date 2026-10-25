@@ -7,7 +7,10 @@ from datetime import datetime, timezone
 from typing import Protocol
 from uuid import uuid4
 
-from .trace_data import recall_data
+try:
+    from ..core.trace import recall_data
+except ImportError:
+    from core.trace import recall_data
 
 
 class TraceWriter(Protocol):
