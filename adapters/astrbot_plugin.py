@@ -44,6 +44,7 @@ from ..services import (
     StatusService,
 )
 from ..perceive.buffer import Buffer
+from ..perceive.model import ProviderChatModel
 from ..recall.retriever import HybridRetriever
 from ..adapters.astrbot_actions import AstrBotActionPort
 from ..adapters.astrbot_model import AstrBotModelGateway
@@ -193,6 +194,8 @@ class AstrBotPlugin(AstrBotHooks):
             journal=self.journal,
             task_id=lambda: self.jobs.task_id,
             logger=logger,
+            config=self._c,
+            persona_model=self._persona_model,
         )
         scheduler = Scheduler(runtime.store)
         capacity = CapacityService(
@@ -364,6 +367,11 @@ class AstrBotPlugin(AstrBotHooks):
     def _calls_path(self) -> str:
         """调用日志路径：和数据目录放一起。"""
         return str(self.data_path.parent / "calls.jsonl")
+
+    async def _persona_model(self):
+        """Resolve the host provider lazily for one bounded persona call."""
+        provider = await self.context.get_using_provider_async(self.owner_umo)
+        return ProviderChatModel(provider)
 
     def _recall_block(
         self, text: str, umo: str = "", private: bool = False, speaker: str = ""

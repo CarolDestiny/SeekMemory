@@ -83,7 +83,9 @@ a migration plan and a contract or scenario test.
 - A persona file bootstraps one initial `bot:self` persona revision with `origin=seed`, seed provenance, optional authored `corpus`, and no fabricated Source; it is not a second runtime profile.
 - A bootstrap revision may store the authored corpus; later Dream revisions keep only `corpus_count`/`corpus_hash`, not the full corpus.
 - Persona corpus is synthesis/reference data, not chat evidence and not recall-injected.
-- After bootstrap, Dream may revise the same persona lineage automatically; every revision keeps evidence/audit and remains rollbackable.
+- After bootstrap, Dream may revise the same persona lineage automatically from active persona text plus bounded self-impressions/public memory summaries; every revision keeps evidence/audit and remains rollbackable.
+- Later persona revisions do not duplicate full corpus; they keep only `corpus_count`/`corpus_hash` provenance.
+- Persona synthesis is one bounded background call and never a recall read path.
 - One active persona has a stable id; content/evidence changes add a revision, identical reruns do not. Consolidation is atomic.
 - Unverified legacy persona cannot be injected; its original versions remain available for authenticated audit.
 - Historical evidence comes from each version's own snapshot; current lineage cannot be substituted into history.
