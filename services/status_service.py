@@ -87,6 +87,10 @@ class StatusService:
             "id": current.header.id,
             "revision": int(current.header.revision),
             "text": str(current.payload.get("text") or ""),
+            "corpusCount": int(
+                current.payload.get("corpus_count")
+                or len(current.payload.get("corpus") or [])
+            ),
             "revisions": revisions,
         }
 

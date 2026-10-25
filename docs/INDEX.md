@@ -35,6 +35,7 @@ v0.3.1 + WebUI branch
 | skills/seekmemory-architecture/SKILL.md | Reusable architecture/refactor skill and pitfall checklist | skills/seekmemory-architecture/SKILL.md |
 | docs/INVARIANTS.md | Non-negotiable identity, privacy, recovery and reinforcement rules | docs/INVARIANTS.md |
 | docs/TESTING.md | Test layers, commands and known coverage gaps | docs/TESTING.md |
+| docs/PERSONA_SEED.md | Persona file schema and one-time bootstrap contract | docs/PERSONA_SEED.md |
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |
 | scripts/run_tests.py | Run one test layer locally or in CI | docs/TESTING.md |
 | main.py | Entry point composition only | main.py |

@@ -219,8 +219,8 @@ class _BrokenCache:
 class PinnedTest(unittest.TestCase):
     """常驻层（persona + 印象前 2）不经过检索闸门。"""
 
-    def test_pinned_persona_all_and_top_impressions(self) -> None:
-        """persona 全部保留，印象层按 weight 取前 2，普通记忆不进常驻层。"""
+    def test_pinned_one_active_persona_and_top_impressions(self) -> None:
+        """只保留最新一条 persona，印象层按 weight 取前 2。"""
         p1, p2 = _persona("我嘴硬心软"), _persona("我有点慢热")
         low = _impression("印象低", 0.5)
         mid = _impression("印象中", 1.0)
@@ -228,7 +228,7 @@ class PinnedTest(unittest.TestCase):
         ordinary = _memory("他今天加班到很晚")
         got = pinned(_FakeCache([ordinary, low, mid, high, p1, p2]))
         self.assertEqual([a.header.id for a in got],
-                         [p1.header.id, p2.header.id, high.header.id, mid.header.id])
+                         [p2.header.id, high.header.id, mid.header.id])
 
     def test_pinned_fail_open_on_broken_cache(self) -> None:
         """cache.active() 异常时常驻层返回空，不拖垮注入流程。"""

@@ -12,7 +12,7 @@ from __future__ import annotations
 MIN_EV_ABS = 0.5
 MIN_EV_REL = 0.3
 
-# 常驻层：persona 全部 + 印象层按 weight 取前 N 条（DESIGN 5.3 头部常驻）。
+# 常驻层：一条 active persona + 印象层按 weight 取前 N 条（DESIGN 5.3 头部常驻）。
 OWNER_SAID_BY = ("owner", "inferred", "")
 MAX_PINNED_IMPRESSION = 2
 
@@ -45,7 +45,7 @@ def _weight(art) -> float:
 
 
 def pinned(cache, subject: str = "") -> list:
-    """常驻层：人格全部 + 关于「当前说话的人」的印象前 N 条。
+    """常驻层：一条 active persona + 关于「当前说话的人」的印象前 N 条。
 
     层级顺序是 人格 > 印象 > 记忆 > 事实。人格是全局底色；印象分人：
     跟谁说话就调出对那个人的印象，不把某人的性格当成对人的总印象。
@@ -70,6 +70,16 @@ def pinned(cache, subject: str = "") -> list:
         except Exception:  # noqa: BLE001 - 单条坏数据跳过
             continue
     impressions.sort(key=lambda a: (-_weight(a), a.header.id))
+    if personas:
+        # The persona chain is unique. Legacy data may still contain multiple
+        # active rows; select the newest revision deterministically instead of
+        # injecting parallel personas.
+        personas.sort(key=lambda a: (
+            int(getattr(a.header, "revision", 0) or 0),
+            str(getattr(a.header.time, "updated", "") or ""),
+            a.header.id,
+        ))
+        personas = personas[-1:]
     return personas + impressions[:MAX_PINNED_IMPRESSION]
 
 

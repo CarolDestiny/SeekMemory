@@ -4,6 +4,8 @@ from __future__ import annotations
 import math
 
 from .artifact import Artifact
+from .persona import (PERSONA_ORIGIN_DREAM, PERSONA_ORIGIN_SEED,
+                      seed_evolution_matches)
 
 SELF_SUBJECT = "bot:self"
 MIN_EVIDENCE = 3
@@ -48,22 +50,84 @@ def trusted_self_impression(art: Artifact) -> bool:
     )
 
 
-def trusted_self_persona(art: Artifact) -> bool:
-    """只允许固定安全句式的人格在所有会话里表达。"""
-    h, p = art.header, art.payload
-    kinds = p.get("behaviors")
-    if not isinstance(kinds, list) or not 1 <= len(kinds) <= 3:
-        return False
-    if any(not isinstance(k, str) or k not in BEHAVIORS for k in kinds):
-        return False
-    if len(set(kinds)) != len(kinds):
-        return False
+def _trusted_persona_header(art: Artifact) -> bool:
+    h = art.header
     return (
         h.family == "persona" and h.state == "active"
         and h.subject_id == SELF_SUBJECT and h.scope == "shared"
-        and h.said_by == "inferred" and h.shareable == "public"
+        and h.shareable == "public"
+    )
+
+
+def _trusted_behavior_kinds(payload: dict) -> list[str] | None:
+    kinds = payload.get("behaviors")
+    if not isinstance(kinds, list) or not 1 <= len(kinds) <= 3:
+        return None
+    if any(not isinstance(k, str) or k not in BEHAVIORS for k in kinds):
+        return None
+    if len(set(kinds)) != len(kinds):
+        return None
+    return kinds
+
+
+def trusted_self_persona(art: Artifact) -> bool:
+    """Trust the active persona chain, including its one-time seed bootstrap.
+
+    Seed content is explicitly installed configuration, not chat evidence.  It
+    therefore has no fabricated lineage.  Dream revisions over a seed must keep
+    the deterministic ``base_text + behavior sentence`` shape and the existing
+    evidence/confidence requirements.
+    """
+    if not _trusted_persona_header(art):
+        return False
+    h, p = art.header, art.payload
+    origin = str(p.get("origin") or "")
+
+    if origin == PERSONA_ORIGIN_SEED:
+        corpus = p.get("corpus")
+        corpus_count = p.get("corpus_count")
+        corpus_hash = p.get("corpus_hash")
+        if corpus is None:
+            corpus_ok = not corpus_count and not corpus_hash
+        else:
+            corpus_ok = (
+                isinstance(corpus, list)
+                and bool(corpus)
+                and corpus_count == len(corpus)
+                and isinstance(corpus_hash, str)
+                and bool(corpus_hash)
+            )
+        return (
+            h.said_by == "seed"
+            and isinstance(p.get("text"), str)
+            and bool(p["text"].strip())
+            and isinstance(p.get("seed_id"), str)
+            and bool(p["seed_id"].strip())
+            and corpus_ok
+        )
+
+    kinds = _trusted_behavior_kinds(p)
+    if kinds is None:
+        return False
+    text = p.get("text")
+
+    if origin == PERSONA_ORIGIN_DREAM:
+        base_text = p.get("base_text")
+        if not seed_evolution_matches(text, base_text, compose_behaviors(kinds)):
+            return False
+        if p.get("seed_id"):
+            corpus_count = p.get("corpus_count")
+            corpus_hash = p.get("corpus_hash")
+            if corpus_count not in (None, 0):
+                if not isinstance(corpus_hash, str) or not corpus_hash:
+                    return False
+    elif text != compose_behaviors(kinds):
+        # Legacy evidence-backed persona without an explicit origin.
+        return False
+
+    return (
+        h.said_by == "inferred"
         and confident(h.strength.confidence)
         and bool(h.lineage.derived_from)
         and len(set(h.lineage.sources)) >= MIN_EVIDENCE + 1
-        and p.get("text") == compose_behaviors(kinds)
     )
