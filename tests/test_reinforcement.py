@@ -13,7 +13,7 @@ from app.checkpoint import CheckpointManager  # noqa: E402
 from core.artifact import Strength, make  # noqa: E402
 from recall.assemble import build_with_meta  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 def _fact(text: str):
@@ -43,7 +43,7 @@ class AssemblyTruthTest(unittest.TestCase):
 
 class CheckpointCooldownTest(unittest.TestCase):
     def test_same_artifact_counts_once_within_cooldown(self) -> None:
-        db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_reinforce_"), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_reinforce_"), "t.db"))
         self.addCleanup(db.close)
         cache = Cache(db.artifacts)
         art = _fact("cooldown fact")
@@ -58,7 +58,7 @@ class CheckpointCooldownTest(unittest.TestCase):
         self.assertEqual(latest.header.strength.hits, 1)
 
     def test_zero_cooldown_keeps_legacy_behavior(self) -> None:
-        db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_reinforce_"), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_reinforce_"), "t.db"))
         self.addCleanup(db.close)
         cache = Cache(db.artifacts)
         art = _fact("legacy fact")

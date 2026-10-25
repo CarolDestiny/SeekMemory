@@ -23,7 +23,7 @@ from recall.score import select  # noqa: E402
 from recall.seed import seeds  # noqa: E402
 from recall.spread import activate  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 def to_artifact(e):
@@ -83,7 +83,7 @@ def _synthetic_pool(n: int) -> list:
 def main() -> None:
     events, queries = build()
     tmp = tempfile.mkdtemp()
-    db = DB(os.path.join(tmp, "bench.db"))
+    db = open_store(os.path.join(tmp, "bench.db"))
     cache = Cache(db.artifacts)
     graph = Graph(db, cache)
     table = {}

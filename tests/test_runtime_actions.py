@@ -15,8 +15,8 @@ from adapters.astrbot_actions import AstrBotActionPort  # noqa: E402
 from adapters.astrbot_runtime import AstrBotRuntimeAdapter  # noqa: E402
 from app.runtime import (  # noqa: E402
     AgentRuntime,
-    DBEpisodeStore,
-    DBStateStore,
+    RepoEpisodeStore,
+    RepoStateStore,
     EpisodeRecorder,
     InMemoryStateStore,
     JsonlEpisodeStore,
@@ -25,7 +25,7 @@ from app.runtime import (  # noqa: E402
     WakeAction,
     RunDecision,
 )
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class Context:
@@ -54,9 +54,9 @@ class Event:
 class ActionTest(unittest.TestCase):
     def test_episode_ids_remain_unique_when_clock_does_not_advance(self):
         from unittest.mock import patch
-        db = DB(os.path.join(tempfile.mkdtemp(), "clock.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(), "clock.db"))
         self.addCleanup(db.close)
-        sink = DBEpisodeStore(db.runtime_episodes)
+        sink = RepoEpisodeStore(db.runtime_episodes)
         episode = EpisodeRecord("s", "2026-10-23T10:00:00", "observe", "ambient",
                                  "reply", True)
         with patch("time.time_ns", return_value=123):
@@ -106,15 +106,15 @@ class ActionTest(unittest.TestCase):
         self.assertFalse(blocked.allowed)
 
     def test_db_state_and_episode_stores(self) -> None:
-        db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_db_"), "memory.db"))
-        state_store = DBStateStore(db.runtime_state)
+        db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_db_"), "memory.db"))
+        state_store = RepoStateStore(db.runtime_state)
         state = state_store.get("s1")
         state.quiet_until = 321
         state_store.put(state)
-        self.assertEqual(DBStateStore(db.runtime_state).get("s1").quiet_until, 321)
+        self.assertEqual(RepoStateStore(db.runtime_state).get("s1").quiet_until, 321)
         self.assertEqual(db.runtime_state.sessions(), ["s1"])
 
-        recorder = EpisodeRecorder(DBEpisodeStore(db.runtime_episodes))
+        recorder = EpisodeRecorder(RepoEpisodeStore(db.runtime_episodes))
         recorder.record(EpisodeRecord(
             session_id="s1", at="2026-01-01T00:00:00", decision="reply",
             reason="mention", action="reply", delivered=True,
@@ -127,8 +127,8 @@ class ActionTest(unittest.TestCase):
         self.assertIn("memory_search", rows[0]["tool_calls"])
 
     def test_db_episode_pruning_and_fail_open(self) -> None:
-        db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_prune_"), "memory.db"))
-        recorder = EpisodeRecorder(DBEpisodeStore(db.runtime_episodes))
+        db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_runtime_prune_"), "memory.db"))
+        recorder = EpisodeRecorder(RepoEpisodeStore(db.runtime_episodes))
         for i in range(3):
             recorder.record(EpisodeRecord(
                 session_id="s1", at=f"2026-01-0{i + 1}T00:00:00",
@@ -149,11 +149,11 @@ class ActionTest(unittest.TestCase):
             def append(self, payload):
                 raise RuntimeError("busy")
 
-        state_store = DBStateStore(BrokenState())
+        state_store = RepoStateStore(BrokenState())
         self.assertEqual(state_store.get("s1").session_id, "s1")
         state_store.put(state_store.get("s1"))
         self.assertEqual(state_store.last_error, "RuntimeError")
-        episode_store = DBEpisodeStore(BrokenEpisodes())
+        episode_store = RepoEpisodeStore(BrokenEpisodes())
         episode_store.append(EpisodeRecord(session_id="s1", at="t", decision="x",
                                            reason="y", action="z", delivered=False))
         self.assertEqual(episode_store.last_error, "RuntimeError")

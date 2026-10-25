@@ -5,7 +5,7 @@ SQLite, the in-memory cache, the artifact ledger and bounded run traces live her
 
 ## One database, several repositories
 
-`store/db.py` is a thin composition root. It owns one `SqliteDatabase` connection and
+`store/__init__.py` is a thin composition root. It owns one `SqliteDatabase` connection and
 exposes domain repositories; it contains no SQL.
 
 | file | responsibility |

@@ -7,11 +7,11 @@ import datetime
 try:
     from ..core.artifact import Artifact, revise
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
 except ImportError:
     from core.artifact import Artifact, revise
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
 
 
 def _date(value: str | None) -> datetime.date | None:

@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class MigrationTest(unittest.TestCase):
@@ -45,7 +45,7 @@ class MigrationTest(unittest.TestCase):
         con.commit()
         con.close()
 
-        db = DB(path)
+        db = open_store(path)
         self.addCleanup(db.close)
         cols = {row[1] for row in db.conn.execute("PRAGMA table_info(nodes)")}
         self.assertTrue({"subject_id", "revision", "lineage"} <= cols)

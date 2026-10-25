@@ -26,7 +26,7 @@ from maintain.link import (
 from recall.seed import seeds
 from recall.spread import activate
 from store.cache import Cache
-from store.db import DB
+from store import Store, open_store
 
 
 def _memory(
@@ -67,7 +67,7 @@ class _BoomCache:
 class _BoomGraph:
     """link() 必抛异常的图替身：db 可读，边写入失败。"""
 
-    def __init__(self, db: DB) -> None:
+    def __init__(self, db: Store) -> None:
         self.db = db
 
     def link(self, *_args: object) -> None:
@@ -81,7 +81,7 @@ class _LinkCase(unittest.TestCase):
     def setUp(self) -> None:
         """创建临时库与依赖对象。"""
         self.tmpdir = tempfile.mkdtemp(prefix="seekmemory_link_")
-        self.db = DB(os.path.join(self.tmpdir, "memory.db"))
+        self.db = open_store(os.path.join(self.tmpdir, "memory.db"))
         self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)
 

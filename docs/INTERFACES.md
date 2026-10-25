@@ -7,7 +7,7 @@ This page is for contributors who want to extend SeekMemory without reading the 
 - Source is the only immutable truth.
 - Artifact is a derived, versioned interpretation.
 - Production writes go through ArtifactStore.commit with expected_revision.
-- SQL lives only in store/; store/db.py is a composition facade.
+- SQL lives only in store/; store/__init__.py is a composition facade.
 - Retrievers do not write.
 - ChatModel is stateless. Context management belongs to the caller.
 

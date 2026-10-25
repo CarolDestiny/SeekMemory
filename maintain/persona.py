@@ -5,13 +5,13 @@ try:
     from ..core.artifact import Artifact, Lineage, Strength, make, revise
     from ..core.bot_behavior import SELF_SUBJECT, compose_behaviors, trusted_self_impression
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
     from .self_impression import promote_self_candidates
 except ImportError:
     from core.artifact import Artifact, Lineage, Strength, make, revise
     from core.bot_behavior import SELF_SUBJECT, compose_behaviors, trusted_self_impression
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
     from maintain.self_impression import promote_self_candidates
 
 TOP_N = 3
@@ -23,7 +23,7 @@ def compose(impressions: list[Artifact]) -> str:
     return compose_behaviors(kinds)
 
 
-def distill_self_persona(db: DB, cache: Cache, today: str | None = None) -> Artifact | None:
+def distill_self_persona(db: Store, cache: Cache, today: str | None = None) -> Artifact | None:
     candidates = promote_self_candidates(cache, db.sources, today)
     chosen = []
     seen = set()
@@ -66,7 +66,7 @@ def distill_self_persona(db: DB, cache: Cache, today: str | None = None) -> Arti
     return persona
 
 
-def distill_persona(db: DB, cache: Cache, today: str | None = None,
+def distill_persona(db: Store, cache: Cache, today: str | None = None,
                     only_umo: str = "") -> Artifact | None:
     """保留旧签名，但用户印象不再是人格来源。"""
     return distill_self_persona(db, cache, today)

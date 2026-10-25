@@ -21,7 +21,7 @@ from recall.score import select  # noqa: E402
 from recall.seed import seeds  # noqa: E402
 from recall.spread import activate  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 if not KEY:
@@ -83,7 +83,7 @@ def gen_messages():
 
 def ingest(msgs):
     tmp = tempfile.mkdtemp(prefix="seekmem_e2e_")
-    db = DB(os.path.join(tmp, "e2e.db"))
+    db = open_store(os.path.join(tmp, "e2e.db"))
     cache = Cache(db.artifacts); graph = Graph(db, cache); by_key = {}
     for m in msgs:
         if m["uid"] == "bot":

@@ -20,7 +20,7 @@ from core.graph import Graph
 from core.source import Source
 from recall.pipeline import build_block
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 class DisclosureShareTest(unittest.TestCase):
     def test_shared_fact_is_full_in_origin_session(self):
@@ -74,7 +74,7 @@ class DisclosureFactorTest(unittest.TestCase):
 
 class RecallFallbackTest(unittest.TestCase):
     def setUp(self):
-        self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_feel_"), "t.db"))
+        self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_feel_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)

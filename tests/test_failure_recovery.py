@@ -18,7 +18,7 @@ from app.flush_policy import chunk_turns  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
 from perceive.extract import ExtractionParseError, parse_response, parse_response_checked  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class FakeProvider:
@@ -34,7 +34,7 @@ class FakeProvider:
 
 def _db():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_recovery_"), "t.db")
-    db = DB(path)
+    db = open_store(path)
     return db, Cache(db.artifacts), Graph(db, Cache(db.artifacts))
 
 

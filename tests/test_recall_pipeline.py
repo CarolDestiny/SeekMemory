@@ -15,13 +15,13 @@ from core.source import Source
 from recall.pipeline import build_block
 from recall.retriever import HybridRetriever
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 from webui.service import ManagementService
 
 
 class PipelineDisclosureTest(unittest.TestCase):
     def test_cross_session_shared_memory_is_paraphrased(self):
-        db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db.artifacts)
         graph = Graph(db, cache)
         src = Source("s1", "turn1", "s1", "u1", "user", "source text", "t")
@@ -42,7 +42,7 @@ class PipelineDisclosureTest(unittest.TestCase):
         self.assertEqual(info["disclosure"][art.header.id], "paraphrase")
 
     def test_bm25_makes_private_memory_globally_retrievable_but_not_raw(self):
-        db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db.artifacts)
         graph = Graph(db, cache)
         source = Source("s1", "turn1", "s1", "u1", "user", "private source", "t")
@@ -69,7 +69,7 @@ class PipelineDisclosureTest(unittest.TestCase):
 
 class OptionalBM25PipelineTest(unittest.TestCase):
     def setUp(self):
-        self.db = DB(":memory:")
+        self.db = open_store(":memory:")
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)

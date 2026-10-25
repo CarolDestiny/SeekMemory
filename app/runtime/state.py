@@ -97,8 +97,8 @@ class JsonStateStore:
                 self.last_error = type(exc).__name__
 
 
-class DBStateStore:
-    """Persist SessionState through the project's SQLite DB facade."""
+class RepoStateStore:
+    """Persist SessionState through the project's runtime repository."""
 
     def __init__(self, repository) -> None:
         self.repository = repository

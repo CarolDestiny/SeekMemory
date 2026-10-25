@@ -24,7 +24,7 @@ from core.capacity import (  # noqa: E402
 from core.artifact import make  # noqa: E402
 from core.source import Source  # noqa: E402
 from perceive.buffer import Buffer  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 from webui.journal import Journal  # noqa: E402
 
 
@@ -139,7 +139,7 @@ class CapacityGovernorTest(unittest.TestCase):
 class ExtractionProjectionTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.db = DB(os.path.join(self.temp.name, "memory.db"))
+        self.db = open_store(os.path.join(self.temp.name, "memory.db"))
 
     def tearDown(self) -> None:
         self.db.close()
@@ -331,7 +331,7 @@ class CapacityGovernorV2Test(unittest.TestCase):
         self.assertIn("database:", " ".join(decision.reasons))
 
     def test_retry_limit_moves_row_to_dead(self) -> None:
-        db = DB(":memory:")
+        db = open_store(":memory:")
         self.addCleanup(db.close)
         source = Source("s1", "t1", "umo:a", "u1", "user", "x", "2026-10-22T12:00:00")
         db.extraction.enqueue_extraction(source, "topic")

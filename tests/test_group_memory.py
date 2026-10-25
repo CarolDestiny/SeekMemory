@@ -19,7 +19,7 @@ from maintain.promote import promote_candidates  # noqa: E402
 from perceive.absorb import absorb, owner_of  # noqa: E402
 from recall.scope import visible  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 GROUP_A = "napcat:GroupMessage:111"
 GROUP_B = "napcat:GroupMessage:222"
@@ -44,7 +44,7 @@ class FakeProvider:
 
 def fresh():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_grp_"), "t.db")
-    db = DB(path)
+    db = open_store(path)
     cache = Cache(db.artifacts)
     return db, cache, Graph(db, cache)
 

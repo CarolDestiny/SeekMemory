@@ -17,7 +17,7 @@ from core.graph import Graph
 from core.source import Source
 from perceive.absorb import absorb
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 
 GOOD = json.dumps([
@@ -34,7 +34,7 @@ class FakeChatModel:
 
 class KernelEndToEndTest(unittest.TestCase):
     def test_source_to_artifact_to_disclosure_to_checkpoint(self):
-        db = DB(os.path.join(tempfile.mkdtemp(), "t.db"))
+        db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db.artifacts)
         graph = Graph(db, cache)
         user = Source("s_user", "turn1", "umo1", "u1", "user", "I have an interview", "t1")

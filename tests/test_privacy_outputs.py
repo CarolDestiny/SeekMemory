@@ -14,12 +14,12 @@ from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
 from recall.pipeline import build_block  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class PrivacyOutputTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_privacy_"), "t.db"))
+        self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_privacy_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)

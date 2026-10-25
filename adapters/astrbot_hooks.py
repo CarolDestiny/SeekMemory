@@ -22,13 +22,13 @@ class AstrBotHooks:
 
     def _maybe_prune_runtime_episodes(self) -> None:
         """Keep runtime audit bounded without doing work on every message."""
-        if self.db is None:
+        if self.store is None:
             return
         now = time.time()
         if now - self._last_runtime_prune_at < 60:
             return
         try:
-            self.db.runtime_episodes.prune(
+            self.store.runtime_episodes.prune(
                 retention_days=int(self._c("runtime_episode_retention_days", 30)),
                 max_rows=int(self._c("runtime_episode_max_rows", 5000)),
             )
@@ -173,7 +173,7 @@ class AstrBotHooks:
                     event,
                     "error" if getattr(response, "role", "") == "err" else "ok",
                 )
-            if not self._may_observe(event) or self.db is None:
+            if not self._may_observe(event) or self.store is None:
                 return
             if str(getattr(response, "role", "assistant")) == "err":
                 return
@@ -198,7 +198,7 @@ class AstrBotHooks:
     async def record_delivery(self, event) -> None:
         if self._may_observe(event):
             self.run_tracer.delivered(event)
-        if not self._may_observe(event) or self.db is None:
+        if not self._may_observe(event) or self.store is None:
             return
         assistant_source_id = AstrBotRuntimeAdapter.assistant_source_id(event)
         if not assistant_source_id:

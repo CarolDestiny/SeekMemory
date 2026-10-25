@@ -20,7 +20,7 @@ from perceive.absorb import absorb  # noqa: E402
 from recall.pipeline import build_block  # noqa: E402
 from recall.retriever import HybridRetriever  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class Provider:
@@ -36,7 +36,7 @@ class Provider:
 
 class ContinuityTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_continuity_"), "t.db"))
+        self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_continuity_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.graph = Graph(self.db, self.cache)

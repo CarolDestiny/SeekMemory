@@ -29,11 +29,11 @@ from core.retrieval import RetrievalCandidate
 from perceive.model import ProviderChatModel
 from recall.retriever import HybridRetriever
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 class ProtocolSurfaceTest(unittest.TestCase):
     def setUp(self):
-        self.db = DB(":memory:")
+        self.db = open_store(":memory:")
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
 

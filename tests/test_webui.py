@@ -16,7 +16,7 @@ from core.artifact import Lineage, make, revise  # noqa: E402
 from core.graph import Graph  # noqa: E402
 from core.source import Source  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 from store.ledger import Ledger  # noqa: E402
 from webui.jobs import Jobs  # noqa: E402
 from webui.journal import Journal  # noqa: E402
@@ -25,7 +25,7 @@ from webui.service import ManagementService  # noqa: E402
 
 class ManagementTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DB(":memory:")
+        self.db = open_store(":memory:")
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
         self.service = ManagementService(

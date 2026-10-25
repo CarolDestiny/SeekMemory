@@ -13,14 +13,14 @@ from core.artifact import make  # noqa: E402
 from core.source import Source  # noqa: E402
 from maintain.lifecycle import forget_expired  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 class LifecycleTest(unittest.TestCase):
     def test_expired_artifact_is_forgotten_but_source_row_remains(self) -> None:
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        db = DB(os.path.join(temp.name, "memory.db"))
+        db = open_store(os.path.join(temp.name, "memory.db"))
         self.addCleanup(db.close)
         cache = Cache(db.artifacts)
         art = make(
@@ -43,7 +43,7 @@ class LifecycleTest(unittest.TestCase):
     def test_forget_expired_rolls_back_on_write_failure(self) -> None:
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        db = DB(os.path.join(temp.name, "memory.db"))
+        db = open_store(os.path.join(temp.name, "memory.db"))
         self.addCleanup(db.close)
         cache = Cache(db.artifacts)
         art = make(

@@ -18,12 +18,12 @@ from dataclasses import replace
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of, revise
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
     from ..recall.seed import bigrams
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of, revise
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
     from recall.seed import bigrams
 
 LEVEL = "impression"
@@ -91,7 +91,7 @@ def _best_match(cache: Cache, art: Artifact) -> tuple[Artifact | None, float, fl
     return best, best_dice, best_contain
 
 
-def revise_impression(db: DB, cache: Cache, art: Artifact) -> Artifact | None:
+def revise_impression(db: Store, cache: Cache, art: Artifact) -> Artifact | None:
     """把新印象并入旧印象，返回改写后的版本；不需要修订时返回 None。"""
     try:
         if art.header.family != FAMILY:
@@ -124,7 +124,7 @@ def _merged_sources(old: Artifact, art: Artifact) -> tuple[str, ...]:
     ))
 
 
-def _reinforce(db: DB, cache: Cache, art: Artifact, old: Artifact,
+def _reinforce(db: Store, cache: Cache, art: Artifact, old: Artifact,
                weight: float, hits: int) -> Artifact:
     sources = _merged_sources(old, art)
     lineage = replace(old.header.lineage, sources=sources)
@@ -137,7 +137,7 @@ def _reinforce(db: DB, cache: Cache, art: Artifact, old: Artifact,
     return new
 
 
-def _reword(db: DB, cache: Cache, art: Artifact, old: Artifact,
+def _reword(db: Store, cache: Cache, art: Artifact, old: Artifact,
             weight: float, hits: int, score: float) -> Artifact:
     text = _text(art)
     payload = {**old.payload, **art.payload, "text": text}
@@ -163,7 +163,7 @@ def _reword(db: DB, cache: Cache, art: Artifact, old: Artifact,
     return new
 
 
-def _retire(db: DB, cache: Cache, art: Artifact) -> None:
+def _retire(db: Store, cache: Cache, art: Artifact) -> None:
     if art.header.id == "":
         return
     try:

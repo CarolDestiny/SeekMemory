@@ -23,7 +23,7 @@ from recall.bm25 import BM25Index, DEFAULT_CALIBRATION_C
 from recall.retriever import GraphRetriever, HybridRetriever
 from recall.score import select
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ def evaluate(samples: list[Sample], calibration_c: float, weight: float,
     elapsed = 0.0
     details = []
     for sample in samples:
-        db = DB(":memory:")
+        db = open_store(":memory:")
         try:
             cache = Cache(db.artifacts)
             graph = Graph(db, cache)

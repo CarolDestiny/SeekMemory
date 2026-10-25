@@ -32,7 +32,7 @@ store/ perceive/ recall/ maintain/ adapters/: concrete ports
 
 ## Store composition
 
-One SQLite file and one connection preserve cross-table transactions. `store/db.py` is a
+One SQLite file and one connection preserve cross-table transactions. `store/__init__.py` is a
 thin composition root with no SQL. Domain repositories own their tables:
 
 - `artifacts`: nodes, versions, evidence, edges, state events, ledger commit.

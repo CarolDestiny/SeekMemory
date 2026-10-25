@@ -228,7 +228,7 @@ class RunTraceTests(unittest.TestCase):
         }
         exec(compile(ast.fix_missing_locations(module), "main.py", "exec"), namespace)
         plugin = namespace["Main"]()
-        plugin.ready, plugin.cache, plugin.db = True, {}, None
+        plugin.ready, plugin.cache, plugin.store = True, {}, None
         plugin.run_tracer, plugin.journal, plugin.trace = self.tracer, Mock(), Mock()
         plugin._may_recall = plugin._may_observe = lambda event: True
         plugin._calls_path = lambda: "unused"

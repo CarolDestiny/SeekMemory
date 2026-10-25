@@ -17,7 +17,7 @@ from core.artifact import content_of, make
 from core.graph import Graph
 from recall.seed import bigrams
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 
 URL = "https://api.deepseek.com/v1/chat/completions"
 MODEL = "deepseek-flash"
@@ -230,7 +230,7 @@ def stats_snapshot():
 def ingest(key, messages):
     """把消息写成 Artifact：私聊按归属可见、别人私聊不可见、shadow 只留影子。"""
     tmp = tempfile.mkdtemp(prefix="seekmem_large_")
-    db = DB(os.path.join(tmp, "large.db"))
+    db = open_store(os.path.join(tmp, "large.db"))
     cache = Cache(db.artifacts)
     graph, ids = Graph(db, cache), {}
     meta = personas.meta_of(key)

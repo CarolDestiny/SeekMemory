@@ -34,7 +34,7 @@ from recall.retriever import HybridRetriever  # noqa: E402
 from recall.seed import bigrams, dice, seeds  # noqa: E402
 from recall.spread import activate  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import Store, open_store  # noqa: E402
 
 K, BUDGET = 8, 600
 
@@ -86,9 +86,9 @@ def _artifact(m) -> Artifact:
                 time={"created": d, "updated": d})
 
 
-def _load(mems) -> tuple[DB, Cache, Graph, list[Artifact]]:
+def _load(mems) -> tuple[Store, Cache, Graph, list[Artifact]]:
     """走生产写入路径建 similar/temporal 边；causal 仍由人工金标补。"""
-    db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_abl_"), "abl.db"))
+    db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_abl_"), "abl.db"))
     cache = Cache(db.artifacts)
     graph = Graph(db, cache)
     for m in mems:

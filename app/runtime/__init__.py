@@ -17,7 +17,7 @@ from .contracts import (
     WakeAction,
 )
 from .episode import (
-    DBEpisodeStore,
+    RepoEpisodeStore,
     EpisodeOutcome,
     EpisodeRecorder,
     EpisodeRecord,
@@ -31,7 +31,7 @@ from .episode import (
 from .recorder import RecordedReply, RecordedTurn, RunRecorder
 from .runtime import AgentRuntime
 from .scheduler import DueRun, Scheduler, TimingPolicy
-from .state import DBStateStore, InMemoryStateStore, JsonStateStore
+from .state import RepoStateStore, InMemoryStateStore, JsonStateStore
 from .tools import (
     ToolCall,
     ToolGuardDecision,
@@ -44,8 +44,8 @@ from .worker import RuntimeWorker
 __all__ = [
     "AgentRuntime",
     "AttentionLevel",
-    "DBEpisodeStore",
-    "DBStateStore",
+    "RepoEpisodeStore",
+    "RepoStateStore",
     "EpisodeOutcome",
     "EpisodeRecorder",
     "EpisodeRecord",

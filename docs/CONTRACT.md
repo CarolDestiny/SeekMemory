@@ -88,12 +88,12 @@ class Graph:
     def neighbours(self, node_id: str, kinds: tuple[str, ...] = ("similar","causal","temporal")) -> list[tuple[str, float]]: ...
 ```
 
-## store/db.py and repositories
+## store/__init__.py and repositories
 
-`DB` is composition only. It owns one SQLite connection and exposes domain repositories:
+`Store` is composition only. It owns one SQLite connection and exposes domain repositories:
 
 ```python
-class DB:
+class Store:
     artifacts: ArtifactRepository
     sources: SourceRepository
     extraction: ExtractionRepository
@@ -307,7 +307,7 @@ Mock 返回值也对照 YAML 校验。契约未同步生成类型、实现输出
 
 1. 单文件 ≤ 300 行，尽量 150
 2. `core/` `store/` `recall/` 不 import `astrbot`
-3. 只有 `store/` 写 SQL；`store/db.py` 只负责组合
+3. 只有 `store/` 写 SQL；`store/__init__.py` 只负责组合
 4. 所有函数带类型标注
 5. 每个文件头部有 docstring：职责一句话
 
@@ -603,7 +603,7 @@ generation is not implemented and has no timing path in this layer.
 
 ## Runtime actions and episodes
 
-`AstrBotActionPort` provides the host send port and `AstrBotModelGateway` wraps provider lookup plus `text_chat`. `AgentRuntime.dispatch_deferred()` owns the deferred lifecycle: it claims the session, builds recall context, calls `ModelGateway.complete()`, sends through `MessageSender`, records through `RunRecorder`, marks delivery and schedules bounded retry on failure. `RuntimeWorker` selects due sessions and the `AstrBotPlugin` composition callback maps the latest user Source into `RunContext`; `main.py` itself is composition only. `RunRecorder` is the single write-back service for assistant Source, the pending extraction buffer and `EpisodeRecord`. It is idempotent per `run_id`: repeated callbacks do not duplicate Source, checkpoint reinforcement or episode rows. `DBStateStore` and `DBEpisodeStore` persist mutable session state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.run_id` correlates the episode with the admin run trace, and a partial unique index protects non-empty run ids. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
+`AstrBotActionPort` provides the host send port and `AstrBotModelGateway` wraps provider lookup plus `text_chat`. `AgentRuntime.dispatch_deferred()` owns the deferred lifecycle: it claims the session, builds recall context, calls `ModelGateway.complete()`, sends through `MessageSender`, records through `RunRecorder`, marks delivery and schedules bounded retry on failure. `RuntimeWorker` selects due sessions and the `AstrBotPlugin` composition callback maps the latest user Source into `RunContext`; `main.py` itself is composition only. `RunRecorder` is the single write-back service for assistant Source, the pending extraction buffer and `EpisodeRecord`. It is idempotent per `run_id`: repeated callbacks do not duplicate Source, checkpoint reinforcement or episode rows. `RepoStateStore` and `RepoEpisodeStore` persist mutable session state and append-only runtime episodes in SQLite tables (`runtime_state`, `runtime_episodes`); no message bodies are stored. `runtime_episodes.run_id` correlates the episode with the admin run trace, and a partial unique index protects non-empty run ids. `runtime_episodes.delivered` is written by the `after_message_sent` hook, not by model response generation. Runtime writes are fail-open and episode rows are pruned by `runtime_episode_retention_days` / `runtime_episode_max_rows`. JSON stores remain a fallback for tests/export only. `ToolPolicy` is advisory until the host exposes a hard deny path; `on_using_llm_tool` and `on_llm_tool_respond` record tool names, arg-key counts and result status. `runtime_gate_enabled` is false by default; when true, `event.should_call_llm()` follows the runtime decision.
 
 ## Agent run traces
 

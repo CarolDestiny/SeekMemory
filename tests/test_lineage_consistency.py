@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.artifact import Lineage, Strength, content_of, make  # noqa: E402
 from maintain.impression import _retire, revise_impression  # noqa: E402
 from store.cache import Cache  # noqa: E402
-from store.db import DB  # noqa: E402
+from store import open_store  # noqa: E402
 
 
 def _impression(text: str, sources: tuple[str, ...] = (),
@@ -30,7 +30,7 @@ def _impression(text: str, sources: tuple[str, ...] = (),
 
 class ImpressionLineageTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.db = DB(os.path.join(tempfile.mkdtemp(prefix="seekmem_lineage_"), "t.db"))
+        self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_lineage_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
 

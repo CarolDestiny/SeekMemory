@@ -55,11 +55,11 @@ class WebRoutes:
                 "detail": "生命周期日志持久化",
             },
         ]
-        if plugin.db is not None:
+        if plugin.store is not None:
             checks.append(
                 {
                     "name": "ledger",
-                    "ok": Ledger(plugin.db.ledger).verify(),
+                    "ok": Ledger(plugin.store.ledger).verify(),
                     "detail": "账本哈希链",
                 }
             )
@@ -194,7 +194,7 @@ class WebRoutes:
                 return json_response(await self._status())
             if (
                 not plugin.ready
-                or plugin.db is None
+                or plugin.store is None
                 or plugin.cache is None
                 or plugin.graph is None
             ):
@@ -202,7 +202,7 @@ class WebRoutes:
                     "记忆引擎不可用，请检查运行检测与日志", status_code=503
                 )
             service = ManagementService(
-                plugin.db, plugin.cache, plugin.graph, plugin._c,
+                plugin.store, plugin.cache, plugin.graph, plugin._c,
                 plugin.hybrid_retriever,
             )
             if action == "records":

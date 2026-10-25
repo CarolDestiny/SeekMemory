@@ -18,7 +18,7 @@ from recall.retriever import HybridRetriever
 from recall.seed import seeds
 from recall.spread import activate
 from store.cache import Cache
-from store.db import DB
+from store import open_store
 from store.ledger import Ledger
 
 
@@ -39,7 +39,7 @@ def _mk(level: str, text: str, parent: str | None = None, weight: float = 1.0) -
 
 def main() -> None:
     tmpdir = tempfile.mkdtemp()
-    db = DB(os.path.join(tmpdir, "t.db"))
+    db = open_store(os.path.join(tmpdir, "t.db"))
     cache = Cache(db.artifacts)
     tree = Tree(db, cache)
     graph = Graph(db, cache)

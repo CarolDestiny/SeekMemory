@@ -17,7 +17,7 @@ try:  # 作为 astrbot 插件包的一部分导入
         revise,
     )
     from ..store.cache import Cache
-    from ..store.db import DB
+    from ..store import Store, open_store
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import (
         Artifact,
@@ -29,7 +29,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
         revise,
     )
     from store.cache import Cache
-    from store.db import DB
+    from store import Store, open_store
 
 MAX_ACTIVE = 500
 MERGE_LEVELS = ("scene", "detail")

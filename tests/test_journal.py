@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.contracts import DialogueTurn
 from perceive.absorb import absorb
-from store.db import DB
+from store import open_store
 from webui.jobs import Jobs
 from webui.journal import Journal
 
@@ -31,7 +31,7 @@ class JournalTests(unittest.IsolatedAsyncioTestCase):
     async def test_extraction_stages_report_real_module_and_keep_payload_private(
         self,
     ) -> None:
-        db = DB(str(Path(self.temp.name) / "memory.db"))
+        db = open_store(str(Path(self.temp.name) / "memory.db"))
         self.addCleanup(db.close)
         provider = SimpleNamespace(
             text_chat=AsyncMock(
