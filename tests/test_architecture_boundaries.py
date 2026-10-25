@@ -81,8 +81,9 @@ class MainOwnershipTest(unittest.TestCase):
             names,
             {
                 "access_service", "recall_service", "ingest_service",
-                "capacity_service", "maintenance_service", "status_service",
-                "background_service", "runtime", "runtime_worker",
+                "capacity_service", "maintenance_service", "management_service",
+                "status_service", "background_service", "runtime",
+                "runtime_worker",
             },
         )
 
@@ -243,7 +244,7 @@ class LayerDependencyTest(unittest.TestCase):
         self.assertIn("self.maintenance.forget_expired()", source)
 
     def test_webui_preview_uses_recall_service(self) -> None:
-        source = (ROOT / "webui" / "service.py").read_text(encoding="utf-8")
+        source = (ROOT / "services" / "management_service.py").read_text(encoding="utf-8")
         self.assertNotIn("recall.pipeline", source)
         self.assertNotIn("build_block", source)
         self.assertIn("self.recall_service.preview(", source)
@@ -279,6 +280,23 @@ class LayerDependencyTest(unittest.TestCase):
             "cache.put(", "link_new(", "revise_impression(", "self._supersede(",
         ):
             self.assertIn(fragment, source)
+
+    def test_engine_and_service_layers_do_not_import_store(self) -> None:
+        for folder in ("core", "services", "recall", "perceive",
+                       "maintain", "webui"):
+            for path in (ROOT / folder).rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    modules = []
+                    if isinstance(node, ast.ImportFrom) and node.module:
+                        modules.append(node.module)
+                    elif isinstance(node, ast.Import):
+                        modules.extend(alias.name for alias in node.names)
+                    for module in modules:
+                        self.assertFalse(
+                            module == "store" or module.startswith("store."),
+                            f"{path} imports {module}",
+                        )
 
     def test_engine_and_service_functions_do_not_take_aggregate_db(self) -> None:
         for folder in ("core", "services", "recall", "perceive", "maintain"):

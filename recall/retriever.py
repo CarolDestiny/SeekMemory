@@ -3,25 +3,25 @@ from __future__ import annotations
 from dataclasses import replace
 
 try:
+    from ..app.ports import ArtifactCache
     from ..core.artifact import Artifact
     from ..core.graph import Graph
     from ..core.retrieval import RetrievalCandidate
-    from ..store.cache import Cache
     from .bm25 import BM25Index
     from .seed import seeds
     from .spread import activate
 except ImportError:
+    from app.ports import ArtifactCache
     from core.artifact import Artifact
     from core.graph import Graph
     from core.retrieval import RetrievalCandidate
     from recall.bm25 import BM25Index
-    from store.cache import Cache
     from recall.seed import seeds
     from recall.spread import activate
 
 
 class GraphRetriever:
-    def __init__(self, graph: Graph, cache: Cache) -> None:
+    def __init__(self, graph: Graph, cache: ArtifactCache) -> None:
         self.graph = graph
         self.cache = cache
 
@@ -35,7 +35,7 @@ class GraphRetriever:
 class HybridRetriever:
     """为可见候选池合并图激活和 BM25 词面证据。"""
 
-    def __init__(self, graph: Graph, cache: Cache,
+    def __init__(self, graph: Graph, cache: ArtifactCache,
                  index: BM25Index | None = None) -> None:
         self.graph = graph
         self.cache = cache

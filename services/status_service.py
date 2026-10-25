@@ -5,16 +5,18 @@ from __future__ import annotations
 import json
 
 try:
-    from ..app.ports import ArtifactStore
+    from ..app.ports import ArtifactStore, LedgerStore
 except ImportError:
-    from app.ports import ArtifactStore
+    from app.ports import ArtifactStore, LedgerStore
 
 
 class StatusService:
     """Expose persona revisions without leaking source text."""
 
-    def __init__(self, *, artifacts: ArtifactStore | None) -> None:
+    def __init__(self, *, artifacts: ArtifactStore | None,
+                 ledger: LedgerStore | None = None) -> None:
         self.artifacts = artifacts
+        self.ledger = ledger
 
     @staticmethod
     def json_object(raw: object) -> dict:
@@ -87,3 +89,7 @@ class StatusService:
             "text": str(current.payload.get("text") or ""),
             "revisions": revisions,
         }
+
+    def ledger_valid(self) -> bool:
+        """Return whether the append-only ledger hash chain is intact."""
+        return bool(self.ledger is not None and self.ledger.verify())

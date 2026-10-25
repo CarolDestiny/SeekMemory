@@ -10,7 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..app.ports import ArtifactStore, Retriever, SourceStore
+    from ..app.ports import ArtifactCache, ArtifactStore, Retriever, SourceStore
     from ..core.disclosure import (
         DisclosureLevel,
         RecallScene,
@@ -31,9 +31,8 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.scope import visible
     from ..recall.temporal import filter_valid, in_window, query_window
     from ..recall.score import select
-    from ..store.cache import Cache
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from app.ports import ArtifactStore, Retriever, SourceStore
+    from app.ports import ArtifactCache, ArtifactStore, Retriever, SourceStore
     from core.disclosure import (
         DisclosureLevel,
         RecallScene,
@@ -43,7 +42,6 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     )
     from core.graph import Graph
     from core.bot_behavior import trusted_self_persona
-    from store.cache import Cache
 
     from recall.assemble import build_with_meta as assemble_text_meta
     from recall.designated import deliverable, mark_given
@@ -105,7 +103,7 @@ def recent_context(pool: list, subject: str, *, profile: bool = False,
 
 
 def build_block(
-    cache: Cache,
+    cache: ArtifactCache,
     graph: Graph,
     artifacts: ArtifactStore,
     sources: SourceStore,

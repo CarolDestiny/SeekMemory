@@ -6,12 +6,10 @@ import datetime
 
 try:
     from ..core.artifact import Artifact, revise
-    from ..store.cache import Cache
-    from ..app.ports import ArtifactStore
+    from ..app.ports import ArtifactCache, ArtifactStore
 except ImportError:
     from core.artifact import Artifact, revise
-    from store.cache import Cache
-    from app.ports import ArtifactStore
+    from app.ports import ArtifactCache, ArtifactStore
 
 
 def _date(value: str | None) -> datetime.date | None:
@@ -28,7 +26,7 @@ def _expired(art: Artifact, today: datetime.date) -> bool:
     return deadline is not None and deadline < today
 
 
-def forget_expired(artifacts, cache: Cache, today: str = "") -> int:
+def forget_expired(artifacts, cache: ArtifactCache, today: str = "") -> int:
     """Move expired active Artifacts to forgotten and retain their audit history."""
     try:
         base = datetime.date.fromisoformat(today[:10]) if today else datetime.date.today()

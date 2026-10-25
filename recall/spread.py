@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..app.ports import ArtifactCache
     from ..core.graph import Graph
-    from ..store.cache import Cache
 except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
+    from app.ports import ArtifactCache
     from core.graph import Graph
-    from store.cache import Cache
 
 DECAY = 0.5
 MAX_PER_ROUND = 20
@@ -22,7 +22,7 @@ def _neighbours(graph: Graph, node_id: str) -> list[tuple[str, float]]:
         return []
 
 
-def _alive(cache: Cache, node_id: str) -> bool:
+def _alive(cache: ArtifactCache, node_id: str) -> bool:
     """缓存明确标记非 active 才跳过；未命中或异常时放行（fail-open）。"""
     try:
         art = cache.get(node_id)
@@ -44,7 +44,7 @@ def _weight(value: float) -> float:
 def activate(
     seed_ids: list[str],
     graph: Graph,
-    cache: Cache,
+    cache: ArtifactCache,
     rounds: int = 2,
 ) -> dict[str, float]:
     """

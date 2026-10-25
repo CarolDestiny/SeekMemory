@@ -70,7 +70,7 @@ Rules:
 - main.py contains no function bodies; host handlers live in adapters/astrbot_hooks.py and wiring lives in adapters/astrbot_plugin.py.
 - adapters/astrbot_hooks.py contains no extraction, capacity or maintenance algorithm.
 - store/ is the only place that writes SQL.
-- webui/routes.py adapts the host. webui/service.py calls core/store/recall.
+- webui/routes.py adapts the host. services/management_service.py calls core/store/recall.
 - webui/jobs.py and webui/journal.py stay independent of the host.
 - Business modules do not import main.py at runtime. WebUI routes may use type-only references.
 - recall/ and maintain/ are migration zones; do not add new cross-layer dependencies.
@@ -123,7 +123,7 @@ BM25 默认开启（`bm25_enabled=true`），配置权重默认为 1.0。插件�
 ```text
 AstrBot plugin page
   -> webui/routes.py
-  -> webui/service.py
+  -> services/management_service.py
   -> store/__init__.py repositories + cache + recall pipeline
   -> JSON response or SSE lifecycle event
 ```

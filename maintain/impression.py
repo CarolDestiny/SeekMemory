@@ -17,13 +17,11 @@ from dataclasses import replace
 
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of, revise
-    from ..store.cache import Cache
-    from ..app.ports import ArtifactStore
+    from ..app.ports import ArtifactCache, ArtifactStore
     from ..recall.seed import bigrams
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of, revise
-    from store.cache import Cache
-    from app.ports import ArtifactStore
+    from app.ports import ArtifactCache, ArtifactStore
     from recall.seed import bigrams
 
 LEVEL = "impression"
@@ -45,7 +43,7 @@ def _text(art: Artifact) -> str:
     return str(text or art.payload.get("text") or "").strip()
 
 
-def _rivals(cache: Cache, art: Artifact) -> list[Artifact]:
+def _rivals(cache: ArtifactCache, art: Artifact) -> list[Artifact]:
     """同 scope 的其它 active 印象；不跨 scope 改。"""
     out = []
     for old in cache.active("memory"):
@@ -75,7 +73,7 @@ def _compare(text: str, old_text: str) -> tuple[float, float]:
     return dice, contain
 
 
-def _best_match(cache: Cache, art: Artifact) -> tuple[Artifact | None, float, float]:
+def _best_match(cache: ArtifactCache, art: Artifact) -> tuple[Artifact | None, float, float]:
     """找和新印象最像的旧印象，返回 (旧印象, Dice, 包含度)。"""
     text = _text(art)
     if not text:
@@ -91,7 +89,7 @@ def _best_match(cache: Cache, art: Artifact) -> tuple[Artifact | None, float, fl
     return best, best_dice, best_contain
 
 
-def revise_impression(artifacts: ArtifactStore, cache: Cache, art: Artifact) -> Artifact | None:
+def revise_impression(artifacts: ArtifactStore, cache: ArtifactCache, art: Artifact) -> Artifact | None:
     """把新印象并入旧印象，返回改写后的版本；不需要修订时返回 None。"""
     try:
         if art.header.family != FAMILY:
@@ -124,7 +122,7 @@ def _merged_sources(old: Artifact, art: Artifact) -> tuple[str, ...]:
     ))
 
 
-def _reinforce(artifacts: ArtifactStore, cache: Cache, art: Artifact, old: Artifact,
+def _reinforce(artifacts: ArtifactStore, cache: ArtifactCache, art: Artifact, old: Artifact,
                weight: float, hits: int) -> Artifact:
     sources = _merged_sources(old, art)
     lineage = replace(old.header.lineage, sources=sources)
@@ -137,7 +135,7 @@ def _reinforce(artifacts: ArtifactStore, cache: Cache, art: Artifact, old: Artif
     return new
 
 
-def _reword(artifacts: ArtifactStore, cache: Cache, art: Artifact, old: Artifact,
+def _reword(artifacts: ArtifactStore, cache: ArtifactCache, art: Artifact, old: Artifact,
             weight: float, hits: int, score: float) -> Artifact:
     text = _text(art)
     payload = {**old.payload, **art.payload, "text": text}
@@ -163,7 +161,7 @@ def _reword(artifacts: ArtifactStore, cache: Cache, art: Artifact, old: Artifact
     return new
 
 
-def _retire(artifacts: ArtifactStore, cache: Cache, art: Artifact) -> None:
+def _retire(artifacts: ArtifactStore, cache: ArtifactCache, art: Artifact) -> None:
     if art.header.id == "":
         return
     try:

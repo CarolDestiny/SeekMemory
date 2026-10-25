@@ -8,15 +8,13 @@ try:
     from ..core.bot_behavior import (BEHAVIORS, BEHAVIOR_TEXT, MIN_EVIDENCE,
                                      SELF_SUBJECT, confident, trusted_self_impression)
     from ..core.source import Source
-    from ..store.cache import Cache
-    from ..app.ports import ArtifactStore, SourceStore
+    from ..app.ports import ArtifactCache, ArtifactStore, SourceStore
 except ImportError:
     from core.artifact import Artifact, Lineage, Strength, make, revise
     from core.bot_behavior import (BEHAVIORS, BEHAVIOR_TEXT, MIN_EVIDENCE,
                                    SELF_SUBJECT, confident, trusted_self_impression)
     from core.source import Source
-    from store.cache import Cache
-    from app.ports import ArtifactStore, SourceStore
+    from app.ports import ArtifactCache, ArtifactStore, SourceStore
 
 MIN_HITS = MIN_EVIDENCE
 
@@ -60,7 +58,7 @@ def _supported(art: Artifact, sources: dict[str, Source]) -> bool:
 
 
 def build_self_impressions(artifacts: ArtifactStore, sources: SourceStore,
-                           cache: Cache, min_hits: int = MIN_HITS,
+                           cache: ArtifactCache, min_hits: int = MIN_HITS,
                            today: str | None = None) -> int:
     """至少三次独立证据才建立印象；新增证据修订原编号，重跑不重复写。"""
     pool = cache.active("memory")
@@ -111,7 +109,7 @@ def build_self_impressions(artifacts: ArtifactStore, sources: SourceStore,
     return len(writes)
 
 
-def promote_self_candidates(cache: Cache, sources, today: str | None = None) -> list[Artifact]:
+def promote_self_candidates(cache: ArtifactCache, sources, today: str | None = None) -> list[Artifact]:
     pool = [art for art in cache.active("memory") if trusted_self_impression(art)]
     by_id = sources.sources_by_ids(sorted({s for a in pool for s in a.header.lineage.sources}))
     found = [art for art in pool if _supported(art, by_id)]

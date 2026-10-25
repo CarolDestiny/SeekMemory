@@ -16,6 +16,7 @@ from .background_service import BackgroundService
 from .capacity_service import CapacityService
 from .ingest_service import IngestService
 from .maintenance_service import MaintenanceService
+from .management_service import ManagementService
 from .recall_service import RecallService
 from .status_service import StatusService
 
@@ -27,6 +28,7 @@ class ServiceCollection:
     ingest_service: IngestService
     capacity_service: CapacityService
     maintenance_service: MaintenanceService
+    management_service: ManagementService
     status_service: StatusService
     background_service: BackgroundService
     runtime: AgentRuntime
