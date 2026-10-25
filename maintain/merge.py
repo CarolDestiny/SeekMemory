@@ -17,7 +17,7 @@ try:  # 作为 astrbot 插件包的一部分导入
         revise,
     )
     from ..store.cache import Cache
-    from ..app.ports import ArtifactStore, SourceStore
+    from ..app.ports import ArtifactStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import (
         Artifact,
@@ -29,7 +29,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
         revise,
     )
     from store.cache import Cache
-    from app.ports import ArtifactStore, SourceStore
+    from app.ports import ArtifactStore
 
 MAX_ACTIVE = 500
 MERGE_LEVELS = ("scene", "detail")

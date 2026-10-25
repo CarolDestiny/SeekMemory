@@ -18,12 +18,12 @@ from dataclasses import replace
 try:  # 作为 astrbot 插件包的一部分导入
     from ..core.artifact import Artifact, content_of, revise
     from ..store.cache import Cache
-    from ..app.ports import ArtifactStore, SourceStore
+    from ..app.ports import ArtifactStore
     from ..recall.seed import bigrams
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import Artifact, content_of, revise
     from store.cache import Cache
-    from app.ports import ArtifactStore, SourceStore
+    from app.ports import ArtifactStore
     from recall.seed import bigrams
 
 LEVEL = "impression"
