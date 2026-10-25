@@ -77,7 +77,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(jobs.close)
         self.plugin = SimpleNamespace(
             ready=True,
-            db=db,
+            store=db,
             cache=cache,
             graph=Graph(db, cache),
             journal=journal,
