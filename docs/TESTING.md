@@ -78,6 +78,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Extraction usage was lost on parse failure or not cumulative | covered by `tests/test_absorb.py` |
 | Dream call budget kept starting model calls after the cap | covered by `tests/test_absorb.py`, `tests/test_dream.py` |
 | Low-value Dream topics started model calls instead of staying pending | covered by `tests/test_importance.py`, `tests/test_absorb.py` |
+| Dream triage counted bare dates, work terms or retrieval questions as memories | covered by `tests/test_importance.py` |
+| Dream triage ranked the same pending topics twice per flush | covered by `tests/test_absorb.py` |
 | Dream triage changed nightly FIFO selection | covered by `tests/test_absorb.py` |
 | Lifecycle expiry left partial forgotten state | covered by `tests/test_lifecycle.py` |
 | Assistant replies were not captured as episodes | covered by `tests/test_webui_host.py` (host layer) |

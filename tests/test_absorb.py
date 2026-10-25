@@ -878,6 +878,19 @@ class IngestTriageTest(unittest.TestCase):
         self.assertEqual(provider.calls, 0)
         self.assertEqual(len(buffer.items), 2)
 
+    def test_triage_ranks_pending_topics_once_per_flush(self):
+        from unittest.mock import patch
+        from perceive.importance import rank_topics as real_rank_topics
+
+        with patch(
+            "services.ingest_service.rank_topics", wraps=real_rank_topics
+        ) as ranked:
+            self._run([
+                "\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+                "\u65e9\u5b89",
+            ])
+        self.assertEqual(ranked.call_count, 1)
+
     def test_non_dream_split_keeps_fifo_selection(self):
         from app.flush_policy import select_topic_batches
 

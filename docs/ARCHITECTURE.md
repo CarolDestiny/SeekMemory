@@ -126,8 +126,11 @@ guard with at most one-call slack. Maintenance still runs for committed work.
 Dream extraction also runs deterministic, purely local importance triage before provider
 resolution and model calls. Topics are grouped by session/topic, scored from user turns
 only using distinct category labels, and selected high-to-low at or above a fixed
-threshold. Low-value topics remain pending and unmarked. Only Dream uses triage; normal
-nightly/idle extraction keeps FIFO topic selection. The known tradeoff is narrower
+threshold. First-person/possessive forms, personal date+action contexts and an assistance
+command guard prevent bare date words, generic work terms, retrieval questions and
+unrelated single-character family/pet mentions from spending calls. Low-value topics
+remain pending and unmarked. Only Dream uses triage; normal nightly/idle extraction keeps
+FIFO topic selection. Ranking happens once per flush. The known tradeoff is narrower
 self-impression coverage because selection is driven by user-memory value.
 
 All production writes use `artifacts.commit()` with expected revision, version snapshots,

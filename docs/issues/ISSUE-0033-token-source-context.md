@@ -114,11 +114,19 @@ plan/commitment 3, privacy/boundary 4, significant event 2, strong emotion 1, an
 self-recall question 2. The default threshold is 2.0. Ties order by latest timestamp
 then topic id. Assistant-only topics, greetings, acks and generic commands score low.
 
+Identity, preference and relationship signals require first-person/possessive forms or
+direct personal context. Plan signals require first-person commitment or a personal
+date+action phrase; bare date words do not score. Self-recall questions are not
+extraction evidence. Pure assistance commands score zero unless they also contain a
+strong personal-memory signal (explicit remember, privacy, or first-person identity/
+preference/relationship/plan). Bare single-character family/pet terms do not score.
+
 Selected high-value topics proceed through the existing extraction path and budgets.
 Low-value topics remain pending unchanged; there is no skipped state and no Source
 deletion. Only `DreamCycle` passes `triage=True`; nightly/idle extraction keeps FIFO
 selection. Journal metadata is category/count only (`candidates`, `eligible`,
-`selected`, `skipped_low_value`), never topic text.
+`selected`, `skipped_low_value`), never topic text. The pipeline ranks pending topics
+once per flush and derives selection/counters from that same ranked list.
 
 Known tradeoff: selecting by user-memory value can narrow self-impression coverage
 because assistant-only or otherwise low-value interaction topics may not be selected.

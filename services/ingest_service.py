@@ -19,7 +19,12 @@ try:
     from ..maintain.link import link_new
     from ..perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
     from ..perceive.extract import build_prompt
-    from ..perceive.importance import MIN_IMPORTANCE_SCORE, rank_topics, select_important_topics
+    from ..perceive.importance import (
+        MIN_IMPORTANCE_SCORE,
+        rank_topics,
+        select_important_topics,
+        select_ranked_topics,
+    )
     from ..perceive.model import ProviderChatModel
 except ImportError:
     from app.contracts import ChatRequest, WriteOutcome
@@ -31,7 +36,12 @@ except ImportError:
     from maintain.link import link_new
     from perceive.absorb import ExtractionPlan, build_plan, dialogue_of, recover_parents, worth_now
     from perceive.extract import build_prompt
-    from perceive.importance import MIN_IMPORTANCE_SCORE, rank_topics, select_important_topics
+    from perceive.importance import (
+        MIN_IMPORTANCE_SCORE,
+        rank_topics,
+        select_important_topics,
+        select_ranked_topics,
+    )
     from perceive.model import ProviderChatModel
 
 
@@ -152,11 +162,13 @@ class IngestService:
         )
 
     def split_topics(
-        self, items, cap: int | None = None, triage: bool = False
+        self, items, cap: int | None = None, triage: bool = False, ranked=None
     ):
         limit = int(cap or self.config("max_sessions_per_flush", 6))
         if triage:
-            return select_important_topics(items, limit)
+            if ranked is None:
+                return select_important_topics(items, limit)
+            return select_ranked_topics(ranked, limit)
         return select_topic_batches(items, limit)
 
     async def flush(
@@ -181,14 +193,15 @@ class IngestService:
         self.flushing = True
         try:
             pending = list(self.buffer.items)
+            ranked = rank_topics(pending) if triage else None
             topics = self.split_topics(
                 pending,
                 cap=limit or batch_cap,
                 triage=triage,
+                ranked=ranked,
             )
             triage_metrics: dict[str, int] = {}
             if triage:
-                ranked = rank_topics(pending)
                 eligible = sum(
                     1 for item in ranked
                     if item.score >= MIN_IMPORTANCE_SCORE

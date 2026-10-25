@@ -27,7 +27,7 @@ class ImportanceScoreTest(unittest.TestCase):
             score_topic([turn("id", "\u6211\u53eb\u5c0f\u660e")])[0], 3
         )
         self.assertGreaterEqual(
-            score_topic([turn("plan", "\u4e0b\u5468\u53bb\u676d\u5dde\u51fa\u5dee")])[0],
+            score_topic([turn("plan", "\u6211\u4e0b\u5468\u53bb\u676d\u5dde\u51fa\u5dee")])[0],
             3,
         )
         self.assertGreaterEqual(
@@ -48,6 +48,34 @@ class ImportanceScoreTest(unittest.TestCase):
         emotion = score_topic([turn("mood", "\u6211\u5f88\u96be\u53d7")])[0]
         self.assertLess(emotion, MIN_IMPORTANCE_SCORE)
 
+    def test_known_false_positive_phrases_score_zero(self):
+        phrases = (
+            "\u660e\u5929\u5929\u6c14\u600e\u4e48\u6837",
+            "\u5e2e\u6211\u67e5\u4e00\u4e0b\u5de5\u4f5c\u90ae\u7bb1",
+            "\u4f60\u8fd8\u8bb0\u5f97\u6211\u8bf4\u8fc7\u4ec0\u4e48\u5417",
+            "\u732b\u597d\u53ef\u7231",
+            "\u7238\u5988",
+        )
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                self.assertEqual(score_topic([turn("x", phrase)])[0], 0)
+
+    def test_first_person_forms_and_personal_commands_still_score(self):
+        phrases = (
+            "\u6211\u4e0b\u5468\u53bb\u676d\u5dde\u51fa\u5dee",
+            "\u6211\u660e\u5929\u9762\u8bd5",
+            "\u6211\u517b\u732b",
+            "\u6211\u7238\u4f4f\u9662\u4e86",
+            "\u5e2e\u6211\u8bb0\u4f4f\u6211\u559c\u6b22\u732b",
+            "\u5e2e\u6211\u67e5\u4e00\u4e0b\u6211\u7684\u5de5\u4f5c\u90ae\u7bb1",
+        )
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                self.assertGreaterEqual(
+                    score_topic([turn("x", phrase)])[0],
+                    MIN_IMPORTANCE_SCORE,
+                )
+
     def test_category_dedupe_prevents_keyword_stuffing(self):
         score, reasons = score_topic([
             turn("id", "\u6211\u53eb\u5c0f\u660e\uff0c\u540d\u5b57\u53eb\u5c0f\u660e\uff0c\u6211\u662f\u5b66\u751f")
@@ -60,8 +88,8 @@ class ImportanceRankingTest(unittest.TestCase):
     def test_high_value_and_recency_order_with_cap(self):
         items = [
             turn("low", "\u65e9\u5b89", at="2026-10-25T10:00:00"),
-            turn("old", "\u4e0b\u5468\u53bb\u51fa\u5dee", at="2026-10-24T10:00:00"),
-            turn("new", "\u4e0b\u5468\u53bb\u51fa\u5dee", at="2026-10-25T11:00:00"),
+            turn("old", "\u6211\u4e0b\u5468\u53bb\u51fa\u5dee", at="2026-10-24T10:00:00"),
+            turn("new", "\u6211\u4e0b\u5468\u53bb\u51fa\u5dee", at="2026-10-25T11:00:00"),
         ]
         ranked = rank_topics(items)
         self.assertEqual(ranked[0].topic_id, "new")

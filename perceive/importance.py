@@ -15,7 +15,7 @@ try:
 except ImportError:
     from app.contracts import DialogueTurn
 
-MIN_IMPORTANCE_SCORE = 2.0
+MIN_IMPORTANCE_SCORE = 2.0  # test
 
 # Each category contributes once per topic. Reasons are labels, never text.
 _SIGNALS: tuple[tuple[str, float, re.Pattern[str]], ...] = (
@@ -92,7 +92,7 @@ def score_topic(rows: Iterable[DialogueTurn]) -> tuple[float, tuple[str, ...]]:
         if pattern.search(user_text):
             score += weight
             reasons.append(label)
-    return score, tuple(reasons)
+    return _refine(user_text, tuple(reasons))
 
 
 def _latest_at(rows: Iterable[DialogueTurn]) -> str:
@@ -130,17 +130,142 @@ def rank_topics(items: Iterable[DialogueTurn]) -> list[TopicImportance]:
     return ranked
 
 
+def select_ranked_topics(
+    ranked: Iterable[TopicImportance],
+    cap: int,
+    min_score: float = MIN_IMPORTANCE_SCORE,
+) -> list[tuple[str, str, list[DialogueTurn]]]:
+    """Select topic batches from an already-ranked list."""
+    limit = max(0, int(cap))
+    if limit <= 0:
+        return []
+    return [
+        (item.session_id, item.topic_id, list(item.rows))
+        for item in ranked
+        if item.score >= float(min_score)
+    ][:limit]
+
+
 def select_important_topics(
     items: Iterable[DialogueTurn],
     cap: int,
     min_score: float = MIN_IMPORTANCE_SCORE,
 ) -> list[tuple[str, str, list[DialogueTurn]]]:
     """Return high-value topic batches in score/recency order."""
-    limit = max(0, int(cap))
-    if limit <= 0:
-        return []
-    return [
-        (item.session_id, item.topic_id, list(item.rows))
-        for item in rank_topics(items)
-        if item.score >= float(min_score)
-    ][:limit]
+    return select_ranked_topics(rank_topics(items), cap, min_score)
+
+_WEIGHTS = {
+    "explicit_remember": 4.0,
+    "identity_profile": 3.0,
+    "preference_boundary": 3.0,
+    "relationship_family": 3.0,
+    "plan_commitment": 3.0,
+    "privacy_boundary": 4.0,
+    "significant_event": 2.0,
+    "strong_emotion": 1.0,
+}
+_ASSISTANCE = re.compile(
+    r"(?:\u5e2e\u6211|\u7ed9\u6211|\u7ffb\u8bd1|\u67e5\u4e00\u4e0b|\u5199\u4e2a|\u4ee3\u7801|\u51fd\u6570|\u62a5\u9519|\u600e\u4e48\u7528|\u600e\u4e48\u914d\u7f6e)"
+)
+_STRONG_PERSONAL = {
+    "explicit_remember",
+    "identity_profile",
+    "preference_boundary",
+    "relationship_family",
+    "plan_commitment",
+    "privacy_boundary",
+}
+
+def _true_explicit(text: str) -> bool:
+    terms = (
+        "\u8bb0\u4f4f", "\u8bb0\u4e00\u4e0b", "\u63d0\u9192\u6211",
+        "\u63d0\u9192\u4e00\u4e0b\u6211", "\u522b\u5fd8\u4e86", "\u5907\u5fd8",
+    )
+    return any(term in text for term in terms)
+
+
+def _true_identity(text: str) -> bool:
+    terms = (
+        "\u6211\u53eb", "\u6211\u7684\u540d\u5b57", "\u6211\u662f",
+        "\u6211\u4f4f\u5728", "\u6211\u7684\u5de5\u4f5c", "\u6211\u5de5\u4f5c",
+        "\u6211\u516c\u53f8", "\u6211\u5b66\u6821", "\u6211\u751f\u65e5",
+        "\u6211\u7684\u804c\u4e1a", "\u6211\u7684\u8001\u5bb6", "\u6211\u5bb6\u5728",
+    )
+    if any(q in text for q in (
+        "\u6211\u662f\u8c01", "\u6211\u662f\u4ec0\u4e48",
+        "\u6211\u662f\u5e72\u4ec0\u4e48", "\u6211\u662f\u505a\u4ec0\u4e48",
+        "\u6211\u662f\u54ea",
+    )):
+        return False
+    return any(term in text for term in terms)
+
+
+def _true_preference(text: str) -> bool:
+    terms = (
+        "\u6211\u559c\u6b22", "\u6211\u6700\u559c\u6b22", "\u6211\u8ba8\u538c",
+        "\u6211\u4e0d\u559c\u6b22", "\u6211\u7231\u5403", "\u6211\u4e0d\u5403",
+        "\u6211\u5fcc\u53e3", "\u6211\u8fc7\u654f", "\u6211\u6015",
+        "\u6211\u7684\u96f7\u533a", "\u6211\u53d7\u4e0d\u4e86", "\u6211\u5bb3\u6015",
+    )
+    return any(term in text for term in terms)
+
+def _true_relationship(text: str) -> bool:
+    terms = (
+        "\u5973\u670b\u53cb", "\u7537\u670b\u53cb", "\u5bf9\u8c61", "\u670b\u53cb",
+        "\u5bb6\u4eba", "\u7236\u6bcd", "\u7238\u7238", "\u5988\u5988", "\u7238",
+        "\u5988", "\u5b69\u5b50", "\u513f\u5b50", "\u5973\u513f", "\u732b",
+        "\u72d7", "\u5ba0\u7269",
+    )
+    for term in terms:
+        if (
+            "\u6211\u7684" + term in text
+            or "\u6211\u5bb6" + term in text
+            or "\u6211\u5bb6\u7684" + term in text
+            or "\u6211\u517b" + term in text
+            or "\u6211\u517b\u4e86" + term in text
+            or "\u6211" + term in text
+        ):
+            return True
+    return False
+
+
+def _true_plan(text: str) -> bool:
+    if any(term in text for term in (
+        "\u6211\u6253\u7b97", "\u6211\u8ba1\u5212", "\u6211\u51c6\u5907",
+        "\u6211\u7ea6\u4e86", "\u6211\u8981\u53bb", "\u6211\u4eec\u6253\u7b97",
+        "\u6211\u4eec\u8ba1\u5212", "\u6211\u4eec\u51c6\u5907", "\u6211\u4eec\u7ea6\u4e86",
+        "\u6211\u4eec\u8981\u53bb",
+    )):
+        return True
+    if not ("\u6211" in text or "\u6211\u4eec" in text):
+        return False
+    dates = (
+        "\u4e0b\u5468", "\u4e0b\u4e2a\u6708", "\u660e\u5929", "\u540e\u5929",
+        "\u5468\u672b",
+    )
+    actions = (
+        "\u53bb", "\u6765", "\u89c1", "\u51fa\u5dee", "\u9762\u8bd5",
+        "\u8003\u8bd5", "\u7ed3\u5a5a", "\u642c\u5bb6", "\u65c5\u884c",
+        "\u770b\u75c5", "\u4e0a\u8bfe", "\u4e0a\u73ed", "\u7ea6",
+    )
+    return any(date in text for date in dates) and any(
+        action in text for action in actions
+    )
+
+
+def _refine(text: str, reasons: tuple[str, ...]) -> tuple[float, tuple[str, ...]]:
+    allowed = set(reasons) - {"self_recall"}
+    if "identity_profile" in allowed and not _true_identity(text):
+        allowed.discard("identity_profile")
+    if "preference_boundary" in allowed and not _true_preference(text):
+        allowed.discard("preference_boundary")
+    if "relationship_family" in allowed and not _true_relationship(text):
+        allowed.discard("relationship_family")
+    if "plan_commitment" in allowed and not _true_plan(text):
+        allowed.discard("plan_commitment")
+    if "explicit_remember" in allowed and not _true_explicit(text):
+        allowed.discard("explicit_remember")
+    if _ASSISTANCE.search(text) and not (allowed & _STRONG_PERSONAL):
+        return 0.0, ()
+    ordered = tuple(label for label in reasons if label in allowed)
+    return sum(_WEIGHTS.get(label, 0.0) for label in ordered), ordered
