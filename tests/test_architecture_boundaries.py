@@ -222,7 +222,7 @@ class LayerDependencyTest(unittest.TestCase):
                     )
 
     def test_engines_and_services_do_not_import_aggregate_store(self) -> None:
-        for folder in ("core", "services", "recall", "perceive",
+        for folder in ("app", "core", "services", "recall", "perceive",
                        "maintain", "webui"):
             for path in (ROOT / folder).rglob("*.py"):
                 tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -282,7 +282,7 @@ class LayerDependencyTest(unittest.TestCase):
             self.assertIn(fragment, source)
 
     def test_engine_and_service_layers_do_not_import_store(self) -> None:
-        for folder in ("core", "services", "recall", "perceive",
+        for folder in ("app", "core", "services", "recall", "perceive",
                        "maintain", "webui"):
             for path in (ROOT / folder).rglob("*.py"):
                 tree = ast.parse(path.read_text(encoding="utf-8"))
