@@ -38,7 +38,8 @@ This file is normative. If it conflicts with a casual instruction, stop and ask 
 ## 3. Repository map
 
 - `core/`: pure Artifact kernel, Source, Strength, versioning, disclosure and retrieval values.
-- `app/`: use cases, DTOs, ports, flush policy, checkpoint orchestration.
+- `app/`: DTOs, ports, runtime and pure policies.
+- `services/`: application service coordination and `ServiceCollection`; no DI container.
 - `store/`: SQLite repository, cache/read model, ledger.
 - `perceive/`: extraction prompt, model adapter, buffer.
 - `recall/`: retrieval policies, candidate generation, scoring, assembly.

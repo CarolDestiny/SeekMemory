@@ -13,7 +13,6 @@ import time
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 
-from ..orchestration.access import AccessPolicy
 from ..perceive.calls import log_call
 from .astrbot_runtime import AstrBotRuntimeAdapter
 
@@ -37,22 +36,18 @@ class AstrBotHooks:
         except Exception:
             pass
 
-    def _access_policy(self) -> AccessPolicy:
-        return AccessPolicy(
-            mode=str(self._c("open_to", "owner_only")),
-            owner_umo=self.owner_umo,
-            trusted_ids=frozenset(self.trusted_ids),
-            observe_groups=bool(self._c("observe_groups", True)),
-        )
-
     def _may_observe(self, event: AstrMessageEvent) -> bool:
-        return self._access_policy().may_observe(
+        if self.services is None:
+            return False
+        return self.services.access.may_observe(
             str(getattr(event, "unified_msg_origin", "") or ""),
             str(event.get_sender_id()),
         )
 
     def _may_recall(self, event: AstrMessageEvent) -> bool:
-        return self._access_policy().may_recall(
+        if self.services is None:
+            return False
+        return self.services.access.may_recall(
             str(getattr(event, "unified_msg_origin", "") or ""),
             str(event.get_sender_id()),
         )
@@ -90,11 +85,9 @@ class AstrBotHooks:
             runtime_input = AstrBotRuntimeAdapter.from_event(
                 event, text, umo, str(event.get_sender_id())
             )
-            context = self.runtime.build_context(runtime_input)
+            context = self.services.runtime.build_context(runtime_input)
             block, info = context.text, context.info
-            capacity_service = getattr(self, "capacity_service", None)
-            if capacity_service is not None:
-                capacity_service.set_context_chars(len(block))
+            self.services.capacity.set_context_chars(len(block))
             log_call(self._calls_path(), umo, info)
             AstrBotRuntimeAdapter.set_recall_ids(
                 event, info.get("final_ids", ())
@@ -147,7 +140,7 @@ class AstrBotHooks:
                 # turn is already present in the projection when observe runs.
                 unread_count=len(self.buffer.items) + (0 if deferred else 1),
             )
-            receipt = self.runtime.accept_user(
+            receipt = self.services.runtime.accept_user(
                 runtime_input,
                 event_id=AstrBotRuntimeAdapter.event_id(event),
                 deferred=deferred,
@@ -187,7 +180,7 @@ class AstrBotHooks:
             text = str(getattr(response, "completion_text", "") or "").strip()
             if not text:
                 return
-            reply = self.runtime.record_reply(
+            reply = self.services.runtime.record_reply(
                 run_id=self.run_tracer.run_id(event),
                 session_id=str(getattr(event, "unified_msg_origin", "") or ""),
                 text=text,
@@ -212,7 +205,7 @@ class AstrBotHooks:
             return
         if AstrBotRuntimeAdapter.episode_recorded(event):
             return
-        self.runtime.record_delivery(
+        self.services.runtime.record_delivery(
             run_id=self.run_tracer.run_id(event),
             session_id=str(getattr(event, "unified_msg_origin", "") or ""),
             decision=AstrBotRuntimeAdapter.runtime_action(event),
@@ -244,7 +237,7 @@ class AstrBotHooks:
         self.trace.record("runtime", "agent_done", {"role": role})
         if role != "err":
             return
-        self.runtime.record_error(
+        self.services.runtime.record_error(
             run_id=self.run_tracer.run_id(event),
             session_id=str(getattr(event, "unified_msg_origin", "") or ""),
             decision=AstrBotRuntimeAdapter.runtime_action(event),
@@ -281,9 +274,15 @@ class AstrBotHooks:
         )
 
     async def start_jobs(self) -> None:
-        if not self.ready or self.jobs.closed or self.background.tasks:
+        await self.start()
+        if (
+            not self.ready
+            or self.services is None
+            or self.services.background.jobs.closed
+            or self.services.background.tasks
+        ):
             return
-        self.background.start()
+        self.services.background.start()
 
 
 def _register(main_module: str, name: str, decorator):

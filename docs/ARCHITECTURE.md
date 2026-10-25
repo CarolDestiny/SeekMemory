@@ -17,8 +17,8 @@ adapters/astrbot_plugin.py: AstrBot dependency wiring and lifecycle
 adapters/astrbot_hooks.py:  event mapping and handler registration
         |
         v
-orchestration/: application services (access, recall, ingest, capacity,
-                maintenance, background scheduling)
+services/: application services (access, recall, ingest, capacity,
+            maintenance, background scheduling)
         |
         v
 app/: host-agnostic DTOs, contracts, runtime and pure policy
@@ -161,10 +161,11 @@ decisions, `Scheduler` owns due-session selection from persisted session state, 
 host ports. `RunRecorder` is the single write-back service for user/assistant Source,
 pending buffer and runtime episode records.
 
-`orchestration/` contains one service per application responsibility:
+`services/` contains one service per application capability and a typed
+`ServiceCollection`; it contains no DI container or registry:
 `AccessPolicy` for permissions, `RecallService` for read assembly, `IngestService` for
 pending-buffer extraction, `CapacityService` for admission/maintenance, `MaintenanceService`
-for decay/merge/persona work, `RuntimeWorker` for due dispatch, and `BackgroundTasks` for
+for decay/merge/persona work, `RuntimeWorker` for due dispatch, and `BackgroundService` for
 periodic cadence. `main.py` is the entrypoint only. `adapters/astrbot_plugin.py` is the
 AstrBot composition root and lifecycle owner; `adapters/astrbot_hooks.py` owns event
 mapping and registers handlers against the real plugin module path. Neither layer may
