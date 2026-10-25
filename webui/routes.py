@@ -163,7 +163,7 @@ class WebRoutes:
         if not request.username:
             return error_response("需要管理员登录", status_code=401)
         read_actions = {"status", "records", "detail", "events", "traces"}
-        write_actions = {"update", "diagnose", "task", "cancel"}
+        write_actions = {"update", "rollbackPersona", "diagnose", "task", "cancel"}
         if action not in read_actions | write_actions:
             return error_response("未知操作", status_code=404)
         if request.method != ("GET" if action in read_actions else "POST"):
@@ -225,6 +225,16 @@ class WebRoutes:
                         artifactId=node_id, revision=body["expectedRevision"] + 1
                     )
                 return json_response({"id": node_id})
+            if action == "rollbackPersona":
+                if plugin.jobs.task is not None and not plugin.jobs.task.done():
+                    return error_response("维护任务运行中，请稍后回滚", status_code=409)
+                with plugin.journal.span("edit", "persona.rollback") as metrics:
+                    result = service.rollback_persona(body)
+                    metrics.update(
+                        artifactId=result["id"], revision=result["revision"],
+                        restoredRevision=result["restoredRevision"],
+                    )
+                return json_response(result)
             if body.get("confirmed") is not True:
                 raise ValueError("请先确认操作")
             if action == "cancel":

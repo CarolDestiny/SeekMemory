@@ -191,6 +191,44 @@ class PersonaSynthesisServiceTest(PersonaCase):
         self.assertTrue(trusted_self_persona(active))
         self.assertIn("散步", fake.request.prompt)
 
+    def test_rollback_restores_seed_and_synthesized_revisions(self) -> None:
+        self.bootstrap()
+        initial = self.cache.active("persona")[0]
+        self.add_public_memory()
+        fake = _FakeModel(
+            json.dumps(
+                {
+                    "persona": "你是大肥鱼，温柔、嘴硬，也会记得陪他散步。",
+                    "style": {"tone": "温柔嘴硬"},
+                    "boundaries": ["不伪造用户经历"],
+                    "change_reason": "加入散步",
+                },
+                ensure_ascii=False,
+            )
+        )
+        import asyncio
+
+        asyncio.run(self.service(fake).weekly())
+        manager = ManagementService(
+            self.db.artifacts, self.db.sources, self.db.ledger, self.cache, None
+        )
+        manager.rollback_persona(
+            {"id": initial.header.id, "revision": 1, "reason": "回到初始", "confirmed": True}
+        )
+        seed = self.cache.active("persona")[0]
+        self.assertEqual(seed.header.revision, 3)
+        self.assertEqual(seed.payload["origin"], "seed")
+        self.assertTrue(trusted_self_persona(seed))
+
+        manager.rollback_persona(
+            {"id": initial.header.id, "revision": 2, "reason": "恢复合成版", "confirmed": True}
+        )
+        synthetic = self.cache.active("persona")[0]
+        self.assertEqual(synthetic.header.revision, 4)
+        self.assertEqual(synthetic.payload["origin"], "dream")
+        self.assertEqual(synthetic.payload["synthesis"], "persona.v1")
+        self.assertTrue(trusted_self_persona(synthetic))
+
     def test_interval_and_failure_keep_old_persona(self) -> None:
         self.bootstrap()
         initial = self.cache.active("persona")[0]

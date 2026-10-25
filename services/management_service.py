@@ -251,6 +251,103 @@ class ManagementService:
             "seedVersion": str(payload["seed_version"]),
         }
 
+    def rollback_persona(self, body: dict) -> dict:
+        """Restore a historical persona revision as a new active revision.
+
+        Historical versions are never deleted.  Rollback creates a new revision
+        on the same persona id so the audit chain remains append-only.
+        """
+        if set(body) != {"id", "revision", "reason", "confirmed"}:
+            raise ValueError("回滚字段缺失或包含未支持的字段")
+        if body["confirmed"] is not True:
+            raise ValueError("请先确认操作")
+        if not isinstance(body["id"], str) or type(body["revision"]) is not int:
+            raise ValueError("ID 或 revision 无效")
+        if body["revision"] < 1:
+            raise ValueError("revision 必须大于 0")
+        reason = body["reason"]
+        if not isinstance(reason, str) or not 1 <= len(reason.strip()) <= 300:
+            raise ValueError("请填写 1–300 个字符的回滚原因")
+        current = self.artifacts.get(body["id"])
+        if current is None:
+            raise LookupError("记忆不存在")
+        if current.header.family != "persona":
+            raise ValueError("只能回滚 persona")
+        if current.header.state != "active":
+            raise ValueError("只能回滚 active persona")
+        target = next(
+            (row for row in self.artifacts.history(current.header.id)
+             if int(row.get("revision") or 0) == body["revision"]),
+            None,
+        )
+        if target is None or not isinstance(target.get("payload"), dict):
+            raise ValueError("目标 persona revision 不存在")
+        if target["revision"] == current.header.revision:
+            raise ValueError("目标 revision 已经是当前版本")
+        snapshot = self._persona_version_header(current.header.id, target["revision"])
+        raw_lineage = self._json_object(snapshot.get("lineage"))
+        lineage = Lineage(
+            sources=tuple(str(value) for value in raw_lineage.get("sources", ()) if value),
+            derived_from=tuple(
+                str(value) for value in raw_lineage.get("derived_from", ()) if value
+            ),
+        )
+        raw_strength = self._json_object(snapshot.get("strength"))
+        strength = Strength(
+            **{
+                field.name: raw_strength[field.name]
+                for field in dataclasses.fields(Strength)
+                if field.name in raw_strength
+            }
+        )
+        payload = dict(target["payload"])
+        said_by = "seed" if payload.get("origin") == PERSONA_ORIGIN_SEED else "inferred"
+        replacement = revise(
+            current,
+            payload=payload,
+            state="active",
+            scope=str(snapshot.get("scope") or "shared"),
+            subject_id=str(snapshot.get("subject_id") or SELF_SUBJECT),
+            said_by=said_by,
+            shareable="public",
+            lineage=lineage,
+            strength=strength,
+        )
+        validate(replacement)
+        self.artifacts.commit(
+            replacement,
+            expected_revision=current.header.revision,
+            op="revise",
+            reason=reason.strip(),
+            source_ids=tuple(lineage.sources),
+        )
+        self.cache.put(replacement)
+        return {
+            "id": replacement.header.id,
+            "revision": replacement.header.revision,
+            "restoredRevision": target["revision"],
+        }
+
+    @staticmethod
+    def _json_object(raw: object) -> dict:
+        value = raw
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                return {}
+        return value if isinstance(value, dict) else {}
+
+    def _persona_version_header(self, node_id: str, revision: int) -> dict:
+        record = self.artifacts.inspect_record(node_id)
+        for row in record.get("versions", []):
+            try:
+                if int(row.get("revision") or 0) == revision:
+                    return self._json_object(row.get("header"))
+            except (TypeError, ValueError):
+                continue
+        raise ValueError("目标 persona revision 的 header 不存在")
+
     def diagnose(self, body: dict) -> dict:
         """按实际规则预演召回，不消耗指定交付状态。
 
