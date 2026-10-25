@@ -134,9 +134,10 @@ retryable and lineage is never widened to every batch source. Single-topic batch
 the original prompt format and legacy no-evidence fallback.
 
 Dream extraction also runs deterministic, purely local importance triage before provider
-resolution and model calls. Topics are grouped by session/topic, scored from user turns
-only using distinct category labels, and selected high-to-low at or above a fixed
-threshold. First-person/possessive forms, personal date+action contexts and an assistance
+resolution and model calls. Topics are grouped by session/topic and scored from user
+memory signals plus behavior-relevant assistant replies only when a user turn is present,
+using distinct category labels, then selected high-to-low at or above a fixed threshold.
+First-person/possessive forms, personal date+action contexts and an assistance
 command guard prevent bare date words, generic work terms, retrieval questions and
 unrelated single-character family/pet mentions from spending calls. Low-value topics
 remain pending and unmarked. Only Dream uses triage; normal nightly/idle extraction keeps

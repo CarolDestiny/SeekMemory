@@ -1,7 +1,8 @@
 """Deterministic importance triage for pending Dream topics.
 
-This module is intentionally pure: it uses user-turn text only to produce a
-bounded category score, never calls a model and never writes queue state.
+This module is intentionally pure: it uses user memory signals plus paired
+assistant behavior to produce a bounded category score, never calls a model
+and never writes queue state. Assistant-only topics still score zero.
 """
 
 from __future__ import annotations
