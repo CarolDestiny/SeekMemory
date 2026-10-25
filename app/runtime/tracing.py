@@ -8,7 +8,7 @@ from typing import Protocol
 from uuid import uuid4
 
 try:
-    from ..core.trace import recall_data
+    from ...core.trace import recall_data
 except ImportError:
     from core.trace import recall_data
 
