@@ -11,11 +11,13 @@ try:
     from ..core.capacity import PROTECTIVE, SATURATED
     from ..perceive.absorb import absorb, worth_now
     from ..perceive.model import ProviderChatModel
+    from ..app.ports import ArtifactStore, ExtractionStore, SourceStore
 except ImportError:
     from app.flush_policy import chunk_turns, decide_flush, select_topic_batches
     from core.capacity import PROTECTIVE, SATURATED
     from perceive.absorb import absorb, worth_now
     from perceive.model import ProviderChatModel
+    from app.ports import ArtifactStore, ExtractionStore, SourceStore
 
 
 class IngestService:
@@ -24,10 +26,12 @@ class IngestService:
     def __init__(
         self,
         *,
-        buffer,
-        db,
-        cache,
-        graph,
+        buffer: Any,
+        artifacts: ArtifactStore | None,
+        sources: SourceStore | None,
+        extraction: ExtractionStore | None,
+        cache: Any,
+        graph: Any,
         journal,
         config: Callable[[str, Any], Any],
         provider_for: Callable[[str | None], Awaitable[Any]],
@@ -35,7 +39,9 @@ class IngestService:
         logger,
     ) -> None:
         self.buffer = buffer
-        self.db = db
+        self.artifacts = artifacts
+        self.sources = sources
+        self.extraction = extraction
         self.cache = cache
         self.graph = graph
         self.journal = journal
@@ -54,7 +60,7 @@ class IngestService:
         capacity_actions,
         dream_only: bool,
     ) -> bool:
-        if self.flushing or self.buffer is None or self.db is None:
+        if self.flushing or self.buffer is None or self.extraction is None:
             return False
         today = datetime.date.today().isoformat()
         if self.flush_day != today:
@@ -100,7 +106,7 @@ class IngestService:
             self.flushing
             or self.buffer is None
             or not self.buffer.items
-            or self.db is None
+            or self.extraction is None
         ):
             return 0, 0
         self.flushing = True
@@ -109,7 +115,7 @@ class IngestService:
                 list(self.buffer.items),
                 cap=limit or batch_cap,
             )
-            ready_ids = self.db.extraction.ready_extraction_ids()
+            ready_ids = self.extraction.ready_extraction_ids()
             ready = []
             failure: Exception | None = None
             for session_id, topic_id, part in topics:
@@ -161,7 +167,8 @@ class IngestService:
                         ) as metrics:
                             outcome = await absorb(
                                 chunk,
-                                self.db,
+                                self.artifacts,
+                                self.sources,
                                 self.cache,
                                 self.graph,
                                 ProviderChatModel(provider),

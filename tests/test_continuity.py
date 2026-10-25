@@ -39,7 +39,7 @@ class ContinuityTest(unittest.TestCase):
         self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_continuity_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
-        self.graph = Graph(self.db, self.cache)
+        self.graph = Graph(self.db.artifacts)
         self.retriever = HybridRetriever(self.graph, self.cache)
         self.session = "bot:FriendMessage:p1"
         self.owner = "bot:FriendMessage:p1"
@@ -51,14 +51,14 @@ class ContinuityTest(unittest.TestCase):
         outcome = asyncio.run(absorb(
             [DialogueTurn(self.session, "u1", "user", text,
                           "2026-10-22T12:00:00", "s1")],
-            self.db, self.cache, self.graph, Provider(model_text),
+            self.db.artifacts, self.db.sources, self.cache, self.graph, Provider(model_text),
         ))
         self.assertEqual(outcome.written, 1)
         return self.cache.active("memory")[0]
 
     def recall(self, query: str) -> tuple[str, dict]:
         return build_block(
-            self.cache, self.graph, self.db, self.session, query, True,
+            self.cache, self.graph, self.db.artifacts, self.db.sources, self.session, query, True,
             {"bm25_enabled": True, "explore_rate": 0.0}.get,
             self.owner, "u1", dry_run=True, hybrid_retriever=self.retriever,
         )
@@ -74,7 +74,7 @@ class ContinuityTest(unittest.TestCase):
         outcome = asyncio.run(absorb(
             [DialogueTurn(self.session, "u1", "user", "I moved to Shanghai",
                           "2026-10-22T12:00:00", "s1")],
-            self.db, self.cache, self.graph,
+            self.db.artifacts, self.db.sources, self.cache, self.graph,
             Provider(json.dumps([{
                 "level": "fact",
                 "text": "The owner lives in Shanghai",

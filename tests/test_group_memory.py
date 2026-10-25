@@ -46,14 +46,14 @@ def fresh():
     path = os.path.join(tempfile.mkdtemp(prefix="seekmem_grp_"), "t.db")
     db = open_store(path)
     cache = Cache(db.artifacts)
-    return db, cache, Graph(db, cache)
+    return db, cache, Graph(db.artifacts)
 
 
 class GroupWriteTest(unittest.TestCase):
     def test_group_memory_is_shared_by_person(self):
         db, cache, graph = fresh()
         n = asyncio.run(absorb(
-            [DialogueTurn(GROUP_A, "10086", "user", "周末有人去爬山吗")], db, cache, graph,
+            [DialogueTurn(GROUP_A, "10086", "user", "周末有人去爬山吗")], db.artifacts, db.sources, cache, graph,
             FakeProvider()))
         self.assertEqual(n.written, 1)
         art = cache.active("memory")[0]
@@ -65,7 +65,7 @@ class GroupWriteTest(unittest.TestCase):
         db, cache, graph = fresh()
         asyncio.run(absorb(
             [DialogueTurn(GROUP_A, "10086", "user", "周末有人去爬山吗"),
-             DialogueTurn(GROUP_A, "10087", "user", "我也想去")], db, cache, graph,
+             DialogueTurn(GROUP_A, "10087", "user", "我也想去")], db.artifacts, db.sources, cache, graph,
             FakeProvider()))
         art = cache.active("memory")[0]
         self.assertEqual(art.payload.get("speakers"), ["10086", "10087"])
@@ -108,7 +108,7 @@ class PersonaSourceTest(unittest.TestCase):
         picked = promote_candidates(cache, db.sources, only_umo=OWNER)
         # GitHub #15：主人和群友的印象都不是机器人自我人格。
         self.assertEqual(picked, [])
-        self.assertIsNone(distill_persona(db, cache, only_umo=OWNER))
+        self.assertIsNone(distill_persona(db.artifacts, db.sources, cache, only_umo=OWNER))
         self.assertEqual(cache.active("persona"), [])
         self.assertEqual(db.artifacts.get(owner.header.id), owner)
         self.assertEqual(db.artifacts.get(group.header.id), group)

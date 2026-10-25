@@ -28,6 +28,7 @@ v0.3.1 + WebUI branch
 | docs/README.md | Documentation entry point and status legend | docs/README.md |
 | docs/refactor/STEP-01-services.md | Services/lifecycle acceptance record | docs/refactor/STEP-01-services.md |
 | docs/refactor/STEP-02-open-store.md | Repository store boundary acceptance record | docs/refactor/STEP-02-open-store.md |
+| docs/refactor/STEP-03-repository-ports.md | Explicit repository port acceptance record | docs/refactor/STEP-03-repository-ports.md |
 | docs/INVARIANTS.md | Non-negotiable identity, privacy, recovery and reinforcement rules | docs/INVARIANTS.md |
 | docs/TESTING.md | Test layers, commands and known coverage gaps | docs/TESTING.md |
 | docs/DEV-SETUP.md | Backend tests and dashboard local development | docs/DEV-SETUP.md |
@@ -80,7 +81,7 @@ AstrBot user message
   -> backlog / idle / nightly extraction
   -> ChatModel
   -> Artifact construction + validation
-  -> db.artifacts.commit(expected_revision)
+  -> artifacts.commit(expected_revision)
        -> blob
        -> node head
        -> artifact_versions
@@ -138,7 +139,7 @@ one-time delivery state.
 
 1. Only core/artifact.py defines Artifact data structures.
 2. Only store/ writes SQL; store/__init__.py composes repositories.
-3. All production writes use db.artifacts.commit with expected revision.
+3. All production writes use artifacts.commit with expected revision.
 4. Source is immutable truth; Artifact is derived interpretation.
 5. Cross-session content must pass disclosure before injection.
 6. New P0/P1 work needs an issue and a PR record.

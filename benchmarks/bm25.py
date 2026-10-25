@@ -61,7 +61,7 @@ def evaluate(samples: list[Sample], calibration_c: float, weight: float,
         db = open_store(":memory:")
         try:
             cache = Cache(db.artifacts)
-            graph = Graph(db, cache)
+            graph = Graph(db.artifacts)
             for art in sample.pool:
                 cache.put(art)
             retriever = (HybridRetriever(graph, cache, BM25Index(calibration_c))

@@ -23,7 +23,7 @@ class PipelineDisclosureTest(unittest.TestCase):
     def test_cross_session_shared_memory_is_paraphrased(self):
         db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db.artifacts)
-        graph = Graph(db, cache)
+        graph = Graph(db.artifacts)
         src = Source("s1", "turn1", "s1", "u1", "user", "source text", "t")
         db.sources.append_sources([src])
         art = make("memory", {"text": "top secret phrase", "level": "scene",
@@ -32,7 +32,7 @@ class PipelineDisclosureTest(unittest.TestCase):
         cache.put(art)
         config = {"bm25_enabled": True}
         block, info = build_block(
-            cache, graph, db, "s2", "top secret phrase", True,
+            cache, graph, db.artifacts, db.sources, "s2", "top secret phrase", True,
             lambda key, default: config.get(key, default),
             "napcat:FriendMessage:u1", "u1",
             hybrid_retriever=HybridRetriever(graph, cache),
@@ -44,7 +44,7 @@ class PipelineDisclosureTest(unittest.TestCase):
     def test_bm25_makes_private_memory_globally_retrievable_but_not_raw(self):
         db = open_store(os.path.join(tempfile.mkdtemp(), "t.db"))
         cache = Cache(db.artifacts)
-        graph = Graph(db, cache)
+        graph = Graph(db.artifacts)
         source = Source("s1", "turn1", "s1", "u1", "user", "private source", "t")
         db.sources.append_sources([source])
         art = make(
@@ -56,7 +56,7 @@ class PipelineDisclosureTest(unittest.TestCase):
         config = {"bm25_enabled": True}
 
         block, info = build_block(
-            cache, graph, db, "s2", "还记得唯一的量化交易私密短语吗", True,
+            cache, graph, db.artifacts, db.sources, "s2", "还记得唯一的量化交易私密短语吗", True,
             lambda key, default: config.get(key, default),
             "napcat:FriendMessage:u1", "u2",
             hybrid_retriever=HybridRetriever(graph, cache),
@@ -72,7 +72,7 @@ class OptionalBM25PipelineTest(unittest.TestCase):
         self.db = open_store(":memory:")
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
-        self.graph = Graph(self.db, self.cache)
+        self.graph = Graph(self.db.artifacts)
         self.session = "bot:FriendMessage:u1"
         self.conf = {"bm25_enabled": True, "owner_umo": self.session,
                      "explore_rate": 0.0}
@@ -91,7 +91,7 @@ class OptionalBM25PipelineTest(unittest.TestCase):
 
     def recall(self, query, config=None, injected=None):
         return build_block(
-            self.cache, self.graph, self.db, self.session, query, True,
+            self.cache, self.graph, self.db.artifacts, self.db.sources, self.session, query, True,
             (config or self.conf).get, self.session, "u1", dry_run=True,
             hybrid_retriever=injected or self.retriever,
         )
@@ -147,8 +147,15 @@ class OptionalBM25PipelineTest(unittest.TestCase):
 
     def test_readonly_diagnosis_does_not_consume_designated_delivery(self):
         designated = self.save("designated", {"text": "归还书籍清单", "trigger": "书籍"})
-        service = ManagementService(self.db, self.cache, self.graph, self.conf.get,
-                                    self.retriever)
+        service = ManagementService(
+            artifacts=self.db.artifacts,
+            sources=self.db.sources,
+            ledger=self.db.ledger,
+            cache=self.cache,
+            graph=self.graph,
+            conf=self.conf.get,
+            hybrid_retriever=self.retriever,
+        )
         result = service.diagnose({"query": "还记得书籍吗", "umo": self.session,
                                    "speaker": "u1"})
         self.assertIn("归还书籍清单", result["block"])

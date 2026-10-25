@@ -219,6 +219,35 @@ class LayerDependencyTest(unittest.TestCase):
                         str(path),
                     )
 
+    def test_engines_and_services_do_not_import_aggregate_store(self) -> None:
+        for folder in ("core", "services", "recall", "perceive",
+                       "maintain", "webui"):
+            for path in (ROOT / folder).rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ImportFrom):
+                        module = node.module or ""
+                        if module in ("store", "..store") or module.endswith("store"):
+                            self.assertNotIn(
+                                "Store",
+                                {alias.name for alias in node.names},
+                                str(path),
+                            )
+
+    def test_engine_and_service_functions_do_not_take_aggregate_db(self) -> None:
+        for folder in ("core", "services", "recall", "perceive", "maintain"):
+            for path in (ROOT / folder).rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        continue
+                    arguments = [
+                        *node.args.posonlyargs,
+                        *node.args.args,
+                        *node.args.kwonlyargs,
+                    ]
+                    self.assertNotIn("db", {arg.arg for arg in arguments}, str(path))
+
     def test_services_do_not_import_host_or_adapters(self) -> None:
         imports = self._imports(ROOT / "services")
         self.assertFalse(

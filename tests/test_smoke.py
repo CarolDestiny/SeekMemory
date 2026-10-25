@@ -41,8 +41,8 @@ def main() -> None:
     tmpdir = tempfile.mkdtemp()
     db = open_store(os.path.join(tmpdir, "t.db"))
     cache = Cache(db.artifacts)
-    tree = Tree(db, cache)
-    graph = Graph(db, cache)
+    tree = Tree(db.artifacts, cache)
+    graph = Graph(db.artifacts)
     ledger = Ledger(db.ledger)
 
     impression = _mk("impression", "他有点倔，嘴上不饶人但真有事会帮")

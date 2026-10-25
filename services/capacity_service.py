@@ -6,6 +6,7 @@ import datetime
 from typing import Any, Callable
 
 try:
+    from ..app.ports import ArtifactStore, ExtractionStore, MetricsStore
     from ..core.capacity import (
         NORMAL,
         PROTECTIVE,
@@ -14,6 +15,7 @@ try:
         CapacitySnapshot,
     )
 except ImportError:
+    from app.ports import ArtifactStore, ExtractionStore, MetricsStore
     from core.capacity import (
         NORMAL,
         PROTECTIVE,
@@ -29,8 +31,10 @@ class CapacityService:
     def __init__(
         self,
         *,
-        db,
-        cache,
+        metrics: MetricsStore | None,
+        extraction: ExtractionStore | None,
+        artifacts: ArtifactStore | None,
+        cache: Any,
         trace,
         journal,
         governor: CapacityGovernor,
@@ -38,7 +42,9 @@ class CapacityService:
         logger,
         on_release: Callable[[], None] | None = None,
     ) -> None:
-        self.db = db
+        self.metrics = metrics
+        self.extraction = extraction
+        self.artifacts = artifacts
         self.cache = cache
         self.trace = trace
         self.journal = journal
@@ -61,7 +67,7 @@ class CapacityService:
         self.context_chars = max(0, int(value))
 
     def snapshot(self) -> CapacitySnapshot:
-        usage = self.db.metrics.capacity_usage() if self.db is not None else {}
+        usage = self.metrics.capacity_usage() if self.metrics is not None else {}
         return CapacitySnapshot(
             source_rows=int(usage.get("source_rows", 0)),
             source_bytes=int(usage.get("source_bytes", 0)),
@@ -133,9 +139,9 @@ class CapacityService:
         if (
             "release_deferred" in decision.actions
             and self.deferred_rows
-            and self.db is not None
+            and self.extraction is not None
         ):
-            released = self.db.extraction.release_deferred(self.thresholds.release_batch)
+            released = self.extraction.release_deferred(self.thresholds.release_batch)
             if released:
                 self.deferred_rows = max(0, self.deferred_rows - released)
                 if self.on_release is not None:
@@ -160,7 +166,7 @@ class CapacityService:
         if mark == self._action_mark:
             return
         self._action_mark = mark
-        if "compact_artifacts" in actions and self.db and self.cache:
+        if "compact_artifacts" in actions and self.artifacts and self.cache:
             try:
                 from ..maintain.merge import merge_similar
             except ImportError:
@@ -168,19 +174,19 @@ class CapacityService:
 
             with self.journal.span("capacity", "compact_artifacts") as metrics:
                 metrics["merged"] = merge_similar(
-                    self.db.artifacts,
+                    self.artifacts,
                     self.cache,
                     threshold=0.6,
                     limit=50,
                 )
-        if "forget_expired" in actions and self.db and self.cache:
+        if "forget_expired" in actions and self.artifacts and self.cache:
             try:
                 from ..maintain.lifecycle import forget_expired
             except ImportError:
                 from maintain.lifecycle import forget_expired
 
             with self.journal.span("capacity", "forget_expired") as metrics:
-                metrics["forgotten"] = forget_expired(self.db.artifacts, self.cache)
+                metrics["forgotten"] = forget_expired(self.artifacts, self.cache)
         if "trim_trace" in actions:
             with self.journal.span("capacity", "trim_trace") as metrics:
                 metrics["removed"] = self.trace.trim(
@@ -203,7 +209,7 @@ class CapacityService:
     def status(self) -> dict:
         snapshot = self.snapshot()
         decision = self.governor.evaluate(snapshot)
-        queue = self.db.extraction.queue_counts() if self.db is not None else {}
+        queue = self.extraction.queue_counts() if self.extraction is not None else {}
         return {
             "state": decision.state,
             "actions": list(decision.actions),

@@ -12,8 +12,10 @@ from datetime import datetime
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
+    from ..app.ports import ArtifactStore
     from ..core.artifact import Artifact, revise
 except ImportError:  # 作为顶层 recall 包导入（脚本 / 测试）
+    from app.ports import ArtifactStore
     from core.artifact import Artifact, revise
 
 _SPLIT = re.compile(r"[\s,，、/|;；]+")
@@ -60,7 +62,7 @@ def deliverable(art: Artifact, text: str, private: bool) -> bool:
     return bool(private) and not already_given(art) and matches(art, text)
 
 
-def mark_given(db: Any, cache: Any, arts: list[Artifact], block: str,
+def mark_given(artifacts: ArtifactStore, cache: Any, arts: list[Artifact], block: str,
                now: str | None = None) -> int:
     """把本轮确实注入了正文的 designated 标成已给，返回写回条数。
 
@@ -77,7 +79,7 @@ def mark_given(db: Any, cache: Any, arts: list[Artifact], block: str,
             continue
         try:
             updated = revise(art, payload={**art.payload, "given": stamp})
-            db.artifacts.commit(updated, expected_revision=art.header.revision, op="deliver",
+            artifacts.commit(updated, expected_revision=art.header.revision, op="deliver",
                       reason="designated delivered",
                       source_ids=tuple(art.header.lineage.sources))
             cache.put(updated)

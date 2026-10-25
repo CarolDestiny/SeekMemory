@@ -62,7 +62,7 @@ def main() -> None:
     tmp = tempfile.mkdtemp()
     db = open_store(os.path.join(tmp, "scale.db"))
     cache = Cache(db.artifacts)
-    graph = Graph(db, cache)
+    graph = Graph(db.artifacts)
 
     for day, uid, text in msgs:
         art = to_art(day, uid, text)

@@ -5,6 +5,11 @@ from __future__ import annotations
 from typing import Any, Callable
 
 try:
+    from ..app.ports import ArtifactStore, SourceStore
+except ImportError:
+    from app.ports import ArtifactStore, SourceStore
+
+try:
     from ..recall.pipeline import build_block
 except ImportError:
     from recall.pipeline import build_block
@@ -20,9 +25,10 @@ class RecallService:
     def __init__(
         self,
         *,
-        cache,
-        graph,
-        db,
+        cache: Any,
+        graph: Any,
+        artifacts: ArtifactStore | None,
+        sources: SourceStore | None,
         budget,
         config: Callable[[str, Any], Any],
         owner_umo: Callable[[], str],
@@ -31,7 +37,8 @@ class RecallService:
     ) -> None:
         self.cache = cache
         self.graph = graph
-        self.db = db
+        self.artifacts = artifacts
+        self.sources = sources
         self.budget = budget
         self.config = config
         self.owner_umo = owner_umo
@@ -64,7 +71,8 @@ class RecallService:
         return build_block(
             self.cache,
             self.graph,
-            self.db,
+            self.artifacts,
+            self.sources,
             session_id,
             text,
             private,

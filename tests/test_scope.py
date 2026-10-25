@@ -150,13 +150,13 @@ class MarkGivenTest(unittest.TestCase):
         self.cache.put(art)
 
         block = build([art], budget=500, text="那个东西呢", is_private=True)
-        self.assertEqual(mark_given(self.db, self.cache, [art], block), 1)
+        self.assertEqual(mark_given(self.db.artifacts, self.cache, [art], block), 1)
 
         loaded = self.cache.get(art.header.id)
         self.assertIsNotNone(loaded)
         self.assertTrue(loaded.payload.get("given"))
         self.assertEqual(build([loaded], 500, text="那个东西呢", is_private=True), "")
-        self.assertEqual(mark_given(self.db, self.cache, [loaded], block), 0)
+        self.assertEqual(mark_given(self.db.artifacts, self.cache, [loaded], block), 0)
 
 
 if __name__ == "__main__":

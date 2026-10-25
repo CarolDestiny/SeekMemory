@@ -90,9 +90,9 @@ def _load(mems) -> tuple[Store, Cache, Graph, list[Artifact]]:
     """走生产写入路径建 similar/temporal 边；causal 仍由人工金标补。"""
     db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_abl_"), "abl.db"))
     cache = Cache(db.artifacts)
-    graph = Graph(db, cache)
+    graph = Graph(db.artifacts)
     for m in mems:
-        persist(_artifact(m), db, cache, graph)
+        persist(_artifact(m), db.artifacts, cache, graph)
     pool = cache.active()
     by_text = {str(a.payload.get("text")): a for a in pool}
     if os.environ.get("ABLATION_NO_CAUSAL") != "1":

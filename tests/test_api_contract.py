@@ -79,7 +79,7 @@ class ApiContractTests(unittest.IsolatedAsyncioTestCase):
             ready=True,
             store=db,
             cache=cache,
-            graph=Graph(db, cache),
+            graph=Graph(db.artifacts),
             journal=journal,
             jobs=jobs,
             cfg={},

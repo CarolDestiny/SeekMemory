@@ -21,9 +21,10 @@ from app.ports import (
     ArtifactStore,
     ChatModel,
     ExtractionStore,
+    LedgerStore,
+    MetricsStore,
     Retriever,
     SourceStore,
-    StateStore,
 )
 from core.retrieval import RetrievalCandidate
 from perceive.model import ProviderChatModel
@@ -40,7 +41,8 @@ class ProtocolSurfaceTest(unittest.TestCase):
     def test_builtin_stores_satisfy_public_protocols(self):
         self.assertIsInstance(self.db.sources, SourceStore)
         self.assertIsInstance(self.db.artifacts, ArtifactStore)
-        self.assertIsInstance(self.db.artifacts, StateStore)
+        self.assertIsInstance(self.db.metrics, MetricsStore)
+        self.assertIsInstance(self.db.ledger, LedgerStore)
         self.assertIsInstance(self.db.extraction, ExtractionStore)
 
     def test_builtin_retriever_and_chat_model_satisfy_public_protocols(self):

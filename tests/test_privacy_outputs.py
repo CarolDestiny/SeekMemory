@@ -22,7 +22,7 @@ class PrivacyOutputTest(unittest.TestCase):
         self.db = open_store(os.path.join(tempfile.mkdtemp(prefix="seekmem_privacy_"), "t.db"))
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
-        self.graph = Graph(self.db, self.cache)
+        self.graph = Graph(self.db.artifacts)
         self.config = {"bm25_enabled": False, "explore_rate": 0.0,
                        "budget_chars": 600}
 
@@ -46,7 +46,7 @@ class PrivacyOutputTest(unittest.TestCase):
 
     def recall(self, umo: str, text: str, speaker: str, *, private: bool = True):
         return build_block(
-            self.cache, self.graph, self.db, umo, text, private,
+            self.cache, self.graph, self.db.artifacts, self.db.sources, umo, text, private,
             self.config.get, "bot:FriendMessage:p1", speaker, dry_run=True,
         )
 

@@ -232,7 +232,7 @@ def ingest(key, messages):
     tmp = tempfile.mkdtemp(prefix="seekmem_large_")
     db = open_store(os.path.join(tmp, "large.db"))
     cache = Cache(db.artifacts)
-    graph, ids = Graph(db, cache), {}
+    graph, ids = Graph(db.artifacts), {}
     meta = personas.meta_of(key)
     for day, uid, channel, text in messages:
         item, shadow = meta.get(text), False

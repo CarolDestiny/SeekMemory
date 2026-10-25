@@ -10,7 +10,7 @@ from collections.abc import Callable
 from typing import Any
 
 try:  # 作为 astrbot 插件包的一部分导入
-    from ..app.ports import Retriever
+    from ..app.ports import ArtifactStore, Retriever, SourceStore
     from ..core.disclosure import (
         DisclosureLevel,
         RecallScene,
@@ -32,9 +32,8 @@ try:  # 作为 astrbot 插件包的一部分导入
     from ..recall.temporal import filter_valid, in_window, query_window
     from ..recall.score import select
     from ..store.cache import Cache
-    from ..store import Store, open_store
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
-    from app.ports import Retriever
+    from app.ports import ArtifactStore, Retriever, SourceStore
     from core.disclosure import (
         DisclosureLevel,
         RecallScene,
@@ -45,7 +44,6 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.graph import Graph
     from core.bot_behavior import trusted_self_persona
     from store.cache import Cache
-    from store import Store, open_store
 
     from recall.assemble import build_with_meta as assemble_text_meta
     from recall.designated import deliverable, mark_given
@@ -109,7 +107,8 @@ def recent_context(pool: list, subject: str, *, profile: bool = False,
 def build_block(
     cache: Cache,
     graph: Graph,
-    db: Store,
+    artifacts: ArtifactStore,
+    sources: SourceStore,
     umo: str,
     text: str,
     private: bool,
@@ -126,7 +125,7 @@ def build_block(
     Args:
         cache: 运行中的活跃 Artifact 缓存。
         graph: 用于激活扩散的关系图。
-        db: 用于归属查询和指定交付的数据库。
+        artifacts/sources: repository ports used for ownership and delivery.
         umo: 完整会话标识。
         text: 触发召回的输入消息。
         private: 是否为私聊。
@@ -140,7 +139,7 @@ def build_block(
     Returns:
         注入文本与运行决策计数。
     """
-    lookup = db.sources.source_umo if db is not None else None
+    lookup = sources.source_umo
     subject = subject_of(speaker, owner_umo)
     owner_id = str(owner_umo or "").split(":")[-1] if owner_umo else ""
     scene = RecallScene(umo, str(speaker or ""), owner_id, (str(speaker or ""),))
@@ -240,7 +239,7 @@ def build_block(
                     continue
                 source_ids = list(art.header.lineage.sources)
                 origins = (
-                    tuple(db.sources.source_umos(source_ids).values()) if db is not None else ()
+                    tuple(sources.source_umos(source_ids).values())
                 )
                 if art.header.family == "designated":
                     owner_ref = str(
@@ -294,7 +293,7 @@ def build_block(
         overrides=overrides,
     )
     if not dry_run:
-        mark_given(db, cache, safe_designated + picked, block)
+        mark_given(artifacts, cache, safe_designated + picked, block)
     info = {
         "mode": mode,
         "picked": len(picked),

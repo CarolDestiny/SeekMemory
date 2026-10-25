@@ -9,14 +9,14 @@ try:
                                      SELF_SUBJECT, confident, trusted_self_impression)
     from ..core.source import Source
     from ..store.cache import Cache
-    from ..store import Store, open_store
+    from ..app.ports import ArtifactStore, SourceStore
 except ImportError:
     from core.artifact import Artifact, Lineage, Strength, make, revise
     from core.bot_behavior import (BEHAVIORS, BEHAVIOR_TEXT, MIN_EVIDENCE,
                                    SELF_SUBJECT, confident, trusted_self_impression)
     from core.source import Source
     from store.cache import Cache
-    from store import Store, open_store
+    from app.ports import ArtifactStore, SourceStore
 
 MIN_HITS = MIN_EVIDENCE
 
@@ -59,28 +59,29 @@ def _supported(art: Artifact, sources: dict[str, Source]) -> bool:
             and len(_pairs(art.header.lineage.sources, sources)) >= MIN_EVIDENCE)
 
 
-def build_self_impressions(db: Store, cache: Cache, min_hits: int = MIN_HITS,
+def build_self_impressions(artifacts: ArtifactStore, sources: SourceStore,
+                           cache: Cache, min_hits: int = MIN_HITS,
                            today: str | None = None) -> int:
     """至少三次独立证据才建立印象；新增证据修订原编号，重跑不重复写。"""
     pool = cache.active("memory")
     ids = sorted({sid for art in pool for sid in art.header.lineage.sources})
-    sources = db.sources.sources_by_ids(ids)
+    source_rows = sources.sources_by_ids(ids)
     groups: dict[str, dict[str, Observation]] = {key: {} for key in BEHAVIORS}
     old_by_kind: dict[str, Artifact] = {}
     for art in sorted(pool, key=lambda a: a.header.id):
         kind = art.payload.get("bot_behavior")
         if not isinstance(kind, str) or kind not in groups:
             continue
-        if _supported(art, sources):
+        if _supported(art, source_rows):
             old_by_kind.setdefault(kind, art)
             # 旧印象只带回原始事件证据，本身不增加计数。
             for episode_id in art.header.lineage.derived_from:
-                episode = db.artifacts.get(episode_id)
+                episode = artifacts.get(episode_id)
                 if episode is not None and episode.payload.get("bot_behavior") == kind:
-                    for sid, observation in _observations(episode, sources).items():
+                    for sid, observation in _observations(episode, source_rows).items():
                         groups[kind].setdefault(sid, observation)
         elif art.header.state == "active":
-            for sid, observation in _observations(art, sources).items():
+            for sid, observation in _observations(art, source_rows).items():
                 groups[kind].setdefault(sid, observation)
     writes = []
     for kind, observed in groups.items():
@@ -104,7 +105,7 @@ def build_self_impressions(db: Store, cache: Cache, min_hits: int = MIN_HITS,
                   subject_id=SELF_SUBJECT, strength=strength, lineage=lineage)
         art = revise(old, payload=payload, **kw) if old else make("memory", payload, **kw)
         writes.append((art, old.header.revision if old else 0, lineage.sources))
-    db.artifacts.commit_many(writes, op="revise", reason="evidence-backed self-impressions")
+    artifacts.commit_many(writes, op="revise", reason="evidence-backed self-impressions")
     for art, _, _ in writes:
         cache.put(art)
     return len(writes)

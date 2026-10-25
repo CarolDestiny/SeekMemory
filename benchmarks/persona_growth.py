@@ -61,7 +61,7 @@ async def main():
     async def run_case(case,repeat):
         name,expected,pairs=case
         with tempfile.TemporaryDirectory(prefix='seekmemory_accept_') as temp:
-            db=open_store(str(Path(temp)/'memory.db')); cache=Cache(db.artifacts); graph=Graph(db,cache)
+            db=open_store(str(Path(temp)/'memory.db')); cache=Cache(db.artifacts); graph=Graph(db.artifacts)
             session='probe:FriendMessage:71001'
             outcomes=[]
             model=Model()
@@ -81,22 +81,22 @@ async def main():
                     from dataclasses import replace
                     turns=[replace(t,turn_id=uid,reply_to=uid if t.role=='assistant' else '') for t in turns]
                 try:
-                    outcome=await absorb(turns,db,cache,graph,model,owner_id='71001',strict=True)
+                    outcome=await absorb(turns,db.artifacts,db.sources,cache,graph,model,owner_id='71001',strict=True)
                     outcomes.append({'written':outcome.written,'errors':list(outcome.errors),'retryable':outcome.retryable})
                 except Exception as exc:
                     outcomes.append({'error':type(exc).__name__})
             extracted=[{'id':a.header.id,'subject':a.header.subject_id,'confidence':a.header.strength.confidence,'payload':a.payload,'sources':list(a.header.lineage.sources)} for a in cache.active('memory')]
             error=None
             try:
-                made=build_self_impressions(db,cache,today='2026-10-23')
-                persona=distill_self_persona(db,cache,today='2026-10-23')
+                made=build_self_impressions(db.artifacts,db.sources,cache,today='2026-10-23')
+                persona=distill_self_persona(db.artifacts,db.sources,cache,today='2026-10-23')
                 before=len(db.artifacts.history(persona.header.id)) if persona else 0
-                build_self_impressions(db,cache,today='2026-10-23')
-                again=distill_self_persona(db,cache,today='2026-10-23')
+                build_self_impressions(db.artifacts,db.sources,cache,today='2026-10-23')
+                again=distill_self_persona(db.artifacts,db.sources,cache,today='2026-10-23')
                 stable=not persona or (again and again.header.id==persona.header.id and len(db.artifacts.history(persona.header.id))==before)
                 conf=lambda k,d=None: {'budget_chars':2000,'explore':0.0}.get(k,d)
-                block,meta=build_block(cache,graph,db,session,'你平时如何回应问题？',True,conf,session,speaker='71001',dry_run=True)
-                stranger,_=build_block(cache,graph,db,'probe:FriendMessage:72002','你平时如何回应问题？',True,conf,session,speaker='72002',dry_run=True)
+                block,meta=build_block(cache,graph,db.artifacts,db.sources,session,'你平时如何回应问题？',True,conf,session,speaker='71001',dry_run=True)
+                stranger,_=build_block(cache,graph,db.artifacts,db.sources,'probe:FriendMessage:72002','你平时如何回应问题？',True,conf,session,speaker='72002',dry_run=True)
             except Exception as exc:
                 persona=None; made=0; stable=False; block=''; stranger=''; meta={}; error=type(exc).__name__+': '+str(exc)
             self_arts=[a for a in cache.active('memory') if a.header.subject_id=='bot:self']

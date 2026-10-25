@@ -127,7 +127,8 @@ class AstrBotPlugin(AstrBotHooks):
         recall = RecallService(
             cache=self.cache,
             graph=self.graph,
-            db=self.store,
+            artifacts=self.store.artifacts if self.store is not None else None,
+            sources=self.store.sources if self.store is not None else None,
             budget=self.budget,
             config=self._c,
             owner_umo=lambda: self.owner_umo,
@@ -179,7 +180,9 @@ class AstrBotPlugin(AstrBotHooks):
             )
         scheduler = Scheduler(runtime.store)
         capacity = CapacityService(
-            db=self.store,
+            metrics=self.store.metrics if self.store is not None else None,
+            extraction=self.store.extraction if self.store is not None else None,
+            artifacts=self.store.artifacts if self.store is not None else None,
             cache=self.cache,
             trace=self.trace,
             journal=self.journal,
@@ -190,7 +193,9 @@ class AstrBotPlugin(AstrBotHooks):
         )
         ingest = IngestService(
             buffer=self.buffer,
-            db=self.store,
+            artifacts=self.store.artifacts if self.store is not None else None,
+            sources=self.store.sources if self.store is not None else None,
+            extraction=self.store.extraction if self.store is not None else None,
             cache=self.cache,
             graph=self.graph,
             journal=self.journal,
@@ -202,7 +207,8 @@ class AstrBotPlugin(AstrBotHooks):
             logger=logger,
         )
         maintenance = MaintenanceService(
-            db=self.store,
+            artifacts=self.store.artifacts if self.store is not None else None,
+            sources=self.store.sources if self.store is not None else None,
             cache=self.cache,
             journal=self.journal,
             task_id=lambda: self.jobs.task_id,
@@ -304,8 +310,8 @@ class AstrBotPlugin(AstrBotHooks):
             self.store = open_store(str(self.data_path))
             self.cache = Cache(self.store.artifacts)
             self.cache.load()
-            self.tree = Tree(self.store, self.cache)
-            self.graph = Graph(self.store, self.cache)
+            self.tree = Tree(self.store.artifacts, self.cache)
+            self.graph = Graph(self.store.artifacts)
             self.hybrid_retriever = HybridRetriever(self.graph, self.cache)
             self.buffer = Buffer(
                 str(self.data_path.parent / "pending.json"), extraction=self.store.extraction

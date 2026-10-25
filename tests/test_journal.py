@@ -42,7 +42,8 @@ class JournalTests(unittest.IsolatedAsyncioTestCase):
         )
         written = await absorb(
             [DialogueTurn("demo:FriendMessage:1", "1", "user", "PRIVATE INPUT")],
-            db,
+            db.artifacts,
+            db.sources,
             None,
             None,
             provider,

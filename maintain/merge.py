@@ -17,7 +17,7 @@ try:  # 作为 astrbot 插件包的一部分导入
         revise,
     )
     from ..store.cache import Cache
-    from ..store import Store, open_store
+    from ..app.ports import ArtifactStore, SourceStore
 except ImportError:  # 作为顶层包导入（脚本 / 测试）
     from core.artifact import (
         Artifact,
@@ -29,7 +29,7 @@ except ImportError:  # 作为顶层包导入（脚本 / 测试）
         revise,
     )
     from store.cache import Cache
-    from store import Store, open_store
+    from app.ports import ArtifactStore, SourceStore
 
 MAX_ACTIVE = 500
 MERGE_LEVELS = ("scene", "detail")
@@ -126,7 +126,7 @@ def _majority(arts: list[Artifact], key: str, default: str) -> str:
 
 
 def merge_similar(
-    artifacts, cache: Cache, threshold: float = 0.6, limit: int = 50
+    artifacts: ArtifactStore, cache: Cache, threshold: float = 0.6, limit: int = 50
 ) -> int:
     """Merge active scene/detail rows only inside the same subject and scope."""
     pool = [

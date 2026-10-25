@@ -155,7 +155,7 @@ class RetrieverTest(unittest.TestCase):
         self.db = open_store(":memory:")
         self.addCleanup(self.db.close)
         self.cache = Cache(self.db.artifacts)
-        self.graph = Graph(self.db, self.cache)
+        self.graph = Graph(self.db.artifacts)
 
     def test_hybrid_retriever_adds_lexical_signal_once_per_artifact(self):
         relevant = memory("量化交易项目")
