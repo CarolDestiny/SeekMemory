@@ -160,6 +160,7 @@ class ArtifactRepository(SqliteRepository):
             "SELECT DISTINCT n.*, b.content AS blob_content FROM nodes n "
             "LEFT JOIN blobs b ON b.hash = n.blob "
             "JOIN artifact_evidence ae ON ae.entity = n.id "
+            "AND ae.revision = n.revision "
             f"WHERE n.state = 'active' AND ae.source IN ({marks}) "
             "ORDER BY n.created_at, n.id",
             ids,

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.budget import ContextBudget
 from core.artifact import Lineage, make
 from core.graph import Graph
 from core.source import Source
@@ -273,6 +274,23 @@ class SourceFallbackPipelineTest(unittest.TestCase):
         block, info = self.recall("protected quantum secret")
         self.assertNotIn("protected quantum secret", block)
         self.assertGreaterEqual(info["source_context"]["protected_sources"], 1)
+
+    def test_context_budget_disables_source_fallback_without_config_key(self):
+        self.add_source("s1", "budget disabled quantum source")
+        service = RecallService(
+            cache=self.cache,
+            graph=self.graph,
+            artifacts=self.db.artifacts,
+            sources=self.db.sources,
+            budget=ContextBudget(
+                injection_chars=600, source_context_enabled=False
+            ),
+            config={}.get,
+            owner_umo=lambda: self.session,
+        )
+        result = service.preview("quantum trading", self.session, True, "u1")
+        self.assertEqual(result["block"], "")
+        self.assertNotIn("source_context", result["info"])
 
     def test_disabled_source_context_keeps_legacy_empty_info_shape(self):
         self.add_source("s1", "nothing here")

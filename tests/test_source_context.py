@@ -116,7 +116,7 @@ class SourcePrivacyTest(unittest.TestCase):
 
 class RepositoryPortTest(unittest.TestCase):
     def test_recent_sources_and_artifact_lookup_are_bounded(self):
-        from core.artifact import Lineage, make
+        from core.artifact import Lineage, make, revise
         from store import open_store
 
         db = open_store(":memory:")
@@ -138,6 +138,19 @@ class RepositoryPortTest(unittest.TestCase):
         found = db.artifacts.by_source_ids(["s1"])
         self.assertEqual([item.header.id for item in found], [art.header.id])
         self.assertEqual(db.artifacts.by_source_ids([]), [])
+
+        revised = revise(art, payload={"text": "second revision", "level": "fact"})
+        db.artifacts.commit(
+            revised,
+            expected_revision=art.header.revision,
+            op="revise",
+            source_ids=("s2",),
+        )
+        self.assertEqual(db.artifacts.by_source_ids(["s1"]), [])
+        self.assertEqual(
+            [item.header.id for item in db.artifacts.by_source_ids(["s2"])],
+            [art.header.id],
+        )
 
 
 if __name__ == "__main__":

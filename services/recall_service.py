@@ -66,11 +66,22 @@ class RecallService:
             budget_chars = max(80, budget_chars // 2)
             recall_k = max(1, recall_k // 2)
 
+        source_fields = {
+            "source_context_enabled",
+            "source_context_hours",
+            "source_context_max_sources",
+            "source_context_tokens",
+            "source_context_min_free_tokens",
+        }
+
         def conf(key: str, default):
             if key == "budget_chars":
                 return budget_chars
             if key == "recall_k":
                 return recall_k
+            if key in source_fields:
+                value = getattr(self.budget, key, None)
+                return self.config(key, default) if value is None else value
             return self.config(key, default)
 
         return build_block(

@@ -14,6 +14,8 @@ import datetime
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+from .budget import extraction_budget_from_config
+
 FlushFn = Callable[[str], Awaitable[tuple[int, int]]]
 PendingFn = Callable[[], int]
 MaintainFn = Callable[[], Awaitable[dict[str, Any]]]
@@ -115,7 +117,9 @@ class DreamCycle:
             return DreamResult(date, "skipped", "already_done")
 
         limit = max(1, int(self._c("dream_max_batches", 12)))
-        budget_tokens = max(0, int(self._c("dream_token_budget", 60000)))
+        budget_tokens = max(
+            0, int(extraction_budget_from_config(self._c).dream_token_budget)
+        )
         baseline = _usage_values(usage() if usage is not None else None)
         current_usage = baseline
         stopped = ""
