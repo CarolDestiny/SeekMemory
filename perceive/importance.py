@@ -15,7 +15,7 @@ try:
 except ImportError:
     from app.contracts import DialogueTurn
 
-MIN_IMPORTANCE_SCORE = 2.0  # test
+MIN_IMPORTANCE_SCORE = 2.0
 
 # Each category contributes once per topic. Reasons are labels, never text.
 _SIGNALS: tuple[tuple[str, float, re.Pattern[str]], ...] = (
@@ -58,11 +58,6 @@ _SIGNALS: tuple[tuple[str, float, re.Pattern[str]], ...] = (
         "strong_emotion",
         1.0,
         re.compile(r"(?:\u5d29\u6e83|\u54ed|\u96be\u53d7|\u538b\u529b|\u7126\u8651|\u5931\u7720|\u751f\u6c14|\u59d4\u5c48|\u5f00\u5fc3|\u9ad8\u5174|\u96be\u8fc7|\u5bb3\u6015|\u70e6)"),
-    ),
-    (
-        "self_recall",
-        2.0,
-        re.compile(r"(?:\u8fd8\u8bb0\u5f97|\u8bb0\u5f97\u6211|\u6211\u4e4b\u524d|\u6211\u8bf4\u8fc7|\u6211\u63d0\u8fc7|\u6211\u662f\u8c01|\u4f60\u4e86\u89e3\u6211|\u77e5\u9053\u6211\u662f\u8c01|\u6211\u7684\u540d\u5b57)"),
     ),
 )
 
@@ -254,7 +249,7 @@ def _true_plan(text: str) -> bool:
 
 
 def _refine(text: str, reasons: tuple[str, ...]) -> tuple[float, tuple[str, ...]]:
-    allowed = set(reasons) - {"self_recall"}
+    allowed = set(reasons)
     if "identity_profile" in allowed and not _true_identity(text):
         allowed.discard("identity_profile")
     if "preference_boundary" in allowed and not _true_preference(text):

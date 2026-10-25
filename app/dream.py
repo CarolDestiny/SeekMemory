@@ -12,9 +12,19 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Protocol
 
-FlushFn = Callable[..., Awaitable[tuple[int, int]]]
+
+class FlushFn(Protocol):
+    async def __call__(
+        self,
+        reason: str,
+        *,
+        max_calls: int = 0,
+        max_tokens: int = 0,
+        triage: bool = False,
+    ) -> tuple[int, int]: ...
+
 PendingFn = Callable[[], int]
 MaintainFn = Callable[[], Awaitable[dict[str, Any]]]
 Clock = Callable[[], datetime.datetime]

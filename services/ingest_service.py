@@ -10,7 +10,7 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Awaitable, Callable
 
 try:
-    from ..app.contracts import ChatRequest, WriteOutcome
+    from ..app.contracts import ChatRequest, DialogueTurn, WriteOutcome
     from ..app.flush_policy import chunk_turns, decide_flush, select_topic_batches
     from ..app.ports import ArtifactStore, ExtractionStore, SourceStore
     from ..core.artifact import content_of, revise
@@ -21,13 +21,14 @@ try:
     from ..perceive.extract import build_prompt
     from ..perceive.importance import (
         MIN_IMPORTANCE_SCORE,
+        TopicImportance,
         rank_topics,
         select_important_topics,
         select_ranked_topics,
     )
     from ..perceive.model import ProviderChatModel
 except ImportError:
-    from app.contracts import ChatRequest, WriteOutcome
+    from app.contracts import ChatRequest, DialogueTurn, WriteOutcome
     from app.flush_policy import chunk_turns, decide_flush, select_topic_batches
     from app.ports import ArtifactStore, ExtractionStore, SourceStore
     from core.artifact import content_of, revise
@@ -38,6 +39,7 @@ except ImportError:
     from perceive.extract import build_prompt
     from perceive.importance import (
         MIN_IMPORTANCE_SCORE,
+        TopicImportance,
         rank_topics,
         select_important_topics,
         select_ranked_topics,
@@ -162,8 +164,12 @@ class IngestService:
         )
 
     def split_topics(
-        self, items, cap: int | None = None, triage: bool = False, ranked=None
-    ):
+        self,
+        items: list[DialogueTurn],
+        cap: int | None = None,
+        triage: bool = False,
+        ranked: list[TopicImportance] | None = None,
+    ) -> list[tuple[str, str, list[DialogueTurn]]]:
         limit = int(cap or self.config("max_sessions_per_flush", 6))
         if triage:
             if ranked is None:
