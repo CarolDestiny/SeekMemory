@@ -13,6 +13,22 @@ from recall.pipeline import build_block
 from services.management_service import ManagementService
 
 
+def corpus():
+    return [
+        {
+            "user": (
+                f"第{i}个场景：今天发生了很多事情，我有点累，想和你说说心里话。"
+                "工作上的压力、生活里的琐事都挤在一起，我现在只想找个地方安静地待一会儿。"
+            ),
+            "assistant": (
+                f"先缓一缓嘛，我在听。第{i}次也会陪着你，不用一个人扛着。"
+                "你可以慢慢讲，不想说也没关系，我会一直在这里等你。"
+            ),
+        }
+        for i in range(12)
+    ]
+
+
 def seed_file(text: str = "你是大肥鱼，说话温柔但有点嘴硬。") -> dict:
     return {
         "id": "big_fish",
@@ -21,10 +37,7 @@ def seed_file(text: str = "你是大肥鱼，说话温柔但有点嘴硬。") ->
         "persona": text,
         "style": {"tone": "温柔嘴硬"},
         "boundaries": ["不伪造用户经历"],
-        "corpus": [
-            {"user": "今天好累。", "assistant": "先歇一下嘛，我陪你。"},
-            {"user": "你会不会走？", "assistant": "才不走呢，别乱想。"},
-        ],
+        "corpus": corpus(),
         "license": "CC0-1.0",
         "source": "original",
         "content_rating": "general",
@@ -63,8 +76,8 @@ class PersonaBootstrapTest(PersonaCase):
         self.assertEqual(persona.header.lineage.sources, ())
         self.assertEqual(persona.payload["origin"], "seed")
         self.assertEqual(persona.payload["seed_id"], "big_fish")
-        self.assertEqual(persona.payload["corpus_count"], 2)
-        self.assertEqual(len(persona.payload["corpus"]), 2)
+        self.assertEqual(persona.payload["corpus_count"], 12)
+        self.assertEqual(len(persona.payload["corpus"]), 12)
         self.assertEqual(len(persona.payload["corpus_hash"]), 64)
         self.assertTrue(trusted_self_persona(persona))
 
@@ -107,8 +120,9 @@ class PersonaBootstrapTest(PersonaCase):
         self.assertEqual(evolved.header.revision, 2)
         self.assertEqual(evolved.payload["origin"], "dream")
         self.assertEqual(evolved.payload["seed_id"], "big_fish")
-        self.assertEqual(evolved.payload["corpus_count"], 2)
-        self.assertEqual(evolved.payload["corpus"], initial.payload["corpus"])
+        self.assertEqual(evolved.payload["corpus_count"], 12)
+        self.assertNotIn("corpus", evolved.payload)
+        self.assertEqual(evolved.payload["corpus_hash"], initial.payload["corpus_hash"])
         self.assertTrue(evolved.payload["text"].startswith("你是大肥鱼，温柔但嘴硬。"))
         self.assertIn(compose_behavior_text(evolved.payload["behaviors"]), evolved.payload["text"])
         self.assertTrue(evolved.header.lineage.sources)
@@ -138,7 +152,7 @@ class PersonaBootstrapTest(PersonaCase):
         with self.assertRaises(ValueError):
             self.service().bootstrap_persona(bad)
         bad = seed_file()
-        bad.pop("corpus")
+        bad["corpus"] = bad["corpus"][:3]
         with self.assertRaises(ValueError):
             self.service().bootstrap_persona(bad)
         bad = seed_file()
@@ -146,6 +160,15 @@ class PersonaBootstrapTest(PersonaCase):
         with self.assertRaises(ValueError):
             self.service().bootstrap_persona(bad)
         self.assertEqual(self.cache.active("persona"), [])
+
+    def test_corpus_is_optional_for_direct_persona(self) -> None:
+        direct = seed_file("直接配置的人格，没有语料也可以启动。")
+        direct.pop("corpus")
+        self.service().bootstrap_persona(direct)
+        persona = self.cache.active("persona")[0]
+        self.assertEqual(persona.payload["corpus_count"], 0)
+        self.assertNotIn("corpus", persona.payload)
+        self.assertTrue(trusted_self_persona(persona))
 
 
 def compose_behavior_text(kinds: list[str]) -> str:

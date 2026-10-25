@@ -59,7 +59,6 @@ def distill_self_persona(artifacts: ArtifactStore, sources: SourceStore, cache: 
             "persona_name": str(base.payload.get("persona_name") or ""),
             "style": dict(base.payload.get("style") or {}),
             "boundaries": list(base.payload.get("boundaries") or []),
-            "corpus": list(base.payload.get("corpus") or []),
             "corpus_count": int(base.payload.get("corpus_count") or 0),
             "corpus_hash": str(base.payload.get("corpus_hash") or ""),
             "content_rating": str(base.payload.get("content_rating") or ""),

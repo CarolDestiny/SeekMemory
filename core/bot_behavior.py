@@ -85,15 +85,25 @@ def trusted_self_persona(art: Artifact) -> bool:
 
     if origin == PERSONA_ORIGIN_SEED:
         corpus = p.get("corpus")
+        corpus_count = p.get("corpus_count")
+        corpus_hash = p.get("corpus_hash")
+        if corpus is None:
+            corpus_ok = not corpus_count and not corpus_hash
+        else:
+            corpus_ok = (
+                isinstance(corpus, list)
+                and bool(corpus)
+                and corpus_count == len(corpus)
+                and isinstance(corpus_hash, str)
+                and bool(corpus_hash)
+            )
         return (
             h.said_by == "seed"
             and isinstance(p.get("text"), str)
             and bool(p["text"].strip())
             and isinstance(p.get("seed_id"), str)
             and bool(p["seed_id"].strip())
-            and isinstance(corpus, list)
-            and bool(corpus)
-            and p.get("corpus_count") == len(corpus)
+            and corpus_ok
         )
 
     kinds = _trusted_behavior_kinds(p)
@@ -106,11 +116,11 @@ def trusted_self_persona(art: Artifact) -> bool:
         if not seed_evolution_matches(text, base_text, compose_behaviors(kinds)):
             return False
         if p.get("seed_id"):
-            corpus = p.get("corpus")
-            if not isinstance(corpus, list) or not corpus:
-                return False
-            if p.get("corpus_count") != len(corpus):
-                return False
+            corpus_count = p.get("corpus_count")
+            corpus_hash = p.get("corpus_hash")
+            if corpus_count not in (None, 0):
+                if not isinstance(corpus_hash, str) or not corpus_hash:
+                    return False
     elif text != compose_behaviors(kinds):
         # Legacy evidence-backed persona without an explicit origin.
         return False

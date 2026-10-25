@@ -200,10 +200,11 @@ from fixed generic sentences, never extracted names, places or private facts.
 
 Persona keeps one stable id and append-only revisions. A persona file is a
 one-time bootstrap into the initial `bot:self` persona revision: it carries
-explicit seed provenance plus a bounded authored style corpus, creates no Source
-and runs no extraction. The corpus is preserved for persona synthesis and is
-not injected into recall. After that, Dream revises the same persona lineage
-from self-impression evidence. Persona
+explicit seed provenance and an optional bounded authored style corpus, creates
+no Source and runs no extraction. The initial revision may store the corpus for
+authoring/audit; later Dream revisions keep only its count/hash. The corpus is
+never injected into recall. After bootstrap, Dream revises the same persona
+lineage from self-impression evidence. Persona
 changes and any duplicate-head retirement commit atomically. Old unverified
 persona text remains in history but cannot enter chat context. No model/network
 call is added to chat capture or recall; behavior fields use the existing

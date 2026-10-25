@@ -20,7 +20,9 @@ _MAX_TEXT = 20000
 _MAX_STYLE = 20000
 _MAX_BOUNDARIES = 32
 _MAX_BOUNDARY = 300
-_MAX_CORPUS = 64
+MIN_CORPUS_EXAMPLES = 12
+MIN_CORPUS_CHARS = 1200
+_MAX_CORPUS = 128
 _MAX_CORPUS_ITEM = 2000
 _MAX_CORPUS_JSON = 50000
 
@@ -58,8 +60,15 @@ def _corpus(value: object) -> list[dict[str, str]]:
     Corpus entries are dialogue style samples.  They are configuration, not
     chat evidence, and are never turned into Source rows.
     """
-    if not isinstance(value, (list, tuple)) or not value:
-        raise ValueError("persona 文件必须包含非空 corpus 数组")
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("persona 文件 corpus 必须是数组")
+    if len(value) < MIN_CORPUS_EXAMPLES:
+        raise ValueError(
+            f"persona 文件 corpus 至少包含 {MIN_CORPUS_EXAMPLES} 组对话；"
+            "语料不足时请省略 corpus 并直接提供 persona，或补充语料"
+        )
     if len(value) > _MAX_CORPUS:
         raise ValueError("persona 文件 corpus 条目过多")
     out: list[dict[str, str]] = []
@@ -77,6 +86,12 @@ def _corpus(value: object) -> list[dict[str, str]]:
         raise ValueError("persona 文件 corpus 无法序列化") from exc
     if len(encoded) > _MAX_CORPUS_JSON:
         raise ValueError("persona 文件 corpus 过大")
+    total_chars = sum(len(item["user"]) + len(item["assistant"]) for item in out)
+    if total_chars < MIN_CORPUS_CHARS:
+        raise ValueError(
+            f"persona 文件 corpus 内容过少：至少 {MIN_CORPUS_CHARS} 字，"
+            "语料不足时请省略 corpus 并直接提供 persona"
+        )
     return out
 
 
@@ -157,7 +172,7 @@ def persona_payload_from_file(raw: object) -> dict[str, Any]:
     seed content is authored configuration, not a fabricated chat event.
     """
     seed = normalize_persona_file(raw)
-    return {
+    payload = {
         "text": seed["persona"],
         "origin": PERSONA_ORIGIN_SEED,
         "seed_id": seed["id"],
@@ -167,12 +182,17 @@ def persona_payload_from_file(raw: object) -> dict[str, Any]:
         "persona_name": seed["name"],
         "style": seed["style"],
         "boundaries": seed["boundaries"],
-        "corpus": seed["corpus"],
         "corpus_count": len(seed["corpus"]),
-        "corpus_hash": _corpus_hash(seed["corpus"]),
+        "corpus_hash": _corpus_hash(seed["corpus"]) if seed["corpus"] else "",
         "content_rating": seed["content_rating"],
         "locale": seed["locale"],
     }
+    # Keep the authored corpus only on the one-time bootstrap revision. Dream
+    # revisions retain its count/hash as provenance and must not duplicate the
+    # full corpus in every persona version.
+    if seed["corpus"]:
+        payload["corpus"] = seed["corpus"]
+    return payload
 
 
 def compose_seed_evolution(base_text: str, behavior_text: str) -> str:
