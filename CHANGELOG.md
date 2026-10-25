@@ -30,6 +30,9 @@
   `dream_batch_tokens` (default 6000); cross-session batching remains out of scope.
 - Multi-topic Dream batches now require evidence IDs from one topic on every extracted
   item so lineage stays scoped to cited Sources; single-topic legacy fallback is unchanged.
+- Dream triage now scores user corrections and behavior-relevant paired assistant replies,
+  allowing bot behavior scenes to feed the existing self-impression path without converting
+  generic or assistant-only messages.
 
 - Invariant hardening: scoped identity dedupe, source identity, failure recovery, oversized topics,
   privacy output, reinforcement truth, lineage/cache consistency, temporal validity, migration and continuity.

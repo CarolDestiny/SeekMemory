@@ -803,6 +803,7 @@ class IngestTriageTest(unittest.TestCase):
         fail=False,
         swallow_failure=False,
         response_items=None,
+        rows=None,
         with_db=False,
     ):
         from contextlib import contextmanager
@@ -824,11 +825,17 @@ class IngestTriageTest(unittest.TestCase):
 
         class Buffer:
             def __init__(self, values):
-                self.items = [
-                    DialogueTurn("s", "u1", "user", text, "2026-10-25T10:00:00",
-                                 f"s{index}", f"t{index}")
-                    for index, text in enumerate(values)
-                ]
+                self.items = (
+                    list(rows)
+                    if rows is not None
+                    else [
+                        DialogueTurn(
+                            "s", "u1", "user", text, "2026-10-25T10:00:00",
+                            f"s{index}", f"t{index}",
+                        )
+                        for index, text in enumerate(values)
+                    ]
+                )
                 self.succeeded = []
                 self.failed = []
 
@@ -1003,6 +1010,42 @@ class IngestTriageTest(unittest.TestCase):
         self.assertEqual(len(buffer.failed), 2)
         self.assertEqual(db.artifacts.by_source_ids(["s0"]), [])
         self.assertEqual(db.artifacts.by_source_ids(["s1"]), [])
+
+    def test_triaged_behavior_topic_commits_bot_behavior_lineage(self):
+        rows = [
+            DialogueTurn(
+                "s", "u1", "user", "\u6211\u8981\u6491\u4e0d\u4f4f",
+                "2026-10-25T10:00:00", "s0", "t0", "turn0",
+            ),
+            DialogueTurn(
+                "s", "bot", "assistant", "\u6211\u5728\uff0c\u522b\u96be\u8fc7",
+                "2026-10-25T10:00:01", "s1", "t0", "turn1", "s0",
+            ),
+        ]
+        behavior = {
+            "level": "scene",
+            "bot_behavior": "respond_emotion",
+            "text": "\u5979\u5728\u4ed6\u6491\u4e0d\u4f4f\u65f6\u5148\u63a5\u4f4f\u60c5\u7eea",
+            "tags": "\u60c5\u7eea \u5b89\u6170",
+            "about": "relation",
+            "subject_kind": "self",
+            "subject_id": "self",
+            "bot_action": "\u5148\u56de\u5e94\u60c5\u7eea",
+            "evidence_source_ids": ["s0", "s1"],
+        }
+        result, buffer, provider, _journal, db = self._run(
+            ["behavior", "behavior"],
+            rows=rows,
+            response_items=[behavior],
+            with_db=True,
+        )
+        self.assertEqual(result, (1, 1))
+        self.assertEqual(provider.calls, 1)
+        self.assertEqual(buffer.items, [])
+        art = db.artifacts.by_source_ids(["s0"])[0]
+        self.assertEqual(art.payload["bot_behavior"], "respond_emotion")
+        self.assertEqual(set(art.header.lineage.sources), {"s0", "s1"})
+        self.assertEqual(len(db.artifacts.by_source_ids(["s1"])), 1)
 
     def test_forced_batch_split_respects_max_calls_and_keeps_pending(self):
         result, buffer, provider, _journal = self._run(

@@ -137,6 +137,12 @@ selection. Journal metadata is category/count only (`candidates`, `eligible`,
 ranks pending topics once per flush and derives selection/counters from that same ranked
 list.
 
+Dream triage also scores paired user+assistant topics for behavior-relevant assistant
+replies and scores user corrections directly. This lets behavior scenes reach the existing
+bot self-impression maintenance path without changing extraction prompt vocabulary,
+evidence validation or Artifact ownership. Assistant-only topics and generic courtesy stay
+low value, so only behavior-relevant paired replies are converted, not every bot message.
+
 Known tradeoff: selecting by user-memory value can narrow self-impression coverage
 because assistant-only or otherwise low-value interaction topics may not be selected.
 

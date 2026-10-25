@@ -81,6 +81,8 @@ The table tracks covered regressions and known gaps. Rows marked as covered alre
 | Dream triage counted bare dates, work terms or retrieval questions as memories | covered by `tests/test_importance.py` |
 | Dream triage ranked the same pending topics twice per flush | covered by `tests/test_absorb.py` |
 | Dream triage changed nightly FIFO selection | covered by `tests/test_absorb.py` |
+| Dream triage ignored behavior-relevant paired bot replies or scored assistant-only topics | covered by `tests/test_importance.py` |
+| Triaged behavior topic failed to reach bot_behavior lineage/self-impression path | covered by `tests/test_absorb.py` |
 | Dream batching crossed sessions or split a topic chunk | covered by `tests/test_flush_batches.py` |
 | Batched Dream calls bypassed call/token budgets or left inconsistent pending rows | covered by `tests/test_absorb.py` |
 | Multi-topic batch evidence omission widened lineage to all batch sources | covered by `tests/test_absorb.py` |

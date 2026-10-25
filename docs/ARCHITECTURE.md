@@ -140,8 +140,12 @@ threshold. First-person/possessive forms, personal date+action contexts and an a
 command guard prevent bare date words, generic work terms, retrieval questions and
 unrelated single-character family/pet mentions from spending calls. Low-value topics
 remain pending and unmarked. Only Dream uses triage; normal nightly/idle extraction keeps
-FIFO topic selection. Ranking happens once per flush. The known tradeoff is narrower
-self-impression coverage because selection is driven by user-memory value.
+FIFO topic selection. Ranking happens once per flush. Paired user+assistant topics can
+also score for bot behavior, and user corrections score directly, so behavior-relevant
+replies can reach the existing self-impression path. Assistant-only topics and generic
+courtesy remain low value; only behavior-relevant paired replies are converted, not every
+bot message. The known tradeoff is narrower self-impression coverage because selection is
+driven by user-memory value.
 
 All production writes use `artifacts.commit()` with expected revision, version snapshots,
 evidence links and ledger entries. `ArtifactRepository.upsert()` is a seed/benchmark primitive,

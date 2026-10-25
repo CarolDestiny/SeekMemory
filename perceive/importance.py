@@ -73,11 +73,22 @@ class TopicImportance:
 
 
 def score_topic(rows: Iterable[DialogueTurn]) -> tuple[float, tuple[str, ...]]:
-    """Score one topic from user turns; assistant turns are context only."""
+    """Score one topic from user memory signals and paired bot behavior.
+
+    Assistant-only topics cannot score. Assistant behavior is considered only
+    when the topic also contains user text, so behavior evidence can be paired
+    with its user parent by the existing extraction validation.
+    """
+    rows = list(rows)
     user_text = "\n".join(
         str(turn.text or "")
         for turn in rows
         if str(turn.role or "") == "user" and str(turn.text or "").strip()
+    )
+    assistant_text = "\n".join(
+        str(turn.text or "")
+        for turn in rows
+        if str(turn.role or "") == "assistant" and str(turn.text or "").strip()
     )
     if not user_text:
         return 0.0, ()
@@ -85,6 +96,10 @@ def score_topic(rows: Iterable[DialogueTurn]) -> tuple[float, tuple[str, ...]]:
     for label, _weight, pattern in _SIGNALS:
         if pattern.search(user_text):
             reasons.append(label)
+    if _USER_CORRECTION.search(user_text):
+        reasons.append("user_correction")
+    if assistant_text and _ASSISTANT_BEHAVIOR.search(assistant_text):
+        reasons.append("assistant_behavior")
     return _refine(user_text, tuple(reasons))
 
 
@@ -147,7 +162,82 @@ def select_important_topics(
     """Return high-value topic batches in score/recency order."""
     return select_ranked_topics(rank_topics(items), cap, min_score)
 
-_WEIGHTS = {label: weight for label, weight, _pattern in _SIGNALS}
+_WEIGHTS = {
+    **{label: weight for label, weight, _pattern in _SIGNALS},
+    "user_correction": 4.0,
+    "assistant_behavior": 3.0,
+}
+_USER_CORRECTION = re.compile(
+    r"(?:\u4f60\u9519\u4e86|\u4e0d\u662f\u8fd9\u6837|\u4f60\u7406\u89e3\u9519|"
+    r"\u7b54\u975e\u6240\u95ee|\u8bf4\u5f97\u4e0d\u5bf9|\u4e0d\u662f\u8fd9\u4e2a\u610f\u601d|"
+    r"\u4f60\u641e\u9519|\u7ea0\u6b63\u4e00\u4e0b|\u6211\u8bf4\u7684\u662f|\u521a\u624d\u4e0d\u662f)"
+)
+
+_ASSISTANT_BEHAVIOR = re.compile(
+    "|".join((
+        r"\u6211\u5728\uff0c",
+        r"\u6211\u5728\u3002",
+        r"\u6211\u5728\uff01",
+        r"\u6211\u5728\u542c",
+        r"\u522b\u96be\u8fc7",
+        r"\u62b1\u62b1",
+        r"\u8f9b\u82e6\u4e86",
+        r"\u7406\u89e3\u4f60",
+        r"\u966a\u7740\u4f60",
+        r"\u542c\u4f60\u8bf4",
+        r"\u522b\u6015",
+        r"\u4f1a\u597d\u7684",
+        r"\u4e0d\u5bb9\u6613",
+        r"\u5bf9\u4e0d\u8d77",
+        r"\u62b1\u6b49",
+        r"\u6211\u9519\u4e86",
+        r"\u8bf4\u9519\u4e86",
+        r"\u521a\u624d\u8bf4\u9519",
+        r"\u66f4\u6b63",
+        r"\u7ea0\u6b63",
+        r"\u6211\u7406\u89e3\u9519",
+        r"\u4e0d\u786e\u5b9a",
+        r"\u65e0\u6cd5\u786e\u8ba4",
+        r"\u9700\u8981\u6838\u5b9e",
+        r"\u6211\u4e0d\u6e05\u695a",
+        r"\u8ba9\u6211\u786e\u8ba4",
+        r"\u6211\u5f97\u67e5\u4e00\u4e0b",
+        r"\u4e0d\u80fd\u8bf4",
+        r"\u4e0d\u65b9\u4fbf\u8bf4",
+        r"\u6d89\u53ca\u9690\u79c1",
+        r"\u4fdd\u5bc6",
+        r"\u4e0d\u4f1a\u900f\u9732",
+        r"\u4e0d\u4f20\u64ad",
+        r"\u4f60\u662f\u6307",
+        r"\u4f60\u8bf4\u7684\u662f",
+        r"\u80fd\u5426\u5177\u4f53",
+        r"\u53ef\u4ee5\u5177\u4f53\u8bf4",
+        r"\u60f3\u786e\u8ba4",
+        r"\u54ea\u4e00\u4e2a",
+        r"\u4ec0\u4e48\u610f\u601d",
+        r"\u53ef\u4ee5\u9009",
+        r"\u6709\u4e24\u4e2a\u65b9\u6848",
+        r"\u8981\u4e48",
+        r"\u4f60\u53ef\u4ee5\u9009",
+        r"\u4f60\u53ef\u4ee5\u8bd5\u8bd5",
+        r"\u6211\u4f1a\u8bb0\u4f4f",
+        r"\u6211\u4f1a\u6ce8\u610f",
+        r"\u4e0b\u6b21\u6211\u4f1a",
+        r"\u4ee5\u540e\u6211\u4f1a",
+        r"\u6211\u7b54\u5e94",
+        r"\u6211\u4f1a\u6539",
+        r"\u6211\u4f1a\u8c03\u6574",
+        r"\u6211\u4f1a\u966a\u4f60",
+        r"\u6211\u610f\u8bc6\u5230",
+        r"\u6211\u53cd\u601d",
+        r"\u6211\u5e94\u8be5",
+        r"\u6211\u505a\u5f97\u4e0d\u597d",
+        r"\u6211\u9700\u8981\u6539\u8fdb",
+        r"\u6211\u660e\u767d",
+        r"\u6211\u7406\u89e3",
+    ))
+)
+
 _ASSISTANCE = re.compile(
     r"(?:\u5e2e\u6211|\u7ed9\u6211|\u7ffb\u8bd1|\u67e5\u4e00\u4e0b|\u5199\u4e2a|\u4ee3\u7801|\u51fd\u6570|\u62a5\u9519|\u600e\u4e48\u7528|\u600e\u4e48\u914d\u7f6e)"
 )
@@ -158,6 +248,8 @@ _STRONG_PERSONAL = {
     "relationship_family",
     "plan_commitment",
     "privacy_boundary",
+    "user_correction",
+    "assistant_behavior",
 }
 
 def _true_explicit(text: str) -> bool:

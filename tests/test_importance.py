@@ -39,6 +39,40 @@ class ImportanceScoreTest(unittest.TestCase):
             4,
         )
 
+    def test_paired_assistant_behavior_and_user_correction_score(self):
+        support = [
+            turn("support", "\u6211\u8981\u6491\u4e0d\u4f4f"),
+            turn("support", "\u6211\u5728\uff0c\u522b\u96be\u8fc7", role="assistant"),
+        ]
+        score, reasons = score_topic(support)
+        self.assertGreaterEqual(score, MIN_IMPORTANCE_SCORE)
+        self.assertIn("assistant_behavior", reasons)
+
+        correction = [
+            turn("correction", "\u4f60\u7406\u89e3\u9519\u4e86\uff0c\u6211\u8bf4\u7684\u662f\u996d\u540e"),
+            turn("correction", "\u62b1\u6b49\uff0c\u6211\u521a\u624d\u8bf4\u9519\u4e86",
+                 role="assistant"),
+        ]
+        score, reasons = score_topic(correction)
+        self.assertGreaterEqual(score, MIN_IMPORTANCE_SCORE)
+        self.assertIn("user_correction", reasons)
+        self.assertIn("assistant_behavior", reasons)
+
+    def test_assistant_only_and_generic_small_talk_score_zero(self):
+        self.assertEqual(
+            score_topic([turn("support", "\u6211\u5728\uff0c\u522b\u96be\u8fc7",
+                              role="assistant")])[0],
+            0,
+        )
+        self.assertEqual(
+            score_topic([
+                turn("smalltalk", "\u4eca\u5929\u5929\u6c14\u4e0d\u9519"),
+                turn("smalltalk", "\u597d\u7684\uff0c\u6536\u5230",
+                     role="assistant"),
+            ])[0],
+            0,
+        )
+
     def test_greeting_ack_assistant_only_and_emotion_alone_are_low(self):
         self.assertEqual(score_topic([turn("hi", "\u65e9\u5b89")])[0], 0)
         self.assertEqual(
