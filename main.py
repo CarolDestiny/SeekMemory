@@ -1,14 +1,31 @@
-"""SeekMemory AstrBot entrypoint: composition only."""
+"""SeekMemory AstrBot entrypoint: explicit composition and lifecycle."""
 
 from astrbot.api import star
 
 from .adapters.astrbot_hooks import build_astrbot_hooks
 from .adapters.astrbot_plugin import AstrBotPlugin
 
+_HOOKS = build_astrbot_hooks(__name__)
+
 
 class Main(AstrBotPlugin, star.Star):
-    """Thin host entrypoint; behavior lives in adapters and orchestration."""
+    """Thin host entrypoint; all business behavior lives in services."""
 
-    initialize = AstrBotPlugin.initialize
-    terminate = AstrBotPlugin.terminate
-    locals().update(build_astrbot_hooks(__name__))
+    inject_memory = _HOOKS["inject_memory"]
+    buffer_message = _HOOKS["buffer_message"]
+    capture_reply = _HOOKS["capture_reply"]
+    record_delivery = _HOOKS["record_delivery"]
+    observe_agent_begin = _HOOKS["observe_agent_begin"]
+    observe_agent_done = _HOOKS["observe_agent_done"]
+    observe_tool = _HOOKS["observe_tool"]
+    observe_tool_result = _HOOKS["observe_tool_result"]
+    start_jobs = _HOOKS["start_jobs"]
+
+    def __init__(self, context, config: dict | None = None) -> None:
+        super().__init__(context, config)
+
+    async def initialize(self) -> None:
+        await self.start()
+
+    async def terminate(self) -> None:
+        await self.stop()

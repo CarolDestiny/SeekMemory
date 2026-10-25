@@ -7,7 +7,7 @@ import datetime
 from typing import Any, Callable
 
 
-class BackgroundTasks:
+class BackgroundService:
     """Own the lifecycle and cadence of periodic memory work.
 
     The individual operations stay in IngestService, CapacityService,

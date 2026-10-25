@@ -11,8 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from orchestration.access import AccessPolicy  # noqa: E402
-from orchestration.background_tasks import BackgroundTasks  # noqa: E402
+from services.access_service import AccessPolicy  # noqa: E402
+from services.background_service import BackgroundService  # noqa: E402
 
 
 class AccessPolicyTest(unittest.TestCase):
@@ -54,14 +54,36 @@ class MainOwnershipTest(unittest.TestCase):
     def test_main_stays_a_composition_and_hook_shell(self) -> None:
         self.assertLessEqual(len(self.source.splitlines()), 40)
 
-    def test_main_contains_no_function_definitions(self) -> None:
+    def test_main_only_contains_lifecycle_entrypoints(self) -> None:
         tree = ast.parse(self.source)
-        definitions = [
-            node
+        definitions = {
+            node.name
             for node in ast.walk(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ]
-        self.assertEqual(definitions, [])
+        }
+        self.assertEqual(definitions, {"__init__", "initialize", "terminate"})
+
+    def test_main_has_explicit_hook_bindings(self) -> None:
+        for name in (
+            "inject_memory", "buffer_message", "capture_reply",
+            "record_delivery", "observe_agent_begin", "observe_agent_done",
+            "observe_tool", "observe_tool_result", "start_jobs",
+        ):
+            self.assertIn(f"{name} = _HOOKS[\"{name}\"]", self.source)
+        self.assertNotIn("locals().update", self.source)
+
+    def test_service_collection_is_a_typed_bundle(self) -> None:
+        from dataclasses import fields
+        from services.service_collection import ServiceCollection
+
+        names = {field.name for field in fields(ServiceCollection)}
+        self.assertEqual(
+            names,
+            {
+                "access", "recall", "ingest", "capacity", "maintenance",
+                "status", "background", "runtime", "runtime_worker",
+            },
+        )
 
     def test_main_only_composes_host_adapter_modules(self) -> None:
         tree = ast.parse(self.source)
@@ -82,7 +104,7 @@ class MainOwnershipTest(unittest.TestCase):
         self.assertIn("filter.on_astrbot_loaded()", hooks)
 
 
-class BackgroundTasksLifecycleTest(unittest.TestCase):
+class BackgroundServiceLifecycleTest(unittest.TestCase):
     def test_start_and_stop_are_idempotent(self) -> None:
         class Journal:
             def __init__(self):
@@ -99,7 +121,7 @@ class BackgroundTasksLifecycleTest(unittest.TestCase):
             pass
 
         async def run():
-            background = BackgroundTasks(
+            background = BackgroundService(
                 jobs=Dummy(),
                 checkpoint=None,
                 buffer=None,
@@ -171,8 +193,8 @@ class LayerDependencyTest(unittest.TestCase):
             ]
         )
 
-    def test_orchestration_does_not_import_host_or_adapters(self) -> None:
-        imports = self._imports(ROOT / "orchestration")
+    def test_services_do_not_import_host_or_adapters(self) -> None:
+        imports = self._imports(ROOT / "services")
         self.assertFalse(
             [
                 item for item in imports

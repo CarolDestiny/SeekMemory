@@ -40,3 +40,22 @@ class AccessPolicy:
 
     def may_recall(self, session_id: str, sender_id: str) -> bool:
         return self.may_observe(session_id, sender_id)
+
+
+class AccessService:
+    """Application service wrapper around the pure access policy."""
+
+    def __init__(self, policy: AccessPolicy) -> None:
+        self.policy = policy
+
+    def may_remember(self, session_id: str, sender_id: str) -> bool:
+        return self.policy.may_remember(session_id, sender_id)
+
+    def may_observe(self, session_id: str, sender_id: str) -> bool:
+        return self.policy.may_observe(session_id, sender_id)
+
+    def may_recall(self, session_id: str, sender_id: str) -> bool:
+        return self.policy.may_recall(session_id, sender_id)
+
+    def is_group(self, session_id: str) -> bool:
+        return AccessPolicy.is_group(session_id)

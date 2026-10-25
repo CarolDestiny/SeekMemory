@@ -234,8 +234,14 @@ class RunTraceTests(unittest.TestCase):
         plugin._calls_path = lambda: "unused"
         plugin._c = lambda key, default: default
         plugin._recall_block = lambda *args: ("SAFE MEMORY", {"final_ids": ["n_1"], "mode": "strict", "picked": 1, "chars": 11})
-        plugin.runtime = AgentRuntime(
-            store=Mock(), memory_context=SeekMemoryContextAdapter(plugin._runtime_memory_context)
+        plugin.services = SimpleNamespace(
+            runtime=AgentRuntime(
+                store=Mock(),
+                memory_context=SeekMemoryContextAdapter(
+                    plugin._runtime_memory_context
+                ),
+            ),
+            capacity=SimpleNamespace(set_context_chars=lambda _value: None),
         )
         event = Event()
         event.message_str = "PRIVATE QUESTION"

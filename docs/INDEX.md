@@ -13,7 +13,7 @@ v0.3.1 + WebUI branch
 | Directory | Responsibility | Start here |
 |---|---|---|
 | core/ | Artifact and Source values, Strength, versioning, disclosure, retrieval values | core/README.md |
-| app/ | Use-case DTOs, ports, flush policy, checkpoint orchestration | docs/ARCHITECTURE.md |
+| app/ | Use-case DTOs, ports, flush policy, checkpoint policy | docs/ARCHITECTURE.md |
 | store/ | SQLite repository, cache/read model, ledger | store/README.md |
 | perceive/ | Extraction prompt, ChatModel adapter, topic buffer | perceive/README.md |
 | recall/ | Candidate retrieval, scoring, disclosure-aware assembly | recall/README.md |
@@ -44,7 +44,7 @@ main.py entrypoint
 adapters/astrbot_plugin.py + adapters/astrbot_hooks.py
         |
         v
-orchestration/ application services
+services/ application services
         |
         v
 app/ DTOs, contracts, runtime and pure policy
@@ -60,7 +60,7 @@ Rules:
 
 - core/ imports no storage, SDK, plugin or app code.
 - app/ imports core/ only; external systems stay behind ports.
-- orchestration/ composes app/, core/, recall/, perceive/ and maintain/; it imports no AstrBot or adapter code.
+- services/ composes app/, core/, recall/, perceive/ and maintain/; it imports no AstrBot or adapter code.
 - main.py contains no function bodies; host handlers live in adapters/astrbot_hooks.py and wiring lives in adapters/astrbot_plugin.py.
 - adapters/astrbot_hooks.py contains no extraction, capacity or maintenance algorithm.
 - store/ is the only place that writes SQL.

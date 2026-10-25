@@ -45,7 +45,7 @@ class PackageTests(unittest.TestCase):
             "perceive",
             "maintain",
             "webui",
-            "orchestration",
+            "services",
         ):
             for source in (ROOT / directory).rglob("*.py"):
                 target = self.root / source.relative_to(ROOT)
@@ -104,8 +104,8 @@ class PackageTests(unittest.TestCase):
                     "adapters/astrbot_hooks.py",
                     "adapters/astrbot_plugin.py",
                     "adapters/seekmemory_context.py",
-                    "orchestration/access.py",
-                    "orchestration/ingest_service.py",
+                    "services/access_service.py",
+                    "services/ingest_service.py",
                     "store/schema.sql",
                     "pages/memory/index.html",
                 }

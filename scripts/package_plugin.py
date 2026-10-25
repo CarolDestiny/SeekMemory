@@ -26,7 +26,7 @@ RUNTIME_PACKAGES = {
     "perceive",
     "maintain",
     "webui",
-    "orchestration",
+    "services",
 }
 ASSET_EXTENSIONS = {
     ".js",
