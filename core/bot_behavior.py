@@ -5,7 +5,7 @@ import math
 
 from .artifact import Artifact
 from .persona import (PERSONA_ORIGIN_DREAM, PERSONA_ORIGIN_SEED,
-                      seed_evolution_matches)
+                      PERSONA_SYNTHESIS_VERSION, seed_evolution_matches)
 
 SELF_SUBJECT = "bot:self"
 MIN_EVIDENCE = 3
@@ -82,6 +82,18 @@ def trusted_self_persona(art: Artifact) -> bool:
         return False
     h, p = art.header, art.payload
     origin = str(p.get("origin") or "")
+
+    if origin == PERSONA_ORIGIN_DREAM and p.get("synthesis") == PERSONA_SYNTHESIS_VERSION:
+        return (
+            h.said_by == "inferred"
+            and confident(h.strength.confidence)
+            and isinstance(p.get("text"), str)
+            and bool(p["text"].strip())
+            and isinstance(p.get("change_reason"), str)
+            and bool(p["change_reason"].strip())
+            and bool(h.lineage.derived_from)
+            and len(set(h.lineage.sources)) >= 1
+        )
 
     if origin == PERSONA_ORIGIN_SEED:
         corpus = p.get("corpus")

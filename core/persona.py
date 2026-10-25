@@ -14,6 +14,7 @@ from typing import Any
 
 PERSONA_ORIGIN_SEED = "seed"
 PERSONA_ORIGIN_DREAM = "dream"
+PERSONA_SYNTHESIS_VERSION = "persona.v1"
 PERSONA_ORIGINS = (PERSONA_ORIGIN_SEED, PERSONA_ORIGIN_DREAM)
 _SEED_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 _MAX_TEXT = 20000
