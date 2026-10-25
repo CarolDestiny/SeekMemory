@@ -1,20 +1,15 @@
 # 变更记录
-## 0.4.0 — 2026-10-23
+## 0.4.1 — 2026-10-25
 
-人格与印象的进化改成每天一次的「梦境」；上下文开始有预算。
+Persona foundation：seed 人格初始化、Dream 人格增量合成、同一 lineage 回滚和 90 天生命周期回归。
 
-- **梦境周期（ISSUE-0030）**：白天只把对话写进缓冲，不再抽取、不再修订印象；
-  到 `dream_time`（默认 03:30）一次跑完：逐话题抽取 → 遗忘/合并/修订印象 → 沉淀人格
-  → 落一条 `dream_runs` 台账。台账主键是日期，当天已完成的直接跳过（幂等）；
-  中途失败保留待抽取行，下次从断点续跑。`decide_flush(dream_only=True)` 放在所有
-  分支之前，杜绝 0.3.1 里 backlog 绕过白天开关的问题。
-- **上下文预算（ISSUE-0031）**：新增 `ContextBudget`（注入字数、系统提示字数、
-  群聊流水条数、历史条数）与 token 估算；注入预算有单一来源，面板可见。
-  实测语料 248→166 对时人味 3.79→3.77（等价），单轮输入省约 1.5k tokens。
-- 面板状态接口新增 `dream` 与 `budget` 两块。
-- 测试：新增 `tests/test_dream.py`（12 条），全量 279 条。
-
-## 未发布
+- **Persona file bootstrap**：新增 persona 文件 schema、corpus 质量门、seed provenance 和单一直系人格链；
+  seed 只初始化一次，不伪造 Source，不复制完整 corpus 到后续 revision。
+- **Dream persona synthesis**：Dream 基于 active persona、self-impression 和 shared memory 摘要做增量人格 revision；
+  每周期最多一次模型调用，失败保留旧人格，默认 7 天间隔。
+- **Rollback API**：`POST manage/rollbackPersona` 从历史 revision 创建新的 active revision，不删除历史。
+- **测试**：新增 90 天 fake-clock 生命周期、配置/时间边界、失败原子性、Provider 响应兼容和 90 天安全测试骨架。
+- 新增 `persona_synthesis_enabled` / `persona_synthesis_interval_days` 等配置；无数据库 schema 迁移。
 
 - Added memory-first Source evidence recall: when Artifact selection is weak, one bounded recent
   Source query can discover derived Artifacts through the existing disclosure path. Source text is
@@ -90,6 +85,20 @@
 - 入口映射：原“插件配置”继续用于配置；记忆操作改从“插件卡片 → 插件视图”进入。
   页面与截图见 [WebUI 使用说明](docs/webui/README.md)。
 
+## 0.4.0 — 2026-10-23
+
+人格与印象的进化改成每天一次的「梦境」；上下文开始有预算。
+
+- **梦境周期（ISSUE-0030）**：白天只把对话写进缓冲，不再抽取、不再修订印象；
+  到 `dream_time`（默认 03:30）一次跑完：逐话题抽取 → 遗忘/合并/修订印象 → 沉淀人格
+  → 落一条 `dream_runs` 台账。台账主键是日期，当天已完成的直接跳过（幂等）；
+  中途失败保留待抽取行，下次从断点续跑。`decide_flush(dream_only=True)` 放在所有
+  分支之前，杜绝 0.3.1 里 backlog 绕过白天开关的问题。
+- **上下文预算（ISSUE-0031）**：新增 `ContextBudget`（注入字数、系统提示字数、
+  群聊流水条数、历史条数）与 token 估算；注入预算有单一来源，面板可见。
+  实测语料 248→166 对时人味 3.79→3.77（等价），单轮输入省约 1.5k tokens。
+- 面板状态接口新增 `dream` 与 `budget` 两块。
+- 测试：新增 `tests/test_dream.py`（12 条），全量 279 条。
 
 ## 0.3.1 - 2026-10-21
 
