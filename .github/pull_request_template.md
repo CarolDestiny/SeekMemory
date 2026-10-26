@@ -1,40 +1,23 @@
-## Summary / 概括
+## Summary / 概述
 
-## Related issue / 相关问题
+Fixes # (issue)
 
-Closes #
+<!-- 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
 
-## Changes / 变更
+## Changes / 改动
 
--
+<!-- 主要改动范围；没有用户可见或运行时变化时写 N/A。 / Main scope; write N/A when there is no user-visible or runtime change. -->
 
-## What was intentionally not changed / 明确未改动的内容
+## Compatibility, data and privacy / 兼容性、数据与隐私
 
-## Verification / 验证
-
-- [ ] 语法检查
-- [ ] 单元测试
-- [ ] 基准/消融
-- [ ] 真实的 AstrBot 阶段验证
-- [ ] 线上探测（仅限 Lead 批准）
-
-命令和结果：
-
-## Data and privacy impact / 数据和隐私影响
-
-- Source 证据：
-- Artifact 字段/版本更改：
-- 数据库迁移：
-- Cross-session 披露：
-- 日志输出影响：
+<!-- 说明持久化数据、schema、公开配置、Source 证据、披露和日志的影响；如涉及数据或配置兼容，由用户决定方案；适用时更新中英 changelog。 / Describe impacts to persisted data, schema, public configuration, Source evidence, disclosure and logging; let the user choose a compatibility strategy when data or configuration is affected; update both changelogs when applicable. -->
 
 ## Risk and rollback / 风险与回滚
 
-## Agent checklist / Agent 检查清单
+<!-- 说明主要风险和回滚方式。 / Describe the main risks and rollback approach. -->
 
-- [ ] 我阅读了 AGENTS.md 和 docs/ARCHITECTURE.md。
-- [ ] 生产写入使用 DB.commit()。
-- [ ] store/db.py 之外没有 SQL。
-- [ ] 日志中没有秘密或消息正文。
-- [ ] 新行为有回归测试。
-- [ ] Lead 已审查部署步骤。
+## Checklist / 检查清单
+
+- [ ] I confirm the target branch is `main`
+- [ ] Code has passed local testing
+- [ ] I have added tests that prove my fix is effective or that my feature works

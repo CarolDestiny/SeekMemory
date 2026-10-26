@@ -16,12 +16,13 @@ The root README is the product entry point; this page is the contributor entry p
 
 ### New contributor
 
-1. [ARCHITECTURE.md](ARCHITECTURE.md)
-2. [INTERFACES.md](INTERFACES.md)
-3. [INVARIANTS.md](INVARIANTS.md)
-4. [TESTING.md](TESTING.md)
-5. [DEV-SETUP.md](DEV-SETUP.md)
-6. [CONTRACT.md](CONTRACT.md)
+1. [Repository development skill](../skills/seekmemory-dev/SKILL.md) for collaboration and implementation conventions
+2. [ARCHITECTURE.md](ARCHITECTURE.md)
+3. [INTERFACES.md](INTERFACES.md)
+4. [INVARIANTS.md](INVARIANTS.md)
+5. [TESTING.md](TESTING.md)
+6. [DEV-SETUP.md](DEV-SETUP.md)
+7. [CONTRACT.md](CONTRACT.md)
 
 ### Operator
 

@@ -38,10 +38,11 @@ Use the AstrBot plugin page for live data. For a local browser against a remote 
 
 ## Before opening a PR
 
-    python3 -m unittest discover -s tests -p 'test_*.py' -q
-    cd dashboard && pnpm test
-
-Add a regression test for every behavior change. P0/P1 changes need an issue and a PR record.
+Choose local checks by change risk; see [TESTING.md](TESTING.md) for layers and commands. Start with
+the narrowest relevant layer, then broaden for cross-layer, privacy, persistence, recovery, contract,
+schema/configuration or host-boundary changes. Manually review changed UI and visible copy using
+[the repository development skill](../skills/seekmemory-dev/SKILL.md). CI runs the full required
+suite for every PR. P0/P1 changes need an issue and a PR record.
 
 
 ## Read-only live probe

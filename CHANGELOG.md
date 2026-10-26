@@ -1,4 +1,15 @@
 # 变更记录
+
+## Unreleased
+
+### 中文
+
+- 将仓库约定拆分为 repo skill 与四份主题 reference，通过 Codex/Claude Code symlink 共用；简化 PR 模板以收集范围、验证和兼容性证据。扫描器待 UI 规则明确后再加入。PR CI 继续全量检查，本地验证按风险选择。
+
+### English
+
+- Split repository guidance into a repo skill and four focused references, shared through Codex and Claude Code symlinks; simplify the PR template to collect scope, verification and compatibility evidence. The UI scanner is deferred until its rules are settled. PR CI remains comprehensive; local checks are selected by risk.
+
 ## 0.4.1 — 2026-10-25
 
 Persona foundation：seed 人格初始化、Dream 人格增量合成、同一 lineage 回滚和 90 天生命周期回归。
