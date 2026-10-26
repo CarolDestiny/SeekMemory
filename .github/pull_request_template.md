@@ -1,5 +1,4 @@
-仓库约定见 [development skill](../skills/seekmemory-dev/SKILL.md)；此模板用于记录本次 PR 的范围和证据。
-Repository rules live in the [development skill](../skills/seekmemory-dev/SKILL.md); this template records this PR's scope and evidence.
+仓库约定见 [development skill](../skills/seekmemory-dev/SKILL.md)；本模板仅记录本次 PR 的范围与证据。 / Repository requirements live in the linked skill; this template records this PR's scope and evidence.
 
 ## Summary / 概述
 
@@ -11,10 +10,8 @@ Repository rules live in the [development skill](../skills/seekmemory-dev/SKILL.
 
 ## Related issue / 关联问题
 
-Closes #
-
-<!-- P0/P1 工作还需填写 docs/issues/PR-XXXX.md；否则写 N/A。 / P0/P1 work also needs a docs/issues/PR-XXXX.md record; otherwise write N/A. -->
-本地 PR 记录 / Local PR record:
+- 关联 Issue / Related issue: `Closes #...` / N/A
+- 本地 PR 记录 / Local PR record (P0/P1): `docs/issues/PR-XXXX.md` / N/A
 
 ## Verification / 验证
 
@@ -32,4 +29,5 @@ Closes #
 
 ## Risk and rollback / 风险与回滚
 
-<!-- 说明主要风险和回滚方式；没有则写 N/A。 / Describe the main risk and rollback path, or write N/A. -->
+- 风险 / Risk:
+- 回滚 / Rollback:
