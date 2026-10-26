@@ -1,6 +1,8 @@
 ## Summary / 概述
 
-<!-- Fixes # (issue). 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
+Fixes # (issue)
+
+<!-- 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
 
 ## Changes / 改动
 
