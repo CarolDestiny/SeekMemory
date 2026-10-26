@@ -1,15 +1,12 @@
 ## Summary / 概述
 
+Fixes # (issue)
+
 <!-- 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
 
 ## Changes / 改动
 
 <!-- 主要改动范围；没有用户可见或运行时变化时写 N/A。 / Main scope; write N/A when there is no user-visible or runtime change. -->
-
-## Related issue / 关联问题
-
-- 关联 Issue / Related issue: `Closes #...` / N/A
-- 本地 PR 记录 / Local PR record (P0/P1): `docs/issues/PR-XXXX.md` / N/A
 
 ## Verification / 验证
 
