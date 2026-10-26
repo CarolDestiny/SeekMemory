@@ -22,7 +22,6 @@ Fixes # (issue)
 
 ## Checklist / 检查清单
 
-- [ ] 已按改动风险完成必要的本地验证 / Necessary local checks were selected and completed based on risk.
-- [ ] UI 或用户可见文案已按质量约定检查；扫描器可用时人工判断全部命中 / UI and user-facing copy follow the quality guidance; manually review every scanner hit when available.
-- [ ] 如涉及磁盘数据或配置兼容，方案已由用户决定 / If on-disk data or configuration compatibility is affected, the user selected the strategy.
-- [ ] 如适用，已更新简体中文和英文 changelog / Updated Simplified Chinese and English changelogs when applicable.
+- [ ] I confirm the target branch is `main`
+- [ ] Code has passed local testing
+- [ ] I have added tests that prove my fix is effective or that my feature works
