@@ -77,7 +77,7 @@ deletes either row. Deferred rows wait for capacity headroom, and retries honor
 2. Add the protocol or DTO with a short docstring.
 3. Add it to tests/test_public_interfaces.py.
 4. Add one minimal built-in implementation.
-5. Run the full test suite.
+5. Run the contract layer and every test layer affected by the interface change. CI runs the full required suite for every PR; local validation is selected by risk as described in [TESTING.md](TESTING.md).
 
 ## Tests
 
