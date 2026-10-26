@@ -148,6 +148,16 @@ courtesy remain low value; only behavior-relevant paired replies are converted, 
 bot message. The known tradeoff is narrower self-impression coverage because selection is
 driven by user-memory value.
 
+`benchmarks/dream_eval.py` measures that tradeoff on a frozen synthetic corpus through the
+production `DreamCycle -> IngestService.flush` path, using an isolated in-memory SQLite store
+and a deterministic recorded provider. It records calls, `usage_in`/`usage_cached`/`usage_out`,
+triage seen/eligible/selected/skipped counts, artifacts, important-fact recall, modeled
+false-memory and duplicate rates, bot-behavior/self-impression coverage, and pending count/age.
+`benchmarks/dream_tradeoff.py` runs each checkout in its own process and records the `cc814ce`
+baseline against `d9fc248` in `benchmarks/results/dream_tradeoff.md`. The harness never writes
+Artifacts; `IngestService` remains the only extraction writer, and the fake provider is
+evaluation-only.
+
 All production writes use `artifacts.commit()` with expected revision, version snapshots,
 evidence links and ledger entries. `ArtifactRepository.upsert()` is a seed/benchmark primitive,
 not a production write path.

@@ -195,6 +195,26 @@ Fixed data, reproducible, no model calls
 
 每轮额外模型调用：**0**。
 
+### Dream 分诊 tradeoff
+
+**注意：以下为合成语料 + fake provider 的评测结果，不是线上生产指标；仅用于衡量调用/token 与记忆覆盖的 tradeoff。**
+
+冻结 40 个合成主题，跑生产 `DreamCycle -> IngestService.flush` 路径并对比优化前后：
+
+| 指标 | cc814ce | d9fc248 |
+|---|---:|---:|
+| 抽取调用 | 40 | 8 |
+| token | 68,199 | 18,523 |
+| 重要事实召回 | 23/23 | 15/23 |
+| bot 行为覆盖 | 8/8 | 7/8 |
+| 自我印象覆盖 | 1/1 | 0/1 |
+| pending 主题 | 0 | 17 |
+
+按预注册阈值判为 `NOT_ACCEPTED`：调用/token 下降显著，但重要事实召回与自我印象覆盖未达标，
+pending 每晚线性增长。数据集快照、命令、限制和建议详见
+[dream_tradeoff.md](benchmarks/results/dream_tradeoff.md)；生成结果政策见
+[benchmarks/results/README.md](benchmarks/results/README.md)。
+
 ### 大型群聊模拟
 
 ```text

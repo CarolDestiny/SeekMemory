@@ -1,0 +1,233 @@
+{
+  "artifacts": {
+    "active_memory": 40,
+    "by_behavior": {
+      "admit_uncertainty": 1,
+      "correct_mistake": 2,
+      "offer_choices": 1,
+      "protect_privacy": 1,
+      "respond_emotion": 3
+    },
+    "by_level": {
+      "fact": 23,
+      "scene": 16
+    },
+    "extraction_written": 39,
+    "self_impressions": 1,
+    "unclassified": 0,
+    "unclassified_details": []
+  },
+  "backlog": {
+    "bounded": true,
+    "days": 3,
+    "growth_per_day": 0.0,
+    "low_value_pool": 8,
+    "pending_delta": 0,
+    "per_day": [
+      {
+        "day": 1,
+        "extraction_calls": 8,
+        "new_topics": 8,
+        "oldest_age_days": 0.0,
+        "pending_rows": 0,
+        "pending_topics": 0
+      },
+      {
+        "day": 2,
+        "extraction_calls": 8,
+        "new_topics": 8,
+        "oldest_age_days": 0.0,
+        "pending_rows": 0,
+        "pending_topics": 0
+      },
+      {
+        "day": 3,
+        "extraction_calls": 8,
+        "new_topics": 8,
+        "oldest_age_days": 0.0,
+        "pending_rows": 0,
+        "pending_topics": 0
+      }
+    ],
+    "risk": "none"
+  },
+  "config": {
+    "backlog_days": 3,
+    "dream_batch_tokens": 6000,
+    "dream_max_batches": 100,
+    "dream_max_calls": 100,
+    "dream_token_budget": 1000000,
+    "flush_batch_cap": 6,
+    "self_impression_min_evidence": 3
+  },
+  "corpus": {
+    "behavior_episodes": {
+      "admit_uncertainty": 1,
+      "correct_mistake": 2,
+      "offer_choices": 1,
+      "protect_privacy": 1,
+      "respond_emotion": 3
+    },
+    "classes": {
+      "backlog": 3,
+      "behavior": 8,
+      "chatter": 5,
+      "fact": 24
+    },
+    "fixed_clock": "2026-10-20T03:31:00",
+    "important_topics": 32,
+    "sessions": {
+      "umo:FriendMessage:20002": 13,
+      "umo:GroupMessage:g1": 13,
+      "umo:owner": 14
+    },
+    "sha256": "173daf5403bc28d47daff59fcd9dbd864d4225180cf22f78a49974a361cad3e0",
+    "synthetic": true,
+    "topics": 40
+  },
+  "cost": {
+    "avg_input_tokens_per_call": 1564.62,
+    "calls_with_multiple_topics": 0,
+    "calls_with_output_overflow": 0,
+    "extraction_calls": 40,
+    "max_topics_per_call": 1,
+    "output_chars": 8753,
+    "prompt_chars": 7569,
+    "provider_reported": false,
+    "service_usage_snapshot": null,
+    "token_estimate": "int(chars/1.6)+4*messages",
+    "usage_cached": 0,
+    "usage_in": 62585,
+    "usage_out": 5614,
+    "usage_total": 68199
+  },
+  "dream": {
+    "batches": 40,
+    "budget": null,
+    "error_count": 0,
+    "status": "done",
+    "usage_delta": null,
+    "written": 39
+  },
+  "environment": {
+    "clock": "2026-10-20T03:31:00",
+    "deterministic": true,
+    "harness_sha256": "ac0e931bfa0e6f07c5021980518a052d38c88d7cf24f1851f922769507729f6f",
+    "model": "deterministic-recorded",
+    "network": false,
+    "platform": "win32",
+    "python": "3.12.14"
+  },
+  "feature_paths": {
+    "call_budget_parameter": false,
+    "dream_cycle": true,
+    "importance_module": false,
+    "ingest_service_flush": true,
+    "self_impression_maintenance": true,
+    "token_budget_parameter": false,
+    "triage_parameter": false,
+    "usage_callback": false,
+    "usage_snapshot": false
+  },
+  "label": "cc814ce",
+  "pending": {
+    "by_class": {},
+    "important_topics": 0,
+    "low_value_topics": 0,
+    "mean_age_days": 0.0,
+    "oldest_age_days": 0.0,
+    "queue": {
+      "dead": 0,
+      "deferred": 0,
+      "extracted": 80,
+      "pending": 0,
+      "retrying": 0
+    },
+    "ratio": 0.0,
+    "rows": 0,
+    "topics": 0
+  },
+  "quality": {
+    "behavior_coverage": 1.0,
+    "behavior_total": 8,
+    "behavior_written": 8,
+    "duplicate_artifacts": 0,
+    "duplicate_rate": 0.0,
+    "false_memory_artifacts": 8,
+    "false_memory_rate": 0.2051,
+    "important_fact_recall": 1.0,
+    "important_fact_recalled": 23,
+    "important_fact_total": 23,
+    "missing_behavior_topic_ids": [],
+    "missing_fact_keys": [],
+    "missing_fact_topic_ids": [],
+    "missing_fact_topics": {},
+    "self_impression_coverage": 1.0,
+    "self_impression_expected_kinds": [
+      "respond_emotion"
+    ],
+    "self_impression_written_kinds": [
+      "respond_emotion"
+    ]
+  },
+  "schema": "seekmemory.dream_tradeoff.v1",
+  "topics": {
+    "eligible": null,
+    "pending_important_topics": 0,
+    "pending_low_value_topics": 0,
+    "pending_topic_ids": [],
+    "pending_topics": 0,
+    "seen": 40,
+    "seen_by_class": {
+      "backlog": 3,
+      "behavior": 8,
+      "chatter": 5,
+      "fact": 24
+    },
+    "selected": 40,
+    "selected_low_value": [
+      "A11_chatter_greeting",
+      "A13_chatter_drama",
+      "A14_backlog_ping",
+      "B11_chatter_weather",
+      "B13_backlog_laugh",
+      "C10_chatter_ack",
+      "C12_chatter_weekend",
+      "C13_backlog_later"
+    ],
+    "skipped": 0,
+    "skipped_eligible": null,
+    "skipped_important": null,
+    "skipped_important_topic_ids": [],
+    "skipped_low_value": null
+  },
+  "triage": {
+    "applied": false,
+    "distribution": {},
+    "scores": {},
+    "threshold": null
+  },
+  "verdict": {
+    "acceptable": false,
+    "checks": {
+      "behavior_coverage": true,
+      "duplicate_rate": true,
+      "false_memory_rate": false,
+      "important_fact_recall": true,
+      "pending_ratio": true,
+      "self_impression_coverage": true
+    },
+    "maintenance_run": true,
+    "thresholds": {
+      "max_duplicate_rate": 0.02,
+      "max_false_memory_rate": 0.1,
+      "max_pending_ratio": 0.5,
+      "min_behavior_coverage": 0.85,
+      "min_call_reduction": 0.5,
+      "min_important_fact_recall": 0.85,
+      "min_self_impression_coverage": 0.85,
+      "min_token_reduction": 0.5
+    }
+  },
+  "warnings": 0
+}

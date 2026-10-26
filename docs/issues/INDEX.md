@@ -38,6 +38,7 @@
 | [ISSUE-0032](ISSUE-0032.md) | Agent Run Trace（GitHub #11） | P2 | in_progress | 本地轨迹、时间轴与筛选已实现；待真实宿主验收与审核。 |
 | [ISSUE-0033](ISSUE-0033-token-source-context.md) | Token 控制、Source 证据召回与 Dream 分诊批处理 | P1 | verified | Memory 优先；Source 只做证据；Dream 分诊 + 同会话批处理；真实调用/token 预算与 usage 台账。 |
 | [ISSUE-0034](ISSUE-0034.md) | 人格注入被 180 字截断：seed 人格永远只到第一段 | P1 | merged | 人格句复用单条记忆的 `_clean(180)`；改为整段注入并补 bootstrap CLI 与回归测试。 |
+| [ISSUE-0035](ISSUE-0035-dream-tradeoff-eval.md) | Dream 分诊 tradeoff 评估 | P1 | verified | 冻结合成语料 + 生产 Dream 路径 + 确定性 provider；调用 -80.0%、token -72.8%，但重要事实召回 65.2%、自我印象 0/1、pending 无界，判为 NOT_ACCEPTED。 |
 
 ## 关系图（读的顺序）
 

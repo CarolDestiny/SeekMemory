@@ -42,6 +42,7 @@ LAYERS: dict[str, tuple[str, ...]] = {
     ),
     "integration": (
         "test_absorb.py",
+        "test_dream_eval.py",
         "test_e2e_kernel.py",
         "test_continuity.py",
         "test_failure_recovery.py",
