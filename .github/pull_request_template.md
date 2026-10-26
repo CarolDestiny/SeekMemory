@@ -1,8 +1,6 @@
 ## Summary / 概述
 
-Fixes # (issue)
-
-<!-- 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
+<!-- Fixes # (issue). 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
 
 ## Changes / 改动
 
@@ -10,18 +8,12 @@ Fixes # (issue)
 
 ## Compatibility, data and privacy / 兼容性、数据与隐私
 
-- 持久化数据、schema、公开配置 / Persisted data, schema or public configuration: 无影响 / No impact; or describe the impact.
-- Lead 选择的兼容方案 / Lead-selected strategy (preserve, migrate, breaking change or reset): N/A
-- Source 证据、披露、日志 / Source evidence, disclosure and logging: 无影响 / No impact; or describe the impact.
-- Changelog: 已更新简体中文和英文 / Updated in Simplified Chinese and English / N/A
+<!-- 说明持久化数据、schema、公开配置、Source 证据、披露和日志的影响；如涉及数据或配置兼容，由用户决定方案；适用时更新中英 changelog。 / Describe impacts to persisted data, schema, public configuration, Source evidence, disclosure and logging; let the user choose a compatibility strategy when data or configuration is affected; update both changelogs when applicable. -->
 
 ## Risk and rollback / 风险与回滚
 
-- 风险 / Risk:
-- 回滚 / Rollback:
+<!-- 说明主要风险和回滚方式。 / Describe the main risks and rollback approach. -->
 
 ## Checklist / 检查清单
 
-- [ ] I confirm the target branch is `main`
-- [ ] Code has passed local testing
-- [ ] I have added tests that prove my fix is effective or that my feature works
+<!-- Confirm the target branch is main, code has passed local testing, and tests prove the fix is effective or the feature works. -->
