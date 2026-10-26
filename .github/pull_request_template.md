@@ -18,4 +18,6 @@ Fixes # (issue)
 
 ## Checklist / 检查清单
 
-<!-- Confirm the target branch is main, code has passed local testing, and tests prove the fix is effective or the feature works. -->
+- [ ] I confirm the target branch is `main`
+- [ ] Code has passed local testing
+- [ ] I have added tests that prove my fix is effective or that my feature works
