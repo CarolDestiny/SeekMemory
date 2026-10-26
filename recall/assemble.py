@@ -140,8 +140,16 @@ def _memory_sentence(art: Artifact) -> str:
 
 
 def _persona_sentence(art: Artifact) -> str:
-    """persona 层：人格沉淀本身已是第二人称自述，不再补「你记得」。"""
-    return _clean(_voice(_raw(art), "self"))
+    """persona 层：人格沉淀本身已是第二人称自述，不再补「你记得」。
+
+    人格文本是整段设定，不能按单条记忆的 180 字上限截断；只做压平空白与
+    句末整理，长度由注入预算统一约束（persona 属于 header，不会被逐条丢弃）。
+    """
+    text = " ".join(str(_voice(_raw(art), "self") or "").split())
+    text = text.strip("。！？!?；;，,、 ")
+    if len(text) > 4000:
+        text = text[:3999].rstrip() + "…"
+    return text + "。" if text else ""
 
 
 def _sentence(art: Artifact, text: str | None = None,
