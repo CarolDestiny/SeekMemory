@@ -1,5 +1,3 @@
-仓库约定见 [development skill](../skills/seekmemory-dev/SKILL.md)；本模板仅记录本次 PR 的范围与证据。 / Repository requirements live in the linked skill; this template records this PR's scope and evidence.
-
 ## Summary / 概述
 
 <!-- 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
