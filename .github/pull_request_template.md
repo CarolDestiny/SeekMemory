@@ -1,44 +1,35 @@
-## Summary / 概括
+仓库约定见 [development skill](../skills/seekmemory-dev/SKILL.md)；此模板用于记录本次 PR 的范围和证据。
+Repository rules live in the [development skill](../skills/seekmemory-dev/SKILL.md); this template records this PR's scope and evidence.
 
-## Related issue / 相关问题
+## Summary / 概述
+
+<!-- 解决什么问题，对用户或维护者有什么影响？ / What problem does this solve, and what changes for users or maintainers? -->
+
+## Changes / 改动
+
+<!-- 主要改动范围；没有用户可见或运行时变化时写 N/A。 / Main scope; write N/A when there is no user-visible or runtime change. -->
+
+## Related issue / 关联问题
 
 Closes #
 
-## Changes / 变更
-
--
-
-## What was intentionally not changed / 明确未改动的内容
+<!-- P0/P1 工作还需填写 docs/issues/PR-XXXX.md；否则写 N/A。 / P0/P1 work also needs a docs/issues/PR-XXXX.md record; otherwise write N/A. -->
+本地 PR 记录 / Local PR record:
 
 ## Verification / 验证
 
-- [ ] 语法检查
-- [ ] 单元测试
-- [ ] 基准/消融
-- [ ] 真实的 AstrBot 阶段验证
-- [ ] 线上探测（仅限 Lead 批准）
+<!-- 本地验证按风险选择；CI 对每个 PR 运行全量必需检查。 / Select local checks by risk; CI runs the full required suite for every PR. -->
+- 命令和结果 / Commands and results:
+- 跳过项及原因 / Skipped checks and reasons:
+- CI 结果 / CI result:
 
-命令和结果：
+## Compatibility, data and privacy / 兼容性、数据与隐私
 
-## Data and privacy impact / 数据和隐私影响
-
-- Source 证据：
-- Artifact 字段/版本更改：
-- 数据库迁移：
-- Cross-session 披露：
-- 日志输出影响：
+- 持久化数据、schema、公开配置 / Persisted data, schema or public configuration: 无影响 / No impact; or describe the impact.
+- Lead 选择的兼容方案 / Lead-selected strategy (preserve, migrate, breaking change or reset): N/A
+- Source 证据、披露、日志 / Source evidence, disclosure and logging: 无影响 / No impact; or describe the impact.
+- Changelog: 已更新简体中文和英文 / Updated in Simplified Chinese and English / N/A
 
 ## Risk and rollback / 风险与回滚
 
-## Agent checklist / Agent 检查清单
-
-- [ ] 我阅读了 [repository development skill](../skills/seekmemory-dev/SKILL.md) 和相关技术契约。
-- [ ] 生产 Artifact 写入使用 `ArtifactStore.commit()`；`ArtifactRepository.upsert()` 仅用于 seed/benchmark。
-- [ ] SQL 只放在 `store/`，并由 repository 持有。
-- [ ] 日志中没有秘密或消息正文。
-- [ ] 测试覆盖调用者可观察到的行为，外部依赖在系统边界 fake。
-- [ ] 本地验证按风险选择；命令、结果和跳过项原因已记录。
-- [ ] UI/可见文案改动按 skill 的 UI quality guidance 完成人工检查；如果扫描器已加入，也已判断所有命中。
-- [ ] 持久化数据和公开配置的兼容策略由 Lead 明确决定，或确认本次不受影响。
-- [ ] 新增 changelog 条目同时包含简体中文和英文。
-- [ ] CI 全量检查通过；生产变更/发布仅由 Lead 授权。
+<!-- 说明主要风险和回滚方式；没有则写 N/A。 / Describe the main risk and rollback path, or write N/A. -->
