@@ -46,13 +46,25 @@ class AdapterTest(unittest.TestCase):
         self.assertTrue(result.question)
         self.assertEqual(result.unread_count, 3)
 
+    def test_source_event_time_parses_iso_and_defaults_to_zero(self) -> None:
+        self.assertEqual(
+            AstrBotRuntimeAdapter.source_event_time(
+                {"at": "1970-01-01T00:00:10+00:00"}
+            ),
+            10.0,
+        )
+        self.assertEqual(AstrBotRuntimeAdapter.source_event_time({}), 0.0)
+        self.assertEqual(
+            AstrBotRuntimeAdapter.source_event_time({"at": "not-a-time"}), 0.0
+        )
+
     def test_event_timestamp_and_unread_watermark_are_mapped(self) -> None:
         event = Event(False)
         event.created_at = 123.5
         result = AstrBotRuntimeAdapter.from_event(
             event, "ambient", "g1", "u1", unread_count=4, unread_seq=9
         )
-        self.assertEqual(result.at, 123.5)
+        self.assertEqual(result.event_time, 123.5)
         self.assertEqual(result.unread_count, 4)
         self.assertEqual(result.unread_seq, 9)
 
@@ -62,7 +74,7 @@ class AdapterTest(unittest.TestCase):
         result = AstrBotRuntimeAdapter.from_event(
             event, "ambient", "g1", "u1", unread_count=-3, unread_seq=-2
         )
-        self.assertEqual(result.at, 0.0)
+        self.assertEqual(result.event_time, 0.0)
         self.assertEqual(result.unread_count, 0)
         self.assertEqual(result.unread_seq, 0)
 

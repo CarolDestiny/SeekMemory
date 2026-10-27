@@ -18,6 +18,7 @@ from app.runtime import (  # noqa: E402
     InMemoryStateStore,
     JsonStateStore,
     MemoryContext,
+    MemoryContextRequest,
     RunContext,
     RuntimeInput,
     SessionState,
@@ -63,14 +64,14 @@ class WakePolicyTest(unittest.TestCase):
     def test_cooldown_ignores_ambient_message(self) -> None:
         self.state.last_spoke_at = 100
         self.state.reply_cooldown_seconds = 30
-        decision = self.policy.evaluate(RuntimeInput("s1", "ambient", at=110), self.state, 110)
+        decision = self.policy.evaluate(RuntimeInput("s1", "ambient", event_time=110), self.state, 110)
         self.assertEqual(decision.action, WakeAction.IGNORE)
         self.assertEqual(decision.reason, "reply_cooldown")
 
     def test_quiet_window_does_not_ignore_direct_attention(self) -> None:
         self.state.quiet_until = 200
         decision = self.policy.evaluate(
-            RuntimeInput("s1", "hello", mentioned=True, at=150), self.state, 150
+            RuntimeInput("s1", "hello", mentioned=True, event_time=150), self.state, 150
         )
         self.assertEqual(decision.action, WakeAction.REPLY)
         self.assertEqual(decision.reason, "direct_attention")
@@ -78,7 +79,7 @@ class WakePolicyTest(unittest.TestCase):
     def test_private_always_replies_even_during_wait(self) -> None:
         self.state.wait_until = 200
         decision = self.policy.evaluate(
-            RuntimeInput("s1", "hello", private=True, at=150), self.state, 150
+            RuntimeInput("s1", "hello", private=True, event_time=150), self.state, 150
         )
         self.assertEqual(decision.action, WakeAction.REPLY)
         self.assertEqual(decision.reason, "private_message")
@@ -86,9 +87,9 @@ class WakePolicyTest(unittest.TestCase):
 
     def test_group_ambient_waits_and_direct_breaks_wait(self) -> None:
         self.state.wait_until = 200
-        ambient = self.policy.evaluate(RuntimeInput("s1", "ambient", at=150), self.state, 150)
+        ambient = self.policy.evaluate(RuntimeInput("s1", "ambient", event_time=150), self.state, 150)
         direct = self.policy.evaluate(
-            RuntimeInput("s1", "hello", private=False, mentioned=True, at=150),
+            RuntimeInput("s1", "hello", private=False, mentioned=True, event_time=150),
             self.state,
             150,
         )
@@ -98,7 +99,7 @@ class WakePolicyTest(unittest.TestCase):
     def test_addressed_question_breaks_wait(self) -> None:
         self.state.wait_until = 200
         decision = self.policy.evaluate(
-            RuntimeInput("s1", "what happened?", question=True, at=150),
+            RuntimeInput("s1", "what happened?", question=True, event_time=150),
             self.state,
             150,
         )
@@ -108,28 +109,36 @@ class WakePolicyTest(unittest.TestCase):
     def test_direct_attention_breaks_wait(self) -> None:
         self.state.wait_until = 200
         decision = self.policy.evaluate(
-            RuntimeInput("s1", "hello", mentioned=True, at=150), self.state, 150
+            RuntimeInput("s1", "hello", mentioned=True, event_time=150), self.state, 150
         )
         self.assertEqual(decision.action, WakeAction.REPLY)
         self.assertEqual(decision.reason, "direct_attention")
 
+    def test_wake_policy_uses_now_not_event_time_for_windows(self) -> None:
+        self.state.quiet_until = 150
+        decision = self.policy.evaluate(
+            RuntimeInput("s1", "ambient", event_time=100), self.state, 200
+        )
+        self.assertEqual(decision.action, WakeAction.OBSERVE)
+        self.assertEqual(decision.reason, "ambient_message")
+
     def test_wait_expires_at_exact_deadline(self) -> None:
         self.state.wait_until = 200
         decision = self.policy.evaluate(
-            RuntimeInput("s1", "hello", mentioned=True, at=200), self.state, 200
+            RuntimeInput("s1", "hello", mentioned=True, event_time=200), self.state, 200
         )
         self.assertEqual(decision.action, WakeAction.REPLY)
 
     def test_cooldown_expires_at_exact_deadline(self) -> None:
         self.state.cooldown_until = 130
         decision = self.policy.evaluate(
-            RuntimeInput("s1", "ambient", at=130), self.state, 130
+            RuntimeInput("s1", "ambient", event_time=130), self.state, 130
         )
         self.assertEqual(decision.action, WakeAction.OBSERVE)
 
     def test_ambient_message_observes(self) -> None:
         self.assertEqual(
-            self.policy.evaluate(RuntimeInput("s1", "ambient", at=10), self.state, 10).action,
+            self.policy.evaluate(RuntimeInput("s1", "ambient", event_time=10), self.state, 10).action,
             WakeAction.OBSERVE,
         )
 
@@ -153,15 +162,17 @@ class WakePolicyTest(unittest.TestCase):
         expected = MemoryContext(text="block", info={"final_ids": ("a1",)})
 
         class Memory:
-            def build_context(self, event):
-                seen.append(event)
+            def build_context(self, request):
+                seen.append(request)
                 return expected
 
-        event = RuntimeInput("s1", "hello")
         runtime = AgentRuntime(InMemoryStateStore(), memory_context=Memory())
-        context = runtime.build_context(event)
+        context = runtime.build_context(RuntimeInput("s1", "hello"))
         self.assertIs(context, expected)
-        self.assertIs(seen[0], event)
+        self.assertIsInstance(seen[0], MemoryContextRequest)
+        self.assertEqual(seen[0].session_id, "s1")
+        self.assertEqual(seen[0].query, "hello")
+        self.assertEqual(seen[0].reason, "inbound")
         self.assertEqual(context.text, "block")
         self.assertEqual(context.info["final_ids"], ("a1",))
 
@@ -179,18 +190,55 @@ class WakePolicyTest(unittest.TestCase):
         runtime.observe(RuntimeInput("s1", "ambient"))
         self.assertEqual(store.get("s1").last_seen_at, 500)
 
+    def test_observe_uses_explicit_now_not_event_time(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        runtime.observe(RuntimeInput("s1", "ambient", event_time=10), now=500)
+        state = store.get("s1")
+        self.assertEqual(state.last_event_at, 10)
+        self.assertEqual(state.last_seen_at, 500)
+
+    def test_stale_event_is_ignored_without_mutating_state(self) -> None:
+        store = InMemoryStateStore()
+        runtime = AgentRuntime(store, clock=lambda: 100)
+        runtime.observe(RuntimeInput("s1", "new", event_time=200), now=200)
+        before = store.get("s1")
+        decision = runtime.observe(
+            RuntimeInput("s1", "old", event_time=100), now=300
+        )
+        after = store.get("s1")
+        self.assertEqual(decision.reason, "stale_event")
+        self.assertEqual(after.last_seen_at, before.last_seen_at)
+        self.assertEqual(after.last_event_at, before.last_event_at)
+
+    def test_stale_event_is_traced_without_content(self) -> None:
+        store = InMemoryStateStore()
+        trace = Trace()
+        runtime = AgentRuntime(store, trace=trace, clock=lambda: 100)
+        runtime.observe(RuntimeInput("s1", "new", event_time=200), now=200)
+        runtime.observe(RuntimeInput("s1", "old", event_time=100), now=300)
+        stale = [row for row in trace.rows if row[1] == "stale_event"]
+        self.assertEqual(len(stale), 1)
+        self.assertNotIn("old", str(stale[0]))
+
     def test_runtime_cooldown_uses_real_timestamps(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 100)
-        runtime.observe(RuntimeInput("s1", "hello", at=100, mentioned=True))
+        runtime.observe(
+            RuntimeInput("s1", "hello", event_time=100, mentioned=True), now=100
+        )
         runtime.mark_delivered("s1", now=100)
         self.assertEqual(store.get("s1").cooldown_until, 130)
         self.assertEqual(
-            runtime.observe(RuntimeInput("s1", "ambient", at=110)).action,
+            runtime.observe(
+                RuntimeInput("s1", "ambient", event_time=110), now=110
+            ).action,
             WakeAction.IGNORE,
         )
         self.assertEqual(
-            runtime.observe(RuntimeInput("s1", "ambient", at=140)).action,
+            runtime.observe(
+                RuntimeInput("s1", "ambient", event_time=140), now=140
+            ).action,
             WakeAction.OBSERVE,
         )
 
@@ -201,7 +249,9 @@ class WakePolicyTest(unittest.TestCase):
         state.quiet_until = 130
         store.put(state)
         self.assertEqual(
-            runtime.observe(RuntimeInput("s1", "hello", at=110)).action,
+            runtime.observe(
+                RuntimeInput("s1", "hello", event_time=110), now=110
+            ).action,
             WakeAction.IGNORE,
         )
         state = store.get("s1")
@@ -209,11 +259,15 @@ class WakePolicyTest(unittest.TestCase):
         state.wait_until = 170
         store.put(state)
         self.assertEqual(
-            runtime.observe(RuntimeInput("s1", "ambient", at=150)).action,
+            runtime.observe(
+                RuntimeInput("s1", "ambient", event_time=150), now=150
+            ).action,
             WakeAction.WAIT,
         )
         self.assertEqual(
-            runtime.observe(RuntimeInput("s1", "ambient", at=180)).action,
+            runtime.observe(
+                RuntimeInput("s1", "ambient", event_time=180), now=180
+            ).action,
             WakeAction.OBSERVE,
         )
 
@@ -250,9 +304,9 @@ class WakePolicyTest(unittest.TestCase):
     def test_ambient_wait_extends_on_new_traffic(self) -> None:
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 100, wait_seconds=5)
-        runtime.observe(RuntimeInput("s1", "first", at=100))
+        runtime.observe(RuntimeInput("s1", "first", event_time=100), now=100)
         self.assertEqual(store.get("s1").wait_until, 105)
-        runtime.observe(RuntimeInput("s1", "second", at=102))
+        runtime.observe(RuntimeInput("s1", "second", event_time=102), now=102)
         self.assertEqual(store.get("s1").wait_until, 107)
 
     def test_delivery_clears_unread_and_updates_last_spoke(self) -> None:
@@ -274,6 +328,28 @@ class WakePolicyTest(unittest.TestCase):
         loaded = second.get("s1")
         self.assertEqual(loaded.quiet_until, 123)
         self.assertEqual(loaded.unread_count, 4)
+
+    def test_json_state_store_round_trips_new_runtime_fields(self) -> None:
+        path = os.path.join(
+            tempfile.mkdtemp(prefix="seekmem_runtime_state_new_"), "state.json"
+        )
+        first = JsonStateStore(path)
+        state = first.get("s1")
+        state.last_event_at = 11.0
+        state.proactive_due_at = 22.0
+        state.proactive_attempts = 2
+        state.last_action_at = 33.0
+        state.last_action_kind = "host_action"
+        state.last_action_status = "succeeded"
+        first.put(state)
+
+        loaded = JsonStateStore(path).get("s1")
+        self.assertEqual(loaded.last_event_at, 11.0)
+        self.assertEqual(loaded.proactive_due_at, 22.0)
+        self.assertEqual(loaded.proactive_attempts, 2)
+        self.assertEqual(loaded.last_action_at, 33.0)
+        self.assertEqual(loaded.last_action_kind, "host_action")
+        self.assertEqual(loaded.last_action_status, "succeeded")
 
     def test_runtime_surface_has_no_test_only_mutators(self) -> None:
         for name in ("quiet", "wait", "mark_read"):
@@ -307,8 +383,11 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(state.wait_until, 0.0)
         self.assertEqual(state.next_retry_at, 0.0)
         self.assertEqual(state.reply_cooldown_seconds, 30.0)
+        self.assertEqual(state.proactive_due_at, 0.0)
+        self.assertEqual(state.proactive_attempts, 0)
+        self.assertEqual(state.last_action_status, "")
         runtime = AgentRuntime(store, clock=lambda: 200)
-        runtime.observe(RuntimeInput("s1", "ambient", at=200))
+        runtime.observe(RuntimeInput("s1", "ambient", event_time=200), now=200)
         runtime.mark_delivered("s1", now=200)
 
     def test_deferred_dispatch_owns_generate_send_and_record(self) -> None:
@@ -362,7 +441,7 @@ class WakePolicyTest(unittest.TestCase):
             recorder=recorder,
         )
         result = asyncio.run(runtime.dispatch_deferred(RunContext(
-            session_id="s1", text="hello", source_id="u1", bot_id="bot", at=100,
+            session_id="s1", text="hello", source_id="u1", bot_id="bot", event_time=100,
         )))
         self.assertTrue(result.delivered)
         self.assertEqual(result.assistant_source_id, "a1")
@@ -370,6 +449,112 @@ class WakePolicyTest(unittest.TestCase):
         self.assertEqual(sender.sent, [("s1", "deferred reply")])
         self.assertEqual(recorder.replies[0]["run_id"], "run-1")
         self.assertEqual(store.get("s1").wait_until, 0.0)
+
+    def test_deferred_delivery_does_not_clear_newer_unread_state(self) -> None:
+        class Model:
+            runtime = None
+
+            async def complete(self, session_id, prompt, system_prompt=None):
+                self.runtime.observe(
+                    RuntimeInput(
+                        "s1", "newer", mentioned=True, unread_count=1, event_time=101
+                    ),
+                    now=101,
+                )
+                return "reply"
+
+        class Sender:
+            async def send(self, session_id, text):
+                return True
+
+        class Recorder:
+            def new_run_id(self):
+                return "run-interleave"
+
+            def record_deferred_reply(self, **kwargs):
+                return SimpleNamespace(response_chars=5, assistant_source_id="a1")
+
+            def record_deferred_error(self, **kwargs):
+                raise AssertionError("must not fail")
+
+        store = InMemoryStateStore()
+        state = store.get("s1")
+        state.wait_until = 100
+        store.put(state)
+        model = Model()
+        runtime = AgentRuntime(
+            store,
+            clock=lambda: 100,
+            model_gateway=model,
+            message_sender=Sender(),
+            recorder=Recorder(),
+        )
+        model.runtime = runtime
+
+        result = asyncio.run(
+            runtime.dispatch_deferred(
+                RunContext(session_id="s1", text="old", event_time=100), now=100
+            )
+        )
+        self.assertTrue(result.delivered)
+        state = store.get("s1")
+        self.assertEqual(state.unread_count, 1)
+        self.assertEqual(state.last_spoke_at, 100)
+
+    def test_deferred_failure_keeps_retry_after_concurrent_newer_event(self) -> None:
+        class Model:
+            runtime = None
+
+            async def complete(self, session_id, prompt, system_prompt=None):
+                self.runtime.accept_user(
+                    RuntimeInput(
+                        "s1", "newer", mentioned=True, unread_count=1, event_time=101
+                    ),
+                    now=101,
+                )
+                raise RuntimeError("provider failed")
+
+        class Sender:
+            async def send(self, session_id, text):
+                return True
+
+        class Recorder:
+            def new_run_id(self):
+                return "run-concurrent-failure"
+
+            def record_user(self, **kwargs):
+                return SimpleNamespace(source_id="u2", turn_id="t2")
+
+            def record_deferred_reply(self, **kwargs):
+                raise AssertionError("must not record a reply")
+
+            def record_deferred_error(self, **kwargs):
+                pass
+
+        store = InMemoryStateStore()
+        state = store.get("s1")
+        state.wait_until = 100
+        store.put(state)
+        model = Model()
+        runtime = AgentRuntime(
+            store,
+            clock=lambda: 100,
+            model_gateway=model,
+            message_sender=Sender(),
+            recorder=Recorder(),
+        )
+        model.runtime = runtime
+
+        result = asyncio.run(
+            runtime.dispatch_deferred(
+                RunContext(session_id="s1", text="old", event_time=100), now=100
+            )
+        )
+        self.assertFalse(result.delivered)
+        state = store.get("s1")
+        self.assertEqual(state.unread_count, 1)
+        self.assertGreater(state.wait_until, 100)
+        self.assertEqual(state.next_retry_at, state.wait_until)
 
     def test_deferred_dispatch_rejects_not_due_state(self) -> None:
         class Model:
@@ -407,7 +592,7 @@ class WakePolicyTest(unittest.TestCase):
             recorder=Recorder(),
         )
         result = asyncio.run(runtime.dispatch_deferred(RunContext(
-            session_id="s1", text="hello", source_id="u1", at=100,
+            session_id="s1", text="hello", source_id="u1", event_time=500,
         )))
         self.assertFalse(result.delivered)
         self.assertEqual(result.error, "not_due")
@@ -420,7 +605,7 @@ class WakePolicyTest(unittest.TestCase):
         store.put(state)
         runtime = AgentRuntime(store, clock=lambda: 100)
         result = asyncio.run(runtime.dispatch_deferred(RunContext(
-            session_id="s1", text="", source_id="", at=100,
+            session_id="s1", text="", source_id="", event_time=100,
         )))
         self.assertFalse(result.delivered)
         self.assertEqual(result.error, "not_due")
@@ -441,7 +626,7 @@ class WakePolicyTest(unittest.TestCase):
         store.put(state)
         runtime = AgentRuntime(store, clock=lambda: 100)
         result = asyncio.run(runtime.dispatch_deferred(RunContext(
-            session_id="s1", text="hello", source_id="u1", at=100,
+            session_id="s1", text="hello", source_id="u1", event_time=100,
         )))
         self.assertEqual(result.error, "runtime_port_missing")
         self.assertEqual(store.get("s1").wait_until, 100)
@@ -453,7 +638,7 @@ class WakePolicyTest(unittest.TestCase):
             message_sender=Sender(),
         )
         result = asyncio.run(runtime.dispatch_deferred(RunContext(
-            session_id="s1", text="hello", source_id="u1", at=100,
+            session_id="s1", text="hello", source_id="u1", event_time=100,
         )))
         self.assertEqual(result.error, "recorder_missing")
         self.assertEqual(store.get("s1").wait_until, 100)
@@ -493,7 +678,7 @@ class WakePolicyTest(unittest.TestCase):
             recorder=recorder,
         )
         result = asyncio.run(runtime.dispatch_deferred(RunContext(
-            session_id="s1", text="hello", source_id="u1", at=100,
+            session_id="s1", text="hello", source_id="u1", event_time=100,
         )))
         self.assertFalse(result.delivered)
         self.assertEqual(result.error, "RuntimeError")
@@ -548,18 +733,21 @@ class AgentRuntimeNormalPathTest(unittest.TestCase):
 
     def test_accept_user_records_then_observes(self) -> None:
         receipt = self.runtime.accept_user(
-            RuntimeInput("s1", "hello", speaker_id="u1", mentioned=True, at=100),
+            RuntimeInput("s1", "hello", speaker_id="u1", mentioned=True, event_time=100),
             event_id="e1",
             deferred=True,
         )
         self.assertEqual((receipt.source_id, receipt.turn_id), ("u1", "t1"))
         self.assertEqual(receipt.decision.action, WakeAction.REPLY)
         self.assertEqual(self.recorder.users[0]["event_id"], "e1")
+        self.assertEqual(
+            self.recorder.users[0]["at"], "1970-01-01T00:01:40+00:00"
+        )
         self.assertTrue(self.recorder.users[0]["deferred"])
         self.assertEqual(self.store.get("s1").last_action, "reply")
 
     def test_reply_delivery_and_error_use_recorder_owner(self) -> None:
-        self.runtime.observe(RuntimeInput("s1", "hello", mentioned=True, at=100))
+        self.runtime.observe(RuntimeInput("s1", "hello", mentioned=True, event_time=100))
         reply = self.runtime.record_reply(
             run_id="run-1",
             session_id="s1",

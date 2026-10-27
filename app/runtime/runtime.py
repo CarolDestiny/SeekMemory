@@ -8,6 +8,7 @@ from typing import Callable
 from .contracts import (
     MemoryContext,
     MemoryContextPort,
+    MemoryContextRequest,
     MessageSender,
     ModelGateway,
     RunContext,
@@ -49,15 +50,52 @@ class AgentRuntime:
         self.message_sender = message_sender
         self.recorder = recorder
 
-    def build_context(self, event: RuntimeInput) -> MemoryContext:
+    def build_context(
+        self,
+        event: RuntimeInput,
+        *,
+        now: float | None = None,
+        reason: str = "inbound",
+    ) -> MemoryContext:
         if self.memory_context is None:
             return MemoryContext()
-        return self.memory_context.build_context(event)
+        moment = self.clock() if now is None else float(now)
+        request = MemoryContextRequest(
+            session_id=event.session_id,
+            query=event.text,
+            speaker_id=event.speaker_id,
+            private=event.private,
+            event_time=event.event_time,
+            received_at=event.received_at,
+            now=moment,
+            reason=reason,
+        )
+        return self.memory_context.build_context(request)
 
-    def observe(self, event: RuntimeInput) -> RunDecision:
-        now = event.at if event.at else self.clock()
+    def _save(self, state: SessionState) -> None:
+        state.revision = max(0, int(state.revision or 0)) + 1
+        self.store.put(state)
+
+    def observe(
+        self, event: RuntimeInput, *, now: float | None = None
+    ) -> RunDecision:
+        moment = self.clock() if now is None else float(now)
         state = self.store.get(event.session_id)
-        state.last_seen_at = now
+        event_time = float(event.event_time or 0.0)
+        if event_time > 0 and state.last_event_at > event_time:
+            if self.trace is not None:
+                self.trace.record(
+                    "runtime",
+                    "stale_event",
+                    {
+                        "event_time": event_time,
+                        "last_event_at": state.last_event_at,
+                    },
+                )
+            return RunDecision(WakeAction.IGNORE, "stale_event")
+        if event_time > 0:
+            state.last_event_at = max(state.last_event_at, event_time)
+        state.last_seen_at = moment
         observed_seq = max(0, int(event.unread_seq))
         if observed_seq <= int(state.last_unread_seq):
             observed_seq = int(state.last_unread_seq) + 1
@@ -65,7 +103,7 @@ class AgentRuntime:
         state.unread_count = max(
             int(event.unread_count), observed_seq - int(state.read_through_seq), 1
         )
-        decision = self.policy.evaluate(event, state, now)
+        decision = self.policy.evaluate(event, state, moment)
         state.last_action = decision.action.value
         state.last_reason = decision.reason
         if decision.action is WakeAction.REPLY:
@@ -78,8 +116,8 @@ class AgentRuntime:
         ):
             # Debounce new ambient traffic: every ambient event extends the
             # pending wait instead of letting an earlier deadline fire.
-            state.wait_until = max(state.wait_until, now + self.wait_seconds)
-        self.store.put(state)
+            state.wait_until = max(state.wait_until, moment + self.wait_seconds)
+        self._save(state)
         if self.trace is not None:
             self.trace.record(
                 "runtime",
@@ -98,6 +136,7 @@ class AgentRuntime:
         *,
         event_id: str = "",
         deferred: bool = False,
+        now: float | None = None,
     ) -> UserRunReceipt:
         """Record one user turn, then evaluate the run decision.
 
@@ -107,14 +146,23 @@ class AgentRuntime:
         """
         recorded = None
         if self.recorder is not None:
+            seen_at = event.event_time or event.received_at
+            at = (
+                datetime.datetime.fromtimestamp(
+                    float(seen_at), datetime.timezone.utc
+                ).isoformat(timespec="seconds")
+                if float(seen_at or 0.0) > 0
+                else ""
+            )
             recorded = self.recorder.record_user(
                 session_id=event.session_id,
                 text=event.text,
                 speaker_id=event.speaker_id,
                 event_id=event_id,
+                at=at,
                 deferred=deferred,
             )
-        decision = self.observe(event)
+        decision = self.observe(event, now=now)
         return UserRunReceipt(
             decision=decision,
             source_id=recorded.source_id if recorded is not None else "",
@@ -202,6 +250,7 @@ class AgentRuntime:
         self,
         context: RunContext,
         *,
+        now: float | None = None,
         max_attempts: int = 3,
         base_seconds: float = 2.0,
     ) -> RunResult:
@@ -214,15 +263,15 @@ class AgentRuntime:
         session_id = str(context.session_id or "")
         source_id = str(context.source_id or "")
         text = str(context.text or "").strip()
-        now = float(context.at or self.clock())
+        moment = self.clock() if now is None else float(now)
         run_id = str(context.run_id or "")
         state = self.store.get(session_id)
-        wait_due = state.wait_until > 0 and state.wait_until <= now
-        retry_due = state.next_retry_at > 0 and state.next_retry_at <= now
+        wait_due = state.wait_until > 0 and state.wait_until <= moment
+        retry_due = state.next_retry_at > 0 and state.next_retry_at <= moment
         if not (wait_due or retry_due):
             return RunResult(run_id, session_id, False, error="not_due")
-        if state.wait_until > now or (
-            state.next_retry_at and state.next_retry_at > now
+        if state.wait_until > moment or (
+            state.next_retry_at and state.next_retry_at > moment
         ):
             return RunResult(run_id, session_id, False, error="not_due")
         if not text:
@@ -235,15 +284,19 @@ class AgentRuntime:
         if not run_id:
             run_id = self.recorder.new_run_id()
 
-        attempts = self.claim_dispatch(session_id, source_id, now)
+        attempts = self.claim_dispatch(session_id, source_id, moment)
+        claimed_revision = self.store.get(session_id).revision
         runtime_input = RuntimeInput(
             session_id=session_id,
             text=text,
             private=False,
-            at=now,
+            event_time=context.event_time,
+            received_at=context.received_at,
         )
         try:
-            memory = self.build_context(runtime_input)
+            memory = self.build_context(
+                runtime_input, now=moment, reason="deferred"
+            )
             reply = await self.model_gateway.complete(
                 session_id, text, memory.text or None
             )
@@ -255,17 +308,20 @@ class AgentRuntime:
         except Exception as exc:  # noqa: BLE001 - runtime action is fail-open
             self.schedule_retry(
                 session_id,
-                now,
+                moment,
                 attempts,
                 max_attempts=max_attempts,
                 base_seconds=base_seconds,
+                expected_revision=claimed_revision,
             )
             self.recorder.record_deferred_error(
                 run_id=run_id,
                 session_id=session_id,
                 user_source_id=source_id,
                 error=exc,
-                at=datetime.datetime.now().isoformat(timespec="seconds"),
+                at=datetime.datetime.fromtimestamp(
+                    moment, datetime.timezone.utc
+                ).isoformat(timespec="seconds"),
             )
             if self.trace is not None:
                 self.trace.record(
@@ -280,7 +336,9 @@ class AgentRuntime:
                 error=type(exc).__name__,
             )
 
-        at = datetime.datetime.now().isoformat(timespec="seconds")
+        at = datetime.datetime.fromtimestamp(
+            moment, datetime.timezone.utc
+        ).isoformat(timespec="seconds")
         recorded = self.recorder.record_deferred_reply(
             run_id=run_id,
             session_id=session_id,
@@ -289,7 +347,7 @@ class AgentRuntime:
             user_source_id=source_id,
             at=at,
         )
-        self.mark_delivered(session_id, now)
+        self.mark_delivered(session_id, moment, expected_revision=claimed_revision)
         if self.trace is not None:
             self.trace.record(
                 "runtime",
@@ -309,7 +367,7 @@ class AgentRuntime:
         state.wait_until = 0.0
         state.next_retry_at = 0.0
         state.last_seen_at = self.clock() if now is None else now
-        self.store.put(state)
+        self._save(state)
         return state
 
     def claim_dispatch(self, session_id: str, source_id: str,
@@ -325,14 +383,21 @@ class AgentRuntime:
         state.wait_until = 0.0
         state.next_retry_at = 0.0
         state.last_seen_at = moment
-        self.store.put(state)
+        self._save(state)
         return state.dispatch_attempts
 
     def schedule_retry(self, session_id: str, now: float, attempts: int,
                        max_attempts: int = 3, base_seconds: float = 2.0,
-                       cap_seconds: float = 60.0) -> SessionState:
+                       cap_seconds: float = 60.0,
+                       expected_revision: int | None = None) -> SessionState:
         """Schedule bounded retry for a failed deferred dispatch."""
         state = self.store.get(session_id)
+        if expected_revision is not None and state.revision != expected_revision:
+            # A newer accept_user/observe may have installed its own wait or
+            # retry deadline. Preserve that newer timing; otherwise the old
+            # failure still needs a retry even though the revision changed.
+            if state.wait_until > 0 or state.next_retry_at > 0:
+                return state
         tries = max(1, int(attempts))
         if tries >= max(1, int(max_attempts)):
             state.wait_until = 0.0
@@ -345,18 +410,25 @@ class AgentRuntime:
             state.next_retry_at = state.wait_until
             state.last_reason = "dispatch_retry"
         state.last_action = "wait"
-        self.store.put(state)
+        self._save(state)
         return state
 
-    def mark_delivered(self, session_id: str, now: float | None = None) -> SessionState:
+    def mark_delivered(
+        self,
+        session_id: str,
+        now: float | None = None,
+        *,
+        expected_revision: int | None = None,
+    ) -> SessionState:
         moment = self.clock() if now is None else now
         state = self.store.get(session_id)
         state.last_spoke_at = moment
         state.cooldown_until = moment + max(0.0, state.reply_cooldown_seconds)
-        state.unread_count = 0
-        state.read_through_seq = max(state.read_through_seq, state.last_unread_seq)
-        state.wait_until = 0.0
-        state.next_retry_at = 0.0
-        state.dispatch_attempts = 0
-        self.store.put(state)
+        if expected_revision is None or state.revision == expected_revision:
+            state.unread_count = 0
+            state.read_through_seq = max(state.read_through_seq, state.last_unread_seq)
+            state.wait_until = 0.0
+            state.next_retry_at = 0.0
+            state.dispatch_attempts = 0
+        self._save(state)
         return state

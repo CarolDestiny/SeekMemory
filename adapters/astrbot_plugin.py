@@ -20,9 +20,9 @@ from ..app.runtime import (
     JsonStateStore,
     JsonlEpisodeStore,
     MemoryContext,
+    MemoryContextRequest,
     RunContext,
     RunRecorder,
-    RuntimeInput,
     RuntimeWorker,
     Scheduler,
     ToolPolicy,
@@ -57,6 +57,7 @@ from ..webui.journal import Journal
 from ..webui.routes import WebRoutes
 from ..webui.trace import Trace
 from .astrbot_hooks import AstrBotHooks
+from .astrbot_runtime import AstrBotRuntimeAdapter
 
 class AstrBotPlugin(AstrBotHooks):
     """Composition root and lifecycle owner for the AstrBot host.
@@ -240,6 +241,8 @@ class AstrBotPlugin(AstrBotHooks):
             interval_seconds=lambda: float(self._c("runtime_tick_seconds", 5)),
             max_attempts=lambda: int(self._c("runtime_dispatch_max_attempts", 3)),
             base_seconds=lambda: float(self._c("runtime_dispatch_backoff_seconds", 2)),
+            trace=self.trace,
+            clock=time.time,
         )
         background = BackgroundService(
             jobs=self.jobs,
@@ -358,9 +361,9 @@ class AstrBotPlugin(AstrBotHooks):
             self.journal.record("plugin", "failed", "记忆引擎初始化失败", error=e)
             logger.error(f"[seekmemory] 初始化失败，记忆功能降级：{e}")
 
-    def _runtime_memory_context(self, event: RuntimeInput) -> MemoryContext:
+    def _runtime_memory_context(self, request: MemoryContextRequest) -> MemoryContext:
         block, info = self._recall_block(
-            event.text, event.session_id, event.private, event.speaker_id
+            request.query, request.session_id, request.private, request.speaker_id
         )
         return MemoryContext(text=block, info=info)
 
@@ -416,5 +419,6 @@ class AstrBotPlugin(AstrBotHooks):
             text=str(source.get("text") or "").strip(),
             source_id=str(source.get("id") or ""),
             bot_id=str(getattr(self, "_self_id", "") or "bot"),
-            at=now,
+            event_time=AstrBotRuntimeAdapter.source_event_time(source),
+            received_at=now,
         )

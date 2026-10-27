@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Callable
 
-from .contracts import RunContext, RunResult
+from .contracts import Clock, RunContext, RunResult, TraceSink
 from .runtime import AgentRuntime
 from .scheduler import Scheduler
 
@@ -29,6 +28,9 @@ class RuntimeWorker:
         interval_seconds: Callable[[], float],
         max_attempts: Callable[[], int],
         base_seconds: Callable[[], float],
+        trace: TraceSink | None = None,
+        max_concurrency: int = 4,
+        clock: Clock | None = None,
     ) -> None:
         self.runtime = runtime
         self.scheduler = scheduler
@@ -38,17 +40,47 @@ class RuntimeWorker:
         self.interval_seconds = interval_seconds
         self.max_attempts = max_attempts
         self.base_seconds = base_seconds
-        self._lock = asyncio.Lock()
+        self.trace = trace
+        self.max_concurrency = max(1, int(max_concurrency))
+        self.clock = clock
         self._dispatching: set[str] = set()
+        self._semaphores: dict[object, asyncio.Semaphore] = {}
+
+    def _record_failure(self, status: str, error: Exception, session_id: str = "") -> None:
+        if self.trace is not None:
+            self.trace.record(
+                "runtime",
+                status,
+                {
+                    "session_id": session_id,
+                    "error": type(error).__name__,
+                },
+            )
+
+    def _moment(self, now: float | None) -> float:
+        if now is not None:
+            return float(now)
+        if self.clock is None:
+            raise RuntimeError("runtime worker requires now or an injected clock")
+        return float(self.clock())
+
+    def _semaphore(self) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        semaphore = self._semaphores.get(loop)
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(self.max_concurrency)
+            self._semaphores[loop] = semaphore
+        return semaphore
 
     async def dispatch(self, session_id: str, now: float | None = None) -> RunResult | None:
         if not self.enabled() or session_id in self._dispatching:
             return None
         self._dispatching.add(session_id)
         try:
-            moment = time.time() if now is None else float(now)
+            moment = self._moment(now)
             return await self.runtime.dispatch_deferred(
                 self.run_context(session_id, moment),
+                now=moment,
                 max_attempts=max(1, int(self.max_attempts())),
                 base_seconds=max(0.1, float(self.base_seconds())),
             )
@@ -58,22 +90,32 @@ class RuntimeWorker:
     async def tick(self, now: float | None = None) -> int:
         if not self.enabled():
             return 0
-        dispatched = 0
-        async with self._lock:
-            moment = time.time() if now is None else float(now)
+        moment = self._moment(now)
+        try:
             due = self.scheduler.due(self.session_ids(100), moment)
-            for item in due:
+        except Exception as exc:  # noqa: BLE001 - scheduler failure is fail-open
+            self._record_failure("scheduler_failed", exc)
+            return 0
+        if not due:
+            return 0
+        semaphore = self._semaphore()
+
+        async def run_one(item) -> bool:
+            async with semaphore:
                 try:
-                    if await self.dispatch(item.session_id, moment) is not None:
-                        dispatched += 1
-                except Exception:
-                    continue
-        return dispatched
+                    result = await self.dispatch(item.session_id, moment)
+                except Exception as exc:  # noqa: BLE001 - one run must not stop the tick
+                    self._record_failure("dispatch_failed", exc, item.session_id)
+                    return False
+                return result is not None
+
+        results = await asyncio.gather(*(run_one(item) for item in due))
+        return sum(1 for result in results if result)
 
     async def run_forever(self) -> None:
         while True:
             await asyncio.sleep(max(1.0, float(self.interval_seconds())))
             try:
                 await self.tick()
-            except Exception:
-                continue
+            except Exception as exc:  # noqa: BLE001 - keep the worker alive
+                self._record_failure("worker_tick_failed", exc)
