@@ -4,7 +4,7 @@
 
 ### 中文
 
-- 修复运行时交付与恢复：冷却从实际发送完成计时，失败从实际失败时刻退避；普通和延迟回复仅确认本轮覆盖的消息。延迟任务取消或重启后仍可有限重试，轮询与直接调用共用并发上限。复用现有会话状态字段，无数据库迁移或新增配置；宿主不再用待抽取队列长度推算未读数。AstrBot 在适配层统一用 UTC+8，保留内核原型与历史 Source。
+- 修复运行时交付与恢复：冷却从实际发送完成计时，失败从实际失败时刻退避；普通和延迟回复仅确认本轮覆盖的消息。延迟任务取消或重启后仍可有限重试，轮询与直接调用共用并发上限。复用现有会话状态字段，无数据库迁移或新增配置；宿主不再用待抽取队列长度推算未读数。AstrBot 通过同一适配层时间钩子统一为 UTC+8，新时间带 +08:00 标记，内核读取格式和历史 Source 保持不变；没有时区的旧值保留原样。
 
 - 修复 seed 人格注入被 180 字上限截断：`_persona_sentence()` 不再复用单条记忆的清洗函数，人格整段进入常驻层，长度只由注入预算约束；新增 `scripts/bootstrap_persona.py`（含 `--dry-run`）与回归测试 `tests/test_persona_injection.py`（ISSUE-0034 / PR-0034）。
 
@@ -16,7 +16,7 @@
 
 ### English
 
-- Fix runtime delivery and recovery: cooldown starts at confirmed send completion, backoff starts at failure, and normal/deferred replies acknowledge only input covered by that run. Deferred work remains recoverable with bounded retries after cancellation or restart, and scans/direct calls share a concurrency limit. Existing session fields are reused without database migration or new configuration. The host no longer infers unread counts from the extraction queue. AstrBot normalizes time to UTC+8 in the adapter while preserving kernel contracts and historical Sources.
+- Fix runtime delivery and recovery: cooldown starts at confirmed send completion, backoff starts at failure, and normal/deferred replies acknowledge only input covered by that run. Deferred work remains recoverable with bounded retries after cancellation or restart, and scans/direct calls share a concurrency limit. Existing session fields are reused without database migration or new configuration. The host no longer infers unread counts from the extraction queue. AstrBot uses one adapter time hook for UTC+8 with an explicit +08:00 offset on new timestamps, preserving kernel read formats, historical Sources, and legacy values without timezone information.
 
 - Fix seed persona injection being truncated at 180 characters: `_persona_sentence()` no longer reuses the per-memory cleaner, so the whole persona reaches the pinned layer and only the injection budget bounds it; add `scripts/bootstrap_persona.py` (with `--dry-run`) and the `tests/test_persona_injection.py` regression suite (ISSUE-0034 / PR-0034).
 

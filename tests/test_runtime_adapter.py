@@ -58,10 +58,10 @@ class AdapterTest(unittest.TestCase):
             AstrBotRuntimeAdapter.source_event_time({"at": "not-a-time"}), 0.0
         )
 
-    def test_source_time_without_offset_is_utc8(self) -> None:
+    def test_source_time_without_offset_has_unknown_instant(self) -> None:
         self.assertEqual(
             AstrBotRuntimeAdapter.source_event_time({"at": "1970-01-01T08:00:10"}),
-            10.0,
+            0.0,
         )
 
     def test_event_timestamp_and_unread_watermark_are_mapped(self) -> None:

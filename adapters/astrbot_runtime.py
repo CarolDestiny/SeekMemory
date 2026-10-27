@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import datetime
 import time
 
-from .astrbot_time import UTC8
+from .astrbot_time import utc8_timestamp
 
 try:
     from ..app.runtime.contracts import (
@@ -62,15 +61,7 @@ class AstrBotRuntimeAdapter:
     def source_event_time(source: dict | None) -> float:
         """Map a persisted Source timestamp to epoch seconds; unknown -> 0."""
         raw = str((source or {}).get("at") or "")
-        if not raw:
-            return 0.0
-        try:
-            value = datetime.datetime.fromisoformat(raw)
-            if value.tzinfo is None:
-                value = value.replace(tzinfo=UTC8)
-            return value.timestamp()
-        except (TypeError, ValueError):
-            return 0.0
+        return utc8_timestamp(raw)
 
     @staticmethod
     def event_id(event) -> str:

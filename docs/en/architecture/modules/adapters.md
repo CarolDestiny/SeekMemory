@@ -18,7 +18,11 @@ main.py defines the plugin entry point and delegates lifecycle; composition and 
 - ProviderChatModel wraps a host extraction/persona provider as ChatModel.
 - SeekMemoryContextAdapter connects Runtime's MemoryContextPort to the existing RecallService.
 
-AstrBot uses UTC+8 at its time boundary. astrbot_time.py converts user, assistant, and runtime-audit timestamps before the existing RunRecorder writes, retaining the kernel's naive ISO string shape. AstrBotBuffer reuses Buffer admission and topic algorithms, normalizes host projection times, and calculates queue age in UTC+8. AstrBotSourceView gives extraction the same normalized Source read view, including recovered processed parents. Historical Sources are not rewritten. Host timestamps without an offset mean UTC+8, and offset-aware timestamps are converted. Runtime decisions still use epoch timestamps independently of the OS timezone, without changing core, Buffer, or extraction contracts.
+AstrBot centralizes time conversion in utc8_time_hook in astrbot_time.py. User messages, normal replies, deferred replies, and runtime audit pass through this adapter hook before calling the existing RunRecorder. New timestamps use ISO strings with an explicit +08:00 offset; kernel read views retain the existing naive format. Fields, kernel interfaces, and database structure are unchanged.
+
+AstrBotBuffer reuses Buffer admission and topic algorithms, while AstrBotSourceView reuses SourceStore queries. Both use the same hook for pending projections and recovered processed parents. Historical Sources are not rewritten. Offset-aware legacy values are converted; missing, invalid, and offset-free values are preserved without guessing the old machine's timezone or deriving absolute event time or queue age from them. Whether those old values were wrong, or derived memories need revision, requires a separate audit against the original environment.
+
+Runtime decisions still use epoch timestamps independently of the OS timezone. Time adaptation does not change core, Buffer, extraction contracts, or nightly-maintenance scheduling configuration.
 
 AccessService uses full session UMO, sender ID, owner/trusted configuration, and observe_groups to decide whether a message can be observed/recalled. Host event details are normalized only at this boundary; plugin composition owns config and database path.
 

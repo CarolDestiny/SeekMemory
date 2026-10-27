@@ -18,7 +18,11 @@ main.py 定义插件入口并委托 lifecycle；组合和 wiring 位于 adapters
 - ProviderChatModel 将宿主 extraction/persona provider 包装为 ChatModel。
 - SeekMemoryContextAdapter 将 Runtime 的 MemoryContextPort 接到现有 RecallService。
 
-AstrBot 的时间入口统一使用 UTC+8：astrbot_time.py 在既有 RunRecorder 写入前转换用户、助手和运行审计时间，保留内核原有的无时区 ISO 字符串格式。AstrBotBuffer 复用 Buffer 的入队与话题算法，只在宿主投影中统一时间，并按 UTC+8 计算队列年龄；AstrBotSourceView 为抽取提供相同时间格式的原文读取视图，覆盖已处理父消息的读回。历史 Source 不改写。无时区的宿主时间按 UTC+8 解释，带偏移的时间先换算。运行时决策仍使用 epoch 时间戳，不依赖操作系统时区，不修改 core、Buffer 或抽取原型。
+AstrBot 的时间转换集中在 astrbot_time.py 的 utc8_time_hook：用户消息、普通回复、延迟回复和运行审计均在适配层经过同一钩子，再调用既有 RunRecorder。新写入时间采用带 +08:00 的 ISO 字符串，保留明确时区；内核读取视图仍采用原有的无时区格式。字段、内核接口和数据库结构不变。
+
+AstrBotBuffer 复用 Buffer 的入队与话题算法，AstrBotSourceView 复用 SourceStore 的原文查询；两者通过同一时间钩子转换投影，覆盖待处理消息和已处理父消息的读回。历史 Source 不改写。带时区的旧值正常换算；缺失、无效或没有时区的旧值保留原样，不猜测历史机器时区，也不凭此生成绝对事件时间或队列年龄。旧值本身是否错误、已生成的记忆是否需要修订，仍需结合原运行环境另行核对。
+
+运行时决策仍使用 epoch 时间戳，不依赖操作系统时区。时间适配不修改 core、Buffer 或抽取原型，不改变夜间维护的调度配置。
 
 AccessService 基于完整 session UMO、sender ID、owner/trusted 配置和 observe_groups 决定观察/召回；宿主事件信息只在边界处转换。配置和 database path 仍由插件组合根读取。
 

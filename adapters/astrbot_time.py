@@ -1,4 +1,4 @@
-"""UTC+8 timestamp policy at the AstrBot write and buffer boundaries."""
+"""One UTC+8 time hook at AstrBot's write and read boundaries."""
 
 from __future__ import annotations
 
@@ -23,9 +23,15 @@ except ImportError:  # standalone adapter imports in scripts/tests
 UTC8 = datetime.timezone(datetime.timedelta(hours=8))
 
 
-def utc8_time(at: str = "") -> str:
-    """Keep the kernel's naive ISO shape, interpreting host timestamps in UTC+8."""
+def utc8_time_hook(at: str = "", *, now: bool = False, projection: bool = False) -> str:
+    """Convert known instants; preserve legacy values with no timezone.
+
+    New writes keep the UTC+8 offset. Kernel views keep their existing naive
+    ISO shape. Empty historical values stay empty; only a write asks for now.
+    """
     if not at:
+        if not now:
+            return at
         value = datetime.datetime.now(UTC8)
     else:
         try:
@@ -33,8 +39,20 @@ def utc8_time(at: str = "") -> str:
         except (TypeError, ValueError):
             return at
         if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC8)
-    return value.astimezone(UTC8).replace(tzinfo=None).isoformat(timespec="seconds")
+            return at
+    value = value.astimezone(UTC8)
+    if projection:
+        value = value.replace(tzinfo=None)
+    return value.isoformat(timespec="seconds")
+
+
+def utc8_timestamp(at: str) -> float:
+    """Return a known instant, or zero when the legacy timezone is unknown."""
+    try:
+        value = datetime.datetime.fromisoformat(utc8_time_hook(at))
+        return value.timestamp() if value.tzinfo is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
 
 
 class AstrBotSourceView:
@@ -48,7 +66,7 @@ class AstrBotSourceView:
 
     def recent_sources(self, *, since: str, limit: int) -> list[Source]:
         return [
-            replace(source, at=utc8_time(source.at))
+            replace(source, at=utc8_time_hook(source.at, projection=True))
             for source in self.sources.recent_sources(since=since, limit=limit)
         ]
 
@@ -60,7 +78,7 @@ class AstrBotSourceView:
 
     def sources_by_ids(self, source_ids: list[str]) -> dict[str, Source]:
         return {
-            key: replace(source, at=utc8_time(source.at))
+            key: replace(source, at=utc8_time_hook(source.at, projection=True))
             for key, source in self.sources.sources_by_ids(source_ids).items()
         }
 
@@ -69,45 +87,72 @@ class AstrBotRunRecorder(RunRecorder):
     """Normalize at the host boundary, then reuse every existing write path."""
 
     def record_user(self, *, at: str = "", **fields: Any) -> RecordedTurn:
-        return super().record_user(at=utc8_time(at), **fields)
+        return super().record_user(at=utc8_time_hook(at, now=True), **fields)
 
     def record_reply(self, *, at: str = "", **fields: Any) -> RecordedReply:
-        return super().record_reply(at=utc8_time(at), **fields)
+        return super().record_reply(at=utc8_time_hook(at, now=True), **fields)
 
     def record_delivery(self, *, at: str = "", **fields: Any) -> None:
-        super().record_delivery(at=utc8_time(at), **fields)
+        super().record_delivery(at=utc8_time_hook(at, now=True), **fields)
 
     def record_error(self, *, at: str = "", **fields: Any) -> None:
-        super().record_error(at=utc8_time(at), **fields)
+        super().record_error(at=utc8_time_hook(at, now=True), **fields)
 
 
 class AstrBotBuffer(Buffer):
     """Use UTC+8 views and age signals without changing the kernel Buffer."""
 
+    def __init__(self, path: str = "", extraction=None) -> None:
+        self._source_times: dict[str, float] = {}
+        super().__init__(path, extraction=extraction)
+
+    @staticmethod
+    def _view(turn: DialogueTurn) -> DialogueTurn:
+        return replace(turn, at=utc8_time_hook(turn.at, projection=True))
+
     def add(
         self, umo: str, text: str, sender: str = "", source_id: str = "",
         at: str = "", *, source: Source | None = None, **fields: Any,
     ) -> DialogueTurn | None:
-        return super().add(
-            umo, text, sender, source_id,
-            utc8_time(at or (source.at if source is not None else "")),
+        at = utc8_time_hook(at or (source.at if source is not None else ""), now=True)
+        turn = super().add(
+            umo, text, sender, source_id, at,
             source=source, **fields,
+        )
+        if turn is not None:
+            stamp = utc8_timestamp(at)
+            if stamp and turn.source_id:
+                self._source_times[turn.source_id] = stamp
+            self.items = [self._view(item) for item in self.items]
+            self._timestamps()
+            return self._view(turn)
+        return None
+
+    def _topic_for(
+        self, turn: DialogueTurn, previous: DialogueTurn | None,
+        parent: DialogueTurn | None = None,
+    ) -> str:
+        return super()._topic_for(
+            self._view(turn),
+            self._view(previous) if previous is not None else None,
+            self._view(parent) if parent is not None else None,
         )
 
     def _load_projection(self) -> None:
         super()._load_projection()
-        self.items = [replace(turn, at=utc8_time(turn.at)) for turn in self.items]
+        self._source_times = {
+            turn.source_id: utc8_timestamp(turn.at) for turn in self.items
+            if turn.source_id
+        }
+        self.items = [self._view(turn) for turn in self.items]
         self.last_ts = max(self._timestamps(), default=0.0)
 
     def _timestamps(self) -> list[float]:
-        stamps = []
-        for turn in self.items:
-            try:
-                value = datetime.datetime.fromisoformat(utc8_time(turn.at))
-                stamps.append(value.replace(tzinfo=UTC8).timestamp())
-            except (TypeError, ValueError):
-                continue
-        return stamps
+        pending_ids = {turn.source_id for turn in self.items}
+        self._source_times = {
+            key: stamp for key, stamp in self._source_times.items() if key in pending_ids
+        }
+        return [stamp for stamp in self._source_times.values() if stamp]
 
     def oldest_topic_age(self) -> float:
         stamps = self._timestamps()
