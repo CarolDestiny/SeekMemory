@@ -344,9 +344,11 @@ class RuntimeWorkerTest(unittest.TestCase):
             runtime = Runtime()
             runtime.started = asyncio.Event()
             runtime.release = asyncio.Event()
+            store = InMemoryStateStore()
+            store.put(SessionState("s1", wait_until=100))
             worker = RuntimeWorker(
                 runtime=runtime,
-                scheduler=Scheduler(InMemoryStateStore()),
+                scheduler=Scheduler(store),
                 enabled=lambda: True,
                 session_ids=lambda limit: [],
                 run_context=lambda session_id, now: RunContext(
@@ -357,7 +359,7 @@ class RuntimeWorkerTest(unittest.TestCase):
                 base_seconds=lambda: 2,
             )
             first = asyncio.create_task(worker.dispatch("s1", 100))
-            await runtime.started.wait()
+            await asyncio.wait_for(runtime.started.wait(), timeout=1)
             second = await worker.dispatch("s1", 100)
             self.assertIsNone(second)
             runtime.release.set()

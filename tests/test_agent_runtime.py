@@ -277,7 +277,7 @@ class WakePolicyTest(unittest.TestCase):
         runtime.observe(
             RuntimeInput("s1", "hello", unread_count=3, unread_seq=7)
         )
-        state = runtime.mark_delivered("s1", now=200)
+        state = runtime.mark_delivered("s1", now=200, read_through_seq=7)
         self.assertEqual(state.read_through_seq, 7)
         self.assertEqual(state.unread_count, 0)
 
@@ -313,7 +313,9 @@ class WakePolicyTest(unittest.TestCase):
         store = InMemoryStateStore()
         runtime = AgentRuntime(store, clock=lambda: 200)
         runtime.observe(RuntimeInput("s1", "hello", mentioned=True, unread_count=2))
-        state = runtime.mark_delivered("s1")
+        state = runtime.mark_delivered(
+            "s1", read_through_seq=store.get("s1").last_unread_seq,
+        )
         self.assertEqual(state.unread_count, 0)
         self.assertEqual(state.last_spoke_at, 200)
 

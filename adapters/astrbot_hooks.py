@@ -7,7 +7,6 @@ module path directly would leave them unbound after plugin reload.
 
 from __future__ import annotations
 
-import datetime
 import time
 
 from astrbot.api import logger
@@ -136,9 +135,6 @@ class AstrBotHooks:
                 text,
                 umo,
                 sender,
-                # Match the old post-buffer-add observation: a non-deferred
-                # turn is already present in the projection when observe runs.
-                unread_count=len(self.buffer.items) + (0 if deferred else 1),
             )
             receipt = self.services.runtime.accept_user(
                 runtime_input,
@@ -187,7 +183,6 @@ class AstrBotHooks:
                 speaker_id=str(event.get_self_id()),
                 turn_id=AstrBotRuntimeAdapter.reply_turn_id(event, text),
                 reply_to=AstrBotRuntimeAdapter.user_source_id(event),
-                at=datetime.datetime.now().isoformat(timespec="seconds"),
                 recall_ids=AstrBotRuntimeAdapter.recall_ids(event),
             )
             if reply is not None:
@@ -214,6 +209,7 @@ class AstrBotHooks:
             tool_calls=AstrBotRuntimeAdapter.tool_calls(event),
             user_source_id=AstrBotRuntimeAdapter.user_source_id(event),
             assistant_source_id=assistant_source_id,
+            read_through_seq=AstrBotRuntimeAdapter.read_through_seq(event),
         )
         AstrBotRuntimeAdapter.mark_episode_recorded(event)
         self._maybe_prune_runtime_episodes()

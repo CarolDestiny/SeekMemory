@@ -76,11 +76,12 @@ class RunContext:
 
 @dataclass(frozen=True)
 class UserRunReceipt:
-    """Identity attached to one accepted user turn."""
+    """Identity and acknowledgement cursor for one accepted user turn."""
 
     decision: RunDecision
     source_id: str = ""
     turn_id: str = ""
+    read_through_seq: int | None = None
 
 
 @dataclass(frozen=True)

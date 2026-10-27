@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime
 import time
 
+from .astrbot_time import UTC8
+
 try:
     from ..app.runtime.contracts import (
         RunDecision,
@@ -65,7 +67,7 @@ class AstrBotRuntimeAdapter:
         try:
             value = datetime.datetime.fromisoformat(raw)
             if value.tzinfo is None:
-                value = value.replace(tzinfo=datetime.timezone.utc)
+                value = value.replace(tzinfo=UTC8)
             return value.timestamp()
         except (TypeError, ValueError):
             return 0.0
@@ -151,6 +153,12 @@ class AstrBotRuntimeAdapter:
     def bind_user(cls, event, receipt: UserRunReceipt) -> None:
         cls.set_extra(event, "_seekmemory_turn_id", receipt.turn_id)
         cls.set_extra(event, "_seekmemory_source_id", receipt.source_id)
+        cls.set_extra(event, "_seekmemory_read_through_seq", receipt.read_through_seq)
+
+    @classmethod
+    def read_through_seq(cls, event) -> int | None:
+        value = cls.get_extra(event, "_seekmemory_read_through_seq")
+        return value if type(value) is int and value >= 0 else None
 
     @classmethod
     def bind_reply(cls, event, reply: RecordedReply) -> None:

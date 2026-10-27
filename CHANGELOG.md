@@ -4,6 +4,8 @@
 
 ### 中文
 
+- 修复运行时交付与恢复：冷却从实际发送完成计时，失败从实际失败时刻退避；普通和延迟回复仅确认本轮覆盖的消息。延迟任务取消或重启后仍可有限重试，轮询与直接调用共用并发上限。复用现有会话状态字段，无数据库迁移或新增配置；宿主不再用待抽取队列长度推算未读数。AstrBot 在适配层统一用 UTC+8，保留内核原型与历史 Source。
+
 - 修复 seed 人格注入被 180 字上限截断：`_persona_sentence()` 不再复用单条记忆的清洗函数，人格整段进入常驻层，长度只由注入预算约束；新增 `scripts/bootstrap_persona.py`（含 `--dry-run`）与回归测试 `tests/test_persona_injection.py`（ISSUE-0034 / PR-0034）。
 
 - 新增 Dream 分诊 tradeoff 评估：冻结 40 个合成主题，跑生产 `DreamCycle -> IngestService.flush` 路径，用确定性 fake provider 记录调用、token、分诊选择、抽取量、重要事实召回、错误记忆/重复率、bot 行为/自我印象覆盖和 pending 数量/年龄，并对比 `cc814ce` 与 `d9fc248`。当前按预注册阈值判为 `NOT_ACCEPTED`：调用 -80.0%、token -72.8%，但重要事实召回 65.2%、自我印象覆盖 0/1，pending 每晚线性增长 8 个主题。不修改分诊算法，不新增服务/表/写入路径。
@@ -13,6 +15,8 @@
 - 将仓库约定拆分为 repo skill 与四份主题 reference，通过 Codex/Claude Code symlink 共用；简化 PR 模板以收集范围、验证和兼容性证据。扫描器待 UI 规则明确后再加入。PR CI 继续全量检查，本地验证按风险选择。
 
 ### English
+
+- Fix runtime delivery and recovery: cooldown starts at confirmed send completion, backoff starts at failure, and normal/deferred replies acknowledge only input covered by that run. Deferred work remains recoverable with bounded retries after cancellation or restart, and scans/direct calls share a concurrency limit. Existing session fields are reused without database migration or new configuration. The host no longer infers unread counts from the extraction queue. AstrBot normalizes time to UTC+8 in the adapter while preserving kernel contracts and historical Sources.
 
 - Fix seed persona injection being truncated at 180 characters: `_persona_sentence()` no longer reuses the per-memory cleaner, so the whole persona reaches the pinned layer and only the injection budget bounds it; add `scripts/bootstrap_persona.py` (with `--dry-run`) and the `tests/test_persona_injection.py` regression suite (ISSUE-0034 / PR-0034).
 

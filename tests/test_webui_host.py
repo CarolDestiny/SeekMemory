@@ -457,6 +457,34 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.plugin.store.sources.latest_user_source(event.unified_msg_origin))
         self.assertFalse(any(row["kind"] == "recall" for row in self.plugin.journal.events))
 
+    async def test_normal_delivery_acknowledges_its_event_without_clearing_new_input(self) -> None:
+        await self.restart_plugin(open_to="everyone")
+        first = PrivateEvent("first", "delivery-first")
+        second = PrivateEvent("second", "delivery-second")
+        third = PrivateEvent("third", "delivery-third")
+        await self.plugin.buffer_message(first)
+        await self.plugin.buffer_message(second)
+        self.assertEqual(first.get_extra("_seekmemory_read_through_seq"), 1)
+        self.assertEqual(second.get_extra("_seekmemory_read_through_seq"), 2)
+        await self.plugin.capture_reply(
+            first, SimpleNamespace(role="assistant", completion_text="first reply"),
+        )
+        await self.plugin.record_delivery(first)
+        state = self.plugin.services.runtime.store.get(first.unified_msg_origin)
+        self.assertEqual(state.read_through_seq, 1)
+        self.assertEqual(state.unread_count, 1)
+        await self.plugin.capture_reply(
+            second, SimpleNamespace(role="assistant", completion_text="second reply"),
+        )
+        await self.plugin.record_delivery(second)
+        await self.plugin.buffer_message(third)
+        await self.plugin.record_delivery(first)
+        state = self.plugin.services.runtime.store.get(first.unified_msg_origin)
+        self.assertEqual(state.read_through_seq, 2)
+        self.assertEqual(state.unread_count, 1)
+        episodes = self.plugin.store.runtime_episodes.list(first.unified_msg_origin)
+        self.assertEqual(len(episodes), 2)
+
     async def test_deferred_wait_dispatches_once(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-defer"

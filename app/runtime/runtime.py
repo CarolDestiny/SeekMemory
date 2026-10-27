@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
+from dataclasses import replace
 from typing import Callable
 
 from .contracts import (
@@ -167,6 +169,10 @@ class AgentRuntime:
             decision=decision,
             source_id=recorded.source_id if recorded is not None else "",
             turn_id=recorded.turn_id if recorded is not None else "",
+            read_through_seq=(
+                None if decision.reason == "stale_event"
+                else self.store.get(event.session_id).last_unread_seq
+            ),
         )
 
     def record_reply(
@@ -206,9 +212,11 @@ class AgentRuntime:
         tool_calls=(),
         user_source_id: str = "",
         assistant_source_id: str = "",
+        read_through_seq: int | None = None,
         now: float | None = None,
     ) -> None:
         """Commit one delivered normal run and advance session delivery state."""
+        moment = self.clock() if now is None else float(now)
         if self.recorder is not None:
             self.recorder.record_delivery(
                 run_id=run_id,
@@ -219,8 +227,11 @@ class AgentRuntime:
                 tool_calls=tool_calls,
                 user_source_id=user_source_id,
                 assistant_source_id=assistant_source_id,
+                at=datetime.datetime.fromtimestamp(
+                    moment, datetime.timezone.utc
+                ).isoformat(timespec="seconds"),
             )
-        self.mark_delivered(session_id, now)
+        self.mark_delivered(session_id, moment, read_through_seq=read_through_seq)
 
     def record_error(
         self,
@@ -284,8 +295,15 @@ class AgentRuntime:
         if not run_id:
             run_id = self.recorder.new_run_id()
 
+        if (state.last_dispatched_source_id == source_id
+                and state.dispatch_attempts >= max(1, int(max_attempts))):
+            self.schedule_retry(session_id, moment, state.dispatch_attempts,
+                                max_attempts=max_attempts)
+            return RunResult(run_id, session_id, False, error="dispatch_dead")
         attempts = self.claim_dispatch(session_id, source_id, moment)
-        claimed_revision = self.store.get(session_id).revision
+        # Stores may return a live object. Keep a stable, run-local snapshot so
+        # old pending markers can be distinguished from newer scheduled work.
+        claimed = replace(self.store.get(session_id))
         runtime_input = RuntimeInput(
             session_id=session_id,
             text=text,
@@ -305,30 +323,37 @@ class AgentRuntime:
             sent = await self.message_sender.send(session_id, reply)
             if sent is False:
                 raise RuntimeError("send_failed")
-        except Exception as exc:  # noqa: BLE001 - runtime action is fail-open
-            self.schedule_retry(
-                session_id,
-                moment,
-                attempts,
-                max_attempts=max_attempts,
-                base_seconds=base_seconds,
-                expected_revision=claimed_revision,
-            )
-            self.recorder.record_deferred_error(
-                run_id=run_id,
-                session_id=session_id,
-                user_source_id=source_id,
-                error=exc,
-                at=datetime.datetime.fromtimestamp(
-                    moment, datetime.timezone.utc
-                ).isoformat(timespec="seconds"),
-            )
-            if self.trace is not None:
-                self.trace.record(
-                    "runtime",
-                    "deferred_failed",
-                    {"error": type(exc).__name__, "attempt": attempts},
+        except (Exception, asyncio.CancelledError) as exc:
+            try:
+                # Refresh after awaited model/send work; explicit start time
+                # remains a lower bound without an advancing injected clock.
+                moment = max(moment, float(self.clock()))
+                self.schedule_retry(
+                    session_id,
+                    moment,
+                    attempts,
+                    max_attempts=max_attempts,
+                    base_seconds=base_seconds,
+                    claimed=claimed,
                 )
+                self.recorder.record_deferred_error(
+                    run_id=run_id,
+                    session_id=session_id,
+                    user_source_id=source_id,
+                    error=exc,
+                    at=datetime.datetime.fromtimestamp(
+                        moment, datetime.timezone.utc
+                    ).isoformat(timespec="seconds"),
+                )
+                if self.trace is not None:
+                    self.trace.record(
+                        "runtime",
+                        "deferred_failed",
+                        {"error": type(exc).__name__, "attempt": attempts},
+                    )
+            finally:
+                if isinstance(exc, asyncio.CancelledError):
+                    raise exc
             return RunResult(
                 run_id,
                 session_id,
@@ -336,6 +361,7 @@ class AgentRuntime:
                 error=type(exc).__name__,
             )
 
+        moment = max(moment, float(self.clock()))
         at = datetime.datetime.fromtimestamp(
             moment, datetime.timezone.utc
         ).isoformat(timespec="seconds")
@@ -347,7 +373,10 @@ class AgentRuntime:
             user_source_id=source_id,
             at=at,
         )
-        self.mark_delivered(session_id, moment, expected_revision=claimed_revision)
+        self.mark_delivered(
+            session_id, moment, claimed=claimed,
+            read_through_seq=claimed.last_unread_seq,
+        )
         if self.trace is not None:
             self.trace.record(
                 "runtime",
@@ -380,8 +409,8 @@ class AgentRuntime:
             state.dispatch_attempts = 0
         state.last_dispatched_source_id = sid
         state.dispatch_attempts += 1
-        state.wait_until = 0.0
-        state.next_retry_at = 0.0
+        # Retain the durable pending marker while model/send is in flight. The
+        # worker owns in-process dedupe; a restarted worker can recover this run.
         state.last_seen_at = moment
         self._save(state)
         return state.dispatch_attempts
@@ -389,16 +418,23 @@ class AgentRuntime:
     def schedule_retry(self, session_id: str, now: float, attempts: int,
                        max_attempts: int = 3, base_seconds: float = 2.0,
                        cap_seconds: float = 60.0,
-                       expected_revision: int | None = None) -> SessionState:
+                       claimed: SessionState | None = None) -> SessionState:
         """Schedule bounded retry for a failed deferred dispatch."""
         state = self.store.get(session_id)
-        if expected_revision is not None and state.revision != expected_revision:
-            # A newer accept_user/observe may have installed its own wait or
-            # retry deadline. Preserve that newer timing; otherwise the old
-            # failure still needs a retry even though the revision changed.
-            if state.wait_until > 0 or state.next_retry_at > 0:
+        if claimed is not None:
+            # Do not resurrect input already acknowledged by another delivery,
+            # or overwrite work/deadlines installed after this claim. Unchanged
+            # retained markers still belong to this failed attempt.
+            if (self._pending_changed(state, claimed)
+                    or (state.read_through_seq > claimed.read_through_seq
+                        and state.read_through_seq >= claimed.last_unread_seq)):
                 return state
         tries = max(1, int(attempts))
+        if (claimed is not None and state.last_unread_seq > claimed.last_unread_seq
+                and tries >= max(1, int(max_attempts))):
+            # Exhaustion belongs to the old Source. The retained marker lets
+            # the worker pick up the newer Source with its own attempt budget.
+            return state
         if tries >= max(1, int(max_attempts)):
             state.wait_until = 0.0
             state.next_retry_at = 0.0
@@ -413,22 +449,41 @@ class AgentRuntime:
         self._save(state)
         return state
 
+    @staticmethod
+    def _pending_changed(state: SessionState, claimed: SessionState) -> bool:
+        """Whether the pending work belongs to a transition after this claim."""
+        return (
+            state.last_dispatched_source_id != claimed.last_dispatched_source_id
+            or state.wait_until != claimed.wait_until
+            or state.next_retry_at != claimed.next_retry_at
+        )
+
     def mark_delivered(
         self,
         session_id: str,
         now: float | None = None,
         *,
-        expected_revision: int | None = None,
+        claimed: SessionState | None = None,
+        read_through_seq: int | None = None,
     ) -> SessionState:
         moment = self.clock() if now is None else now
         state = self.store.get(session_id)
-        state.last_spoke_at = moment
-        state.cooldown_until = moment + max(0.0, state.reply_cooldown_seconds)
-        if expected_revision is None or state.revision == expected_revision:
-            state.unread_count = 0
-            state.read_through_seq = max(state.read_through_seq, state.last_unread_seq)
-            state.wait_until = 0.0
-            state.next_retry_at = 0.0
-            state.dispatch_attempts = 0
+        state.last_spoke_at = max(state.last_spoke_at, moment)
+        state.cooldown_until = max(
+            state.cooldown_until,
+            state.last_spoke_at + max(0.0, state.reply_cooldown_seconds),
+        )
+        if read_through_seq is not None:
+            cursor = min(state.last_unread_seq, max(0, int(read_through_seq)))
+            advanced = cursor > state.read_through_seq
+            state.read_through_seq = max(state.read_through_seq, cursor)
+            state.unread_count = max(0, state.last_unread_seq - state.read_through_seq)
+            current_claim = claimed is not None and not self._pending_changed(state, claimed)
+            if cursor >= state.last_unread_seq and (
+                current_claim or (claimed is None and advanced)
+            ):
+                state.wait_until = 0.0
+                state.next_retry_at = 0.0
+                state.dispatch_attempts = 0
         self._save(state)
         return state

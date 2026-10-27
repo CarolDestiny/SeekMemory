@@ -75,15 +75,23 @@ class RuntimeWorker:
     async def dispatch(self, session_id: str, now: float | None = None) -> RunResult | None:
         if not self.enabled() or session_id in self._dispatching:
             return None
+        moment = self._moment(now)
         self._dispatching.add(session_id)
         try:
-            moment = self._moment(now)
-            return await self.runtime.dispatch_deferred(
-                self.run_context(session_id, moment),
-                now=moment,
-                max_attempts=max(1, int(self.max_attempts())),
-                base_seconds=max(0.1, float(self.base_seconds())),
-            )
+            async with self._semaphore():
+                if not self.enabled():
+                    return None
+                # Time and due state may have changed while waiting for a slot.
+                if self.clock is not None:
+                    moment = max(moment, self._moment(None))
+                if not self.scheduler.due([session_id], moment):
+                    return None
+                return await self.runtime.dispatch_deferred(
+                    self.run_context(session_id, moment),
+                    now=moment,
+                    max_attempts=max(1, int(self.max_attempts())),
+                    base_seconds=max(0.1, float(self.base_seconds())),
+                )
         finally:
             self._dispatching.discard(session_id)
 
@@ -98,16 +106,13 @@ class RuntimeWorker:
             return 0
         if not due:
             return 0
-        semaphore = self._semaphore()
-
         async def run_one(item) -> bool:
-            async with semaphore:
-                try:
-                    result = await self.dispatch(item.session_id, moment)
-                except Exception as exc:  # noqa: BLE001 - one run must not stop the tick
-                    self._record_failure("dispatch_failed", exc, item.session_id)
-                    return False
-                return result is not None
+            try:
+                result = await self.dispatch(item.session_id, moment)
+            except Exception as exc:  # noqa: BLE001 - one run must not stop the tick
+                self._record_failure("dispatch_failed", exc, item.session_id)
+                return False
+            return result is not None
 
         results = await asyncio.gather(*(run_one(item) for item in due))
         return sum(1 for result in results if result)

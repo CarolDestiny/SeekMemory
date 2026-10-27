@@ -22,7 +22,6 @@ from ..app.runtime import (
     MemoryContext,
     MemoryContextRequest,
     RunContext,
-    RunRecorder,
     RuntimeWorker,
     Scheduler,
     ToolPolicy,
@@ -43,7 +42,6 @@ from ..services import (
     ServiceCollection,
     StatusService,
 )
-from ..perceive.buffer import Buffer
 from ..perceive.model import ProviderChatModel
 from ..recall.retriever import HybridRetriever
 from ..adapters.astrbot_actions import AstrBotActionPort
@@ -58,6 +56,7 @@ from ..webui.routes import WebRoutes
 from ..webui.trace import Trace
 from .astrbot_hooks import AstrBotHooks
 from .astrbot_runtime import AstrBotRuntimeAdapter
+from .astrbot_time import AstrBotBuffer, AstrBotRunRecorder
 
 class AstrBotPlugin(AstrBotHooks):
     """Composition root and lifecycle owner for the AstrBot host.
@@ -77,7 +76,7 @@ class AstrBotPlugin(AstrBotHooks):
         self.tree: Tree | None = None
         self.graph: Graph | None = None
         self.hybrid_retriever: HybridRetriever | None = None
-        self.buffer: Buffer | None = None
+        self.buffer: AstrBotBuffer | None = None
         self.checkpoint: CheckpointManager | None = None
         self.budget = budget_from_config(self._c)
         self.dream: DreamCycle | None = None
@@ -155,7 +154,7 @@ class AstrBotPlugin(AstrBotHooks):
             self.episode_recorder = EpisodeRecorder(
                 JsonlEpisodeStore(str(self.data_path.parent / "runtime_episodes.jsonl"))
             )
-        recorder = RunRecorder(
+        recorder = AstrBotRunRecorder(
             sources=self.store.sources if self.store is not None else None,
             buffer=self.buffer,
             checkpoint=self.checkpoint,
@@ -328,7 +327,7 @@ class AstrBotPlugin(AstrBotHooks):
             self.tree = Tree(self.store.artifacts, self.cache)
             self.graph = Graph(self.store.artifacts)
             self.hybrid_retriever = HybridRetriever(self.graph, self.cache)
-            self.buffer = Buffer(
+            self.buffer = AstrBotBuffer(
                 str(self.data_path.parent / "pending.json"), extraction=self.store.extraction
             )
             migrated = self.buffer.migrate_legacy()
