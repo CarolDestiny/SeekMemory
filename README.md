@@ -12,9 +12,8 @@
 </div>
 
 <p align="center">
-  docs/clean-issue-pr-noise
-  <a href="docs/zh/architecture/overview.md">架构</a> /
-  <a href="docs/zh/index.md">文档</a> /
+  <a href="docs/zh/architecture/overview.md">SeekMemory 设计架构</a> /
+  <a href="docs/zh/index.md">模块设计文档</a> /
   <a href="docs/en/index.md">English</a> /
 
   <a href="#quick-start">快速开始</a> /
