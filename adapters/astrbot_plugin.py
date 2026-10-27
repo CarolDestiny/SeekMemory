@@ -56,7 +56,7 @@ from ..webui.routes import WebRoutes
 from ..webui.trace import Trace
 from .astrbot_hooks import AstrBotHooks
 from .astrbot_runtime import AstrBotRuntimeAdapter
-from .astrbot_time import AstrBotBuffer, AstrBotRunRecorder
+from .astrbot_time import AstrBotBuffer, AstrBotRunRecorder, AstrBotSourceView
 
 class AstrBotPlugin(AstrBotHooks):
     """Composition root and lifecycle owner for the AstrBot host.
@@ -212,7 +212,7 @@ class AstrBotPlugin(AstrBotHooks):
         ingest = IngestService(
             buffer=self.buffer,
             artifacts=self.store.artifacts if self.store is not None else None,
-            sources=self.store.sources if self.store is not None else None,
+            sources=AstrBotSourceView(self.store.sources) if self.store is not None else None,
             extraction=self.store.extraction if self.store is not None else None,
             cache=self.cache,
             graph=self.graph,

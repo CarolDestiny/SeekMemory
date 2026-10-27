@@ -485,6 +485,35 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
         episodes = self.plugin.store.runtime_episodes.list(first.unified_msg_origin)
         self.assertEqual(len(episodes), 2)
 
+    async def test_old_processed_parent_uses_utc8_view_without_rewriting_evidence(self) -> None:
+        source_module = importlib.import_module(f"{ROOT.name}.core.source")
+        session_id = "bot:GroupMessage:legacy-parent"
+        original_at = "2026-10-27T15:00:00+00:00"
+        self.plugin.store.sources.append_sources([source_module.Source(
+            "old-user", "old-turn", session_id, "u1", "user", "旧消息", original_at,
+        )])
+        self.plugin.buffer.add(
+            session_id, "新回复", "bot", "new-reply", "2026-10-27T15:00:05+00:00",
+            turn_id="old-turn", reply_to="old-user", role="assistant",
+        )
+        # Restart/chunk boundaries may leave only the reply in pending input.
+        self.plugin.buffer.reload()
+
+        class Model:
+            async def complete(self, request):
+                return SimpleNamespace(text=json.dumps([{
+                    "level": "fact", "text": "有证据的结论",
+                    "evidence_source_ids": ["old-user", "new-reply"],
+                }]))
+
+        outcome = await self.plugin.services.ingest_service.extract(
+            list(self.plugin.buffer.items), Model(),
+        )
+        self.assertFalse(outcome.retryable, outcome.errors)
+        self.assertEqual(outcome.written, 1)
+        saved = self.plugin.store.sources.sources_by_ids(["old-user"])["old-user"]
+        self.assertEqual(saved.at, original_at)
+
     async def test_deferred_wait_dispatches_once(self) -> None:
         source_module = importlib.import_module(f"{ROOT.name}.core.source")
         session_id = "bot:GroupMessage:g-defer"

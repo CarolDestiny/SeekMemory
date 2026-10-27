@@ -9,11 +9,13 @@ from typing import Any
 
 try:
     from ..app.contracts import DialogueTurn
+    from ..app.ports import SourceStore
     from ..app.runtime.recorder import RecordedReply, RecordedTurn, RunRecorder
     from ..core.source import Source
     from ..perceive.buffer import Buffer
 except ImportError:  # standalone adapter imports in scripts/tests
     from app.contracts import DialogueTurn
+    from app.ports import SourceStore
     from app.runtime.recorder import RecordedReply, RecordedTurn, RunRecorder
     from core.source import Source
     from perceive.buffer import Buffer
@@ -33,6 +35,34 @@ def utc8_time(at: str = "") -> str:
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC8)
     return value.astimezone(UTC8).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+class AstrBotSourceView:
+    """Normalize extraction's evidence read view without rewriting Sources."""
+
+    def __init__(self, sources: SourceStore) -> None:
+        self.sources = sources
+
+    def append_sources(self, sources: list[Source]) -> int:
+        return self.sources.append_sources(sources)
+
+    def recent_sources(self, *, since: str, limit: int) -> list[Source]:
+        return [
+            replace(source, at=utc8_time(source.at))
+            for source in self.sources.recent_sources(since=since, limit=limit)
+        ]
+
+    def source_umo(self, source_id: str) -> str:
+        return self.sources.source_umo(source_id)
+
+    def source_umos(self, source_ids: list[str]) -> dict[str, str]:
+        return self.sources.source_umos(source_ids)
+
+    def sources_by_ids(self, source_ids: list[str]) -> dict[str, Source]:
+        return {
+            key: replace(source, at=utc8_time(source.at))
+            for key, source in self.sources.sources_by_ids(source_ids).items()
+        }
 
 
 class AstrBotRunRecorder(RunRecorder):
