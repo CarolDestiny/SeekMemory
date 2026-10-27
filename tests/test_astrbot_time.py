@@ -25,7 +25,7 @@ class AstrBotTimeTest(unittest.TestCase):
     def test_one_hook_preserves_instants_and_supplies_the_existing_kernel_shape(self) -> None:
         for raw in (
             "2026-10-27T16:00:00+00:00", "2026-10-27T12:00:00-04:00",
-            "2026-10-28T00:00:00+08:00",
+            "2026-10-28T00:00:00+08:00", "2026-10-27T16:00:00Z",
         ):
             self.assertEqual(utc8_time_hook(raw), "2026-10-28T00:00:00+08:00")
             self.assertEqual(utc8_time_hook(raw, projection=True), "2026-10-28T00:00:00")

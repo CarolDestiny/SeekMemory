@@ -35,7 +35,7 @@ def utc8_time_hook(at: str = "", *, now: bool = False, projection: bool = False)
         value = datetime.datetime.now(UTC8)
     else:
         try:
-            value = datetime.datetime.fromisoformat(at)
+            value = datetime.datetime.fromisoformat(at.replace("Z", "+00:00"))
         except (TypeError, ValueError):
             return at
         if value.tzinfo is None:
